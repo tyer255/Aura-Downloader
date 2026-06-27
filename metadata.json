@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Pinterest Downloader",
+  "description": "A premium web application to download high-quality videos, images, and carousels from Pinterest.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
