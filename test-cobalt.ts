@@ -1,12 +1,15 @@
 async function test() {
     try {
-        const res = await fetch('https://co.wukko.me/api/json', {
+        const res = await fetch('https://co.wuk.sh/api/json', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ url: 'https://www.instagram.com/reel/DEZc6oSSg7E/' })
+            body: JSON.stringify({
+                url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+                vQuality: '1080'
+            })
         });
         console.log(res.status, await res.text());
     } catch(e) {

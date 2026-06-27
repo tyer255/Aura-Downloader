@@ -105,6 +105,7 @@ let globalBrowser: any = null;
 async function getBrowser() {
     if (!globalBrowser) {
         const path = await import('path');
+        process.env.PUPPETEER_CACHE_DIR = path.join(process.cwd(), '.puppeteer-cache');
         const puppeteer = (await import('puppeteer')).default;
         globalBrowser = await puppeteer.launch({
             args: [
@@ -692,16 +693,29 @@ app.post("/api/yt-media", async (req, res) => {
 
         try {
             console.log("Trying @vreden/youtube_scraper for", url);
-            // First get 720p
+            // First get 1080p
+            const video1080 = await ytmp4(url, 1080);
+            if (video1080 && video1080.status && video1080.download?.url) {
+                title = video1080.metadata?.title || title;
+                thumbnail = video1080.metadata?.thumbnail || thumbnail;
+                formats.push({
+                    quality: video1080.download.quality || "1080p",
+                    type: "video",
+                    url: video1080.download.url
+                });
+            }
+            // Next get 720p
             const video720 = await ytmp4(url, 720);
             if (video720 && video720.status && video720.download?.url) {
                 title = video720.metadata?.title || title;
                 thumbnail = video720.metadata?.thumbnail || thumbnail;
-                formats.push({
-                    quality: video720.download.quality || "720p",
-                    type: "video",
-                    url: video720.download.url
-                });
+                if (!formats.some(f => f.url === video720.download.url)) {
+                   formats.push({
+                       quality: video720.download.quality || "720p",
+                       type: "video",
+                       url: video720.download.url
+                   });
+                }
             }
             // Get 360p as fallback/option
             const video360 = await ytmp4(url, 360);

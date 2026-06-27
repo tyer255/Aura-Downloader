@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "postinstall": "npx puppeteer browsers install chrome",
+    "postinstall": "PUPPETEER_CACHE_DIR=.puppeteer-cache npx puppeteer browsers install chrome",
     "dev": "tsx server.ts",
-    "build": "npx puppeteer browsers install chrome && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "PUPPETEER_CACHE_DIR=.puppeteer-cache npx puppeteer browsers install chrome && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js puppeteer-cache",
