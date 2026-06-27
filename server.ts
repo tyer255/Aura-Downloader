@@ -105,7 +105,6 @@ let globalBrowser: any = null;
 async function getBrowser() {
     if (!globalBrowser) {
         const path = await import('path');
-        process.env.PUPPETEER_CACHE_DIR = path.join(process.cwd(), '.puppeteer-cache');
         const puppeteer = (await import('puppeteer')).default;
         globalBrowser = await puppeteer.launch({
             args: [
@@ -693,53 +692,44 @@ app.post("/api/yt-media", async (req, res) => {
 
         try {
             console.log("Trying @vreden/youtube_scraper for", url);
-            // First get 1080p
-            const video1080 = await ytmp4(url, 1080);
-            if (video1080 && video1080.status && video1080.download?.url) {
-                title = video1080.metadata?.title || title;
-                thumbnail = video1080.metadata?.thumbnail || thumbnail;
-                formats.push({
-                    quality: video1080.download.quality || "1080p",
-                    type: "video",
-                    url: video1080.download.url
-                });
-            }
-            // Next get 720p
-            const video720 = await ytmp4(url, 720);
-            if (video720 && video720.status && video720.download?.url) {
-                title = video720.metadata?.title || title;
-                thumbnail = video720.metadata?.thumbnail || thumbnail;
-                if (!formats.some(f => f.url === video720.download.url)) {
-                   formats.push({
-                       quality: video720.download.quality || "720p",
-                       type: "video",
-                       url: video720.download.url
-                   });
+            const qualitiesToTry = [1080, 720, 480, 360];
+            
+            // Try fetching all video qualities in parallel, plus audio
+            const promises = [
+                ...qualitiesToTry.map(q => ytmp4(url, q).catch(() => null)),
+                ytmp3(url).catch(() => null)
+            ];
+            
+            const results = await Promise.all(promises);
+            
+            // Process video results
+            for (let i = 0; i < qualitiesToTry.length; i++) {
+                const res = results[i];
+                if (res && res.status && res.download?.url) {
+                    title = res.metadata?.title || title;
+                    thumbnail = res.metadata?.thumbnail || thumbnail;
+                    if (!formats.some(f => f.url === res.download.url)) {
+                        formats.push({
+                            quality: res.download.quality || `${qualitiesToTry[i]}p`,
+                            type: "video",
+                            url: res.download.url
+                        });
+                    }
                 }
             }
-            // Get 360p as fallback/option
-            const video360 = await ytmp4(url, 360);
-            if (video360 && video360.status && video360.download?.url) {
-                title = video360.metadata?.title || title;
-                thumbnail = video360.metadata?.thumbnail || thumbnail;
-                if (!formats.some(f => f.url === video360.download.url)) {
-                   formats.push({
-                       quality: video360.download.quality || "360p",
-                       type: "video",
-                       url: video360.download.url
-                   });
+            
+            // Process audio result
+            const audioRes = results[qualitiesToTry.length];
+            if (audioRes && audioRes.status && audioRes.download?.url) {
+                title = audioRes.metadata?.title || title;
+                thumbnail = audioRes.metadata?.thumbnail || thumbnail;
+                if (!formats.some(f => f.url === audioRes.download.url)) {
+                    formats.push({
+                        quality: audioRes.download.quality || "Audio",
+                        type: "audio",
+                        url: audioRes.download.url
+                    });
                 }
-            }
-            // Get audio
-            const audio = await ytmp3(url);
-            if (audio && audio.status && audio.download?.url) {
-                title = audio.metadata?.title || title;
-                thumbnail = audio.metadata?.thumbnail || thumbnail;
-                formats.push({
-                    quality: audio.download.quality || "Audio",
-                    type: "audio",
-                    url: audio.download.url
-                });
             }
         } catch (vredenErr: any) {
             console.error("vreden scraper failed:", vredenErr.message);
