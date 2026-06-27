@@ -105,6 +105,7 @@ let globalBrowser: any = null;
 async function getBrowser() {
     if (!globalBrowser) {
         const path = await import('path');
+        process.env.PUPPETEER_CACHE_DIR = path.join(process.cwd(), '.puppeteer-cache');
         const puppeteer = (await import('puppeteer')).default;
         globalBrowser = await puppeteer.launch({
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
