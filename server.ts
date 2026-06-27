@@ -105,14 +105,35 @@ let globalBrowser: any = null;
 async function getBrowser() {
     if (!globalBrowser) {
         const path = await import('path');
-        process.env.PUPPETEER_CACHE_DIR = path.join(process.cwd(), '.puppeteer-cache');
         const puppeteer = (await import('puppeteer')).default;
         globalBrowser = await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--single-process',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-extensions'
+            ],
             headless: true
         });
     }
     return globalBrowser;
+}
+
+async function optimizePage(page: any) {
+    await page.setRequestInterception(true);
+    page.on('request', (req: any) => {
+        const rt = req.resourceType();
+        if (['image', 'stylesheet', 'font', 'media'].includes(rt)) {
+            req.abort();
+        } else {
+            req.continue();
+        }
+    });
 }
 
 app.post("/api/ig-media", async (req, res) => {
@@ -131,30 +152,27 @@ app.post("/api/ig-media", async (req, res) => {
     let page: any;
     try {
         page = await browser.newPage();
+        await optimizePage(page);
         await page.setDefaultNavigationTimeout(40000);
         
         if (isProfile) {
             type = "image";
-            await page.goto('https://indown.io/insta-dp-viewer', { waitUntil: 'networkidle2' });
+            await page.goto('https://indown.io/insta-dp-viewer', { waitUntil: 'domcontentloaded' });
             await page.type('input[name="link"]', url);
-            
-            await Promise.all([
-                page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-                page.click('button[type="submit"]')
-            ]);
+            await page.click('button[type="submit"]');
             
             let dpUrl = null;
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 10; i++) {
                 try {
                     dpUrl = await page.evaluate(() => {
                         const a = Array.from(document.querySelectorAll('a')).find(a => (a.href && (a.href.includes('dl=1') || a.href.includes('.jpg'))));
                         return a ? a.href : null;
                     });
                     if (dpUrl) break;
-                    await new Promise(r => setTimeout(r, 2000));
+                    await new Promise(r => setTimeout(r, 1000));
                 } catch (e: any) {
                     if (!e.message.includes("Execution context was destroyed")) throw e;
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise(r => setTimeout(r, 500));
                 }
             }
 
@@ -163,16 +181,12 @@ app.post("/api/ig-media", async (req, res) => {
                 thumbnail = dpUrl;
             }
         } else {
-            await page.goto('https://sssinstagram.com/', { waitUntil: 'networkidle2' });
+            await page.goto('https://sssinstagram.com/', { waitUntil: 'domcontentloaded' });
             await page.type('#input', url);
-            
-            await Promise.all([
-                page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-                page.click('.form__submit')
-            ]);
+            await page.click('.form__submit');
             
             let results: any[] = [];
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 15; i++) {
                 try {
                     results = await page.evaluate(() => {
                         const res: any[] = [];
@@ -195,10 +209,10 @@ app.post("/api/ig-media", async (req, res) => {
                         return res;
                     });
                     if (results && results.length > 0) break;
-                    await new Promise(r => setTimeout(r, 2000));
+                    await new Promise(r => setTimeout(r, 1000));
                 } catch (e: any) {
                     if (!e.message.includes("Execution context was destroyed")) throw e;
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise(r => setTimeout(r, 500));
                 }
             }
             
@@ -216,6 +230,24 @@ app.post("/api/ig-media", async (req, res) => {
         }
     } finally {
         if (page) await page.close();
+    }
+
+    if (mediaUrls.length === 0) {
+        // Fallback to yt-dlp
+        try {
+            const youtubedl = (await import('youtube-dl-exec')).default;
+            const res: any = await youtubedl(url, {
+                dumpJson: true,
+                noWarnings: true,
+            });
+            if (res && res.url) {
+                mediaUrls.push(res.url);
+                type = "video";
+                if (res.thumbnail) thumbnail = res.thumbnail;
+            }
+        } catch(e) {
+            console.error("yt-dlp fallback error:", e);
+        }
     }
 
     if (mediaUrls.length === 0) {
@@ -256,24 +288,45 @@ app.post("/api/fetch-facebook", async (req, res) => {
   try {
     const browser = await getBrowser();
     const page = await browser.newPage();
+    await optimizePage(page);
     await page.setDefaultNavigationTimeout(40000);
     
     // We can use snapsave.app or fdown.net for FB
-    await page.goto('https://fdown.net/', { waitUntil: 'networkidle2' });
+    await page.goto('https://fdown.net/', { waitUntil: 'domcontentloaded' });
     await page.type('input[name="URLz"]', url);
     
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-        page.click('button[type="submit"]')
-    ]);
+    await page.click('button[type="submit"]');
 
-    let videoUrl = await page.evaluate(() => {
-        const hd = document.querySelector('#hdlink');
-        const sd = document.querySelector('#sdlink');
-        return (hd && hd.getAttribute('href')) || (sd && sd.getAttribute('href'));
-    });
+    let videoUrl = null;
+    for (let i = 0; i < 15; i++) {
+        try {
+            videoUrl = await page.evaluate(() => {
+                const hd = document.querySelector('#hdlink');
+                const sd = document.querySelector('#sdlink');
+                return (hd && hd.getAttribute('href')) || (sd && sd.getAttribute('href'));
+            });
+            if (videoUrl) break;
+            await new Promise(r => setTimeout(r, 1000));
+        } catch(e: any) {
+            if (!e.message.includes("Execution context was destroyed")) throw e;
+            await new Promise(r => setTimeout(r, 500));
+        }
+    }
     
     await page.close();
+
+    if (!videoUrl) {
+       // fallback to yt-dlp
+       try {
+           const youtubedl = (await import('youtube-dl-exec')).default;
+           const res: any = await youtubedl(url, { dumpJson: true, noWarnings: true });
+           if (res && res.url) {
+               videoUrl = res.url;
+           }
+       } catch(e) {
+           console.error("FB yt-dlp fallback error:", e);
+       }
+    }
 
     if (videoUrl) {
        return res.json({ success: true, type: "video", download_url: videoUrl, mediaUrls: [videoUrl], title: "Facebook Video" });
@@ -292,23 +345,43 @@ app.post("/api/fetch-tiktok", async (req, res) => {
   try {
     const browser = await getBrowser();
     const page = await browser.newPage();
+    await optimizePage(page);
     await page.setDefaultNavigationTimeout(40000);
     
-    await page.goto('https://ssstik.io/en', { waitUntil: 'networkidle2' });
+    await page.goto('https://ssstik.io/en', { waitUntil: 'domcontentloaded' });
     await page.type('input[id="main_page_text"]', url);
     
     await page.click('button[id="submit"]');
     
-    try {
-       await page.waitForSelector('.result_overlay a', { timeout: 15000 });
-    } catch(e) {}
-    
-    let downloadLinks = await page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('.result_overlay a.download_link'));
-        return links.map(a => a.getAttribute('href')).filter(Boolean);
-    });
+    let downloadLinks: string[] = [];
+    for (let i = 0; i < 15; i++) {
+        try {
+            downloadLinks = await page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('.result_overlay a.download_link'));
+                return links.map(a => a.getAttribute('href')).filter(Boolean) as string[];
+            });
+            if (downloadLinks && downloadLinks.length > 0) break;
+            await new Promise(r => setTimeout(r, 1000));
+        } catch(e: any) {
+            if (!e.message.includes("Execution context was destroyed")) throw e;
+            await new Promise(r => setTimeout(r, 500));
+        }
+    }
     
     await page.close();
+
+    if (!downloadLinks || downloadLinks.length === 0) {
+       // fallback to yt-dlp
+       try {
+           const youtubedl = (await import('youtube-dl-exec')).default;
+           const res: any = await youtubedl(url, { dumpJson: true, noWarnings: true });
+           if (res && res.url) {
+               downloadLinks = [res.url];
+           }
+       } catch(e) {
+           console.error("TT yt-dlp fallback error:", e);
+       }
+    }
 
     if (downloadLinks && downloadLinks.length > 0) {
        return res.json({ success: true, type: "video", download_url: downloadLinks[0], mediaUrls: downloadLinks, title: "TikTok Video" });
@@ -327,23 +400,43 @@ app.post("/api/fetch-twitter", async (req, res) => {
   try {
     const browser = await getBrowser();
     const page = await browser.newPage();
+    await optimizePage(page);
     await page.setDefaultNavigationTimeout(40000);
     
-    await page.goto('https://ssstwitter.com/', { waitUntil: 'networkidle2' });
+    await page.goto('https://ssstwitter.com/', { waitUntil: 'domcontentloaded' });
     await page.type('input[id="main_page_text"]', url);
     
     await page.click('button[id="submit"]');
     
-    try {
-       await page.waitForSelector('.result_overlay a', { timeout: 15000 });
-    } catch(e) {}
-    
-    let downloadLinks = await page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('.result_overlay a.download_link'));
-        return links.map(a => a.getAttribute('href')).filter(Boolean);
-    });
+    let downloadLinks: string[] = [];
+    for (let i = 0; i < 15; i++) {
+        try {
+            downloadLinks = await page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('.result_overlay a.download_link'));
+                return links.map(a => a.getAttribute('href')).filter(Boolean) as string[];
+            });
+            if (downloadLinks && downloadLinks.length > 0) break;
+            await new Promise(r => setTimeout(r, 1000));
+        } catch(e: any) {
+            if (!e.message.includes("Execution context was destroyed")) throw e;
+            await new Promise(r => setTimeout(r, 500));
+        }
+    }
     
     await page.close();
+
+    if (!downloadLinks || downloadLinks.length === 0) {
+       // fallback to yt-dlp
+       try {
+           const youtubedl = (await import('youtube-dl-exec')).default;
+           const res: any = await youtubedl(url, { dumpJson: true, noWarnings: true });
+           if (res && res.url) {
+               downloadLinks = [res.url];
+           }
+       } catch(e) {
+           console.error("TW yt-dlp fallback error:", e);
+       }
+    }
 
     if (downloadLinks && downloadLinks.length > 0) {
        return res.json({ success: true, type: "video", download_url: downloadLinks[0], mediaUrls: downloadLinks, title: "Twitter Video" });

@@ -1,14 +1,16 @@
 async function test() {
     try {
-        const res = await fetch('https://co.wukko.me/api/json', {
+        const res = await fetch('https://api.cobalt.tools/', {
             method: 'POST',
             headers: {
+                'Accept': 'application/json',
                 'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'User-Agent': 'Mozilla/5.0'
             },
             body: JSON.stringify({ url: 'https://www.instagram.com/reel/DEZc6oSSg7E/' })
         });
-        console.log(res.status, await res.text());
+        const data = await res.json();
+        console.log("res:", JSON.stringify(data, null, 2));
     } catch(e) {
         console.error(e);
     }
