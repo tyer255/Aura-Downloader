@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import youtubedl from "youtube-dl-exec";
+import ytdl from "@distube/ytdl-core";
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
 import puppeteer from "puppeteer";
@@ -796,7 +797,7 @@ async function extractWithCobalt(url: string) {
     console.log("[Cobalt] Failed to fetch dynamic cobalt instances list:", e.message);
   }
 
-  instances = Array.from(new Set(instances.filter(Boolean)));
+  instances = Array.from(new Set(instances.filter(Boolean))).slice(0, 3);
   console.log(`[Cobalt Debug] URLs to try: ${instances.length} endpoints for: ${url}`);
 
   for (const inst of instances) {
@@ -811,7 +812,7 @@ async function extractWithCobalt(url: string) {
         body: JSON.stringify({
           url: url
         })
-      }), 15000) as any;
+      }), 7000) as any;
 
       if (!response.ok) {
         // Silently continue to next instance if one fails (many public instances now require JWT)
@@ -915,7 +916,7 @@ async function extractWithCobalt(url: string) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.use(express.json());
 
@@ -1158,7 +1159,7 @@ async function startServer() {
               'referer:google.com',
               'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
             ]
-          }), 40000) as any;
+          }), 15000) as any;
 
           const qualities = extractQualitiesFromYtDlp(output);
           let directUrl = output.url;
@@ -1178,45 +1179,64 @@ async function startServer() {
             });
           }
         } catch (ytDlpErr: any) {
-          console.log("Primary yt-dlp extraction failed/timeout, trying fast fallback btch.youtube:", ytDlpErr.message);
+          console.log("Primary yt-dlp extraction failed/timeout, trying fast fallback ytdl-core:", ytDlpErr.message);
+          try {
+            console.log("Secondary YouTube extraction using @distube/ytdl-core...");
+            const info = await withTimeout(ytdl.getInfo(url), 10000) as any;
+            const format = ytdl.chooseFormat(info.formats, { quality: 'highest' });
+            if (format && format.url) {
+              return res.json({
+                success: true,
+                url: format.url,
+                title: info.videoDetails?.title || "YouTube Video",
+                thumbnail: info.videoDetails?.thumbnails?.[0]?.url,
+                mediaType: "video",
+                source: "ytdl-core"
+              });
+            }
+          } catch (ytdlErr: any) {
+            console.log("Secondary ytdl-core failed:", ytdlErr.message);
+          }
         }
 
         
       }
 
       // ========================================================
-      // 3. FALLBACK TO YT-DLP FOR STREAMS
+      // 3. FALLBACK TO YT-DLP FOR STREAMS (Skip for YouTube)
       // ========================================================
-      try {
-        const output = await withTimeout(youtubedl(url, {
-          dumpSingleJson: true,
-          noCheckCertificates: true,
-          noWarnings: true,
-          preferFreeFormats: true,
-          addHeader: [
-            'referer:google.com',
-            'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-          ]
-        }), 40000) as any;
+      if (classification.platform !== 'youtube') {
+        try {
+          const output = await withTimeout(youtubedl(url, {
+            dumpSingleJson: true,
+            noCheckCertificates: true,
+            noWarnings: true,
+            preferFreeFormats: true,
+            addHeader: [
+              'referer:google.com',
+              'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+            ]
+          }), 15000) as any;
 
-        let directUrl = output.url;
-        const qualities = extractQualitiesFromYtDlp(output);
-        if (!directUrl && qualities.length > 0) {
-          directUrl = qualities[0].url;
-        }
+          let directUrl = output.url;
+          const qualities = extractQualitiesFromYtDlp(output);
+          if (!directUrl && qualities.length > 0) {
+            directUrl = qualities[0].url;
+          }
 
-        if (directUrl) {
-          return res.json({
-            success: true,
-            url: directUrl,
-            title: output.title || "Media Download",
-            thumbnail: output.thumbnail,
-            mediaType: output.playlist ? "carousel" : "video",
-            qualities: qualities,
-            source: "yt-dlp"
-          });
-        }
-      } catch (e) {}
+          if (directUrl) {
+            return res.json({
+              success: true,
+              url: directUrl,
+              title: output.title || "Media Download",
+              thumbnail: output.thumbnail,
+              mediaType: output.playlist ? "carousel" : "video",
+              qualities: qualities,
+              source: "yt-dlp"
+            });
+          }
+        } catch (e) {}
+      }
 
       // ========================================================
       // 4. ULTIMATE Fallback: AI Direct Parsing
