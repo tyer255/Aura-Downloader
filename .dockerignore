@@ -1,7 +1,0 @@
-node_modules
-dist
-.cache
-puppeteer-cache
-.puppeteercache
-.env
-.git

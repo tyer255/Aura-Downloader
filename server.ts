@@ -7,6 +7,8 @@ import fetch from "node-fetch";
 import * as cheerio from "cheerio";
 import puppeteer from "puppeteer";
 import { GoogleGenAI, Type } from "@google/genai";
+import { ytmp4 as vredenYtmp4 } from "@vreden/youtube_scraper";
+import btch from "btch-downloader";
 import https from "https";
 import http from "http";
 import { URL } from "url";
@@ -790,6 +792,7 @@ async function extractWithCobalt(url: string) {
         if (list.length > 0) {
           const uniqueList = Array.from(new Set(list));
           instances = [...uniqueList, ...instances];
+          uniqueList.sort(() => Math.random() - 0.5);
         }
       }
     }
@@ -797,7 +800,7 @@ async function extractWithCobalt(url: string) {
     console.log("[Cobalt] Failed to fetch dynamic cobalt instances list:", e.message);
   }
 
-  instances = Array.from(new Set(instances.filter(Boolean))).slice(0, 3);
+  instances = Array.from(new Set(instances.filter(Boolean))).slice(0, 15);
   console.log(`[Cobalt Debug] URLs to try: ${instances.length} endpoints for: ${url}`);
 
   for (const inst of instances) {
@@ -916,7 +919,7 @@ async function extractWithCobalt(url: string) {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const PORT = 3000;
 
   app.use(express.json());
 
@@ -928,6 +931,13 @@ async function startServer() {
 
     if (!fileUrl) {
       return res.status(400).send("URL query parameter is required");
+    }
+
+    // Bypass proxy for Cobalt tunnel URLs to avoid Cloudflare bot blocking
+    // Cobalt tunnels have CORS and Content-Disposition headers natively.
+    if (fileUrl.includes("/tunnel?id=")) {
+      console.log(`Redirecting Cobalt tunnel URL to avoid proxy block: ${fileUrl}`);
+      return res.redirect(fileUrl);
     }
 
     console.log(`Initiating stream proxy download for: ${fileUrl} (inline=${inline})`);
@@ -1101,10 +1111,7 @@ async function startServer() {
         
         // If we reach here, it means Cobalt failed, Fast Embed failed.
         // Instagram requires login cookies now and aggressively blocks all scrapers.
-        return res.status(400).json({
-          success: false,
-          error: "Instagram extraction failed. Instagram recently started requiring login cookies to access media, blocking anonymous scrapers. Please use an authenticated browser extension or provide an API key."
-        });
+        // Block removed to allow fallback
       }
 
       // TIKTOK VIDEO
@@ -1147,61 +1154,48 @@ async function startServer() {
 
       // YOUTUBE VIDEO/SHORTS
       if (classification.platform === 'youtube') {
-        // Try yt-dlp first for detailed, authentic quality options (360p, 480p, 720p, 1080p etc.)
         try {
-          console.log("Primary YouTube extraction using yt-dlp...");
-          const output = await withTimeout(youtubedl(url, {
-            dumpSingleJson: true,
-            noCheckCertificates: true,
-            noWarnings: true,
-            preferFreeFormats: true,
-            forceIpv4: true,
-            extractorArgs: 'youtube:player_client=android,ios',
-            addHeader: [
-              'referer:google.com',
-              'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-            ]
-          }), 15000) as any;
-
-          const qualities = extractQualitiesFromYtDlp(output);
-          let directUrl = output.url;
-          if (!directUrl && qualities.length > 0) {
-            directUrl = qualities[0].url;
+          console.log("Primary YouTube extraction using @vreden/youtube_scraper...");
+          let resData: any = null;
+          for (let qual of ['1080p', '720p', '480p', '360p']) {
+             try {
+                const temp = await vredenYtmp4(url, qual);
+                if (temp && temp.status && temp.download && temp.download.url) {
+                   resData = temp;
+                   break;
+                }
+             } catch(e) {}
           }
-
-          if (directUrl) {
-            return res.json({
-              success: true,
-              url: directUrl,
-              title: output.title || "YouTube Video",
-              thumbnail: output.thumbnail,
-              mediaType: "video",
-              qualities: qualities,
-              source: "yt-dlp-primary"
-            });
-          }
-        } catch (ytDlpErr: any) {
-          console.log("Primary yt-dlp extraction failed/timeout, trying fast fallback ytdl-core:", ytDlpErr.message);
-          try {
-            console.log("Secondary YouTube extraction using @distube/ytdl-core...");
-            const info = await withTimeout(ytdl.getInfo(url), 10000) as any;
-            const format = ytdl.chooseFormat(info.formats, { quality: 'highest' });
-            if (format && format.url) {
-              return res.json({
+          if (resData && resData.download && resData.download.url) {
+             return res.json({
                 success: true,
-                url: format.url,
-                title: info.videoDetails?.title || "YouTube Video",
-                thumbnail: info.videoDetails?.thumbnails?.[0]?.url,
+                url: resData.download.url,
+                title: resData.metadata?.title || "YouTube Video",
+                thumbnail: resData.metadata?.thumbnail || resData.metadata?.image,
                 mediaType: "video",
-                source: "ytdl-core"
-              });
-            }
-          } catch (ytdlErr: any) {
-            console.log("Secondary ytdl-core failed:", ytdlErr.message);
+                source: "vreden-ytmp4"
+             });
           }
+        } catch (ytVredenErr: any) {
+          console.log("Primary vreden extraction failed:", ytVredenErr.message);
         }
 
-        
+        try {
+          console.log("Secondary YouTube extraction using btch-downloader...");
+          const btchRes = await btch.youtube(url);
+          if (btchRes && btchRes.status && btchRes.mp4) {
+             return res.json({
+                success: true,
+                url: btchRes.mp4,
+                title: btchRes.title || "YouTube Video",
+                thumbnail: btchRes.thumbnail,
+                mediaType: "video",
+                source: "btch-youtube"
+             });
+          }
+        } catch (btchErr: any) {
+          console.log("Secondary btch extraction failed:", btchErr.message);
+        }
       }
 
       // ========================================================

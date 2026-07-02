@@ -343,8 +343,8 @@ export default function App() {
   };
 
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [downloadSpeed, setDownloadSpeed] = useState('0.0 MB/s');
+  
+  
   const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -388,55 +388,7 @@ export default function App() {
     } catch (e) {}
   }, [isLight]);
 
-  // Smooth dynamic progress bar crawler up to 99%
-  React.useEffect(() => {
-    if (!isLoading) {
-      setProgress(0);
-      return;
-    }
-    if (progress >= 99) return;
 
-    let delay = 100;
-    if (progress < 30) {
-      delay = 120; // fast start
-    } else if (progress < 65) {
-      delay = 180; // moderate crawl
-    } else if (progress < 85) {
-      delay = 320; // slower crawl
-    } else {
-      delay = 600; // ultra slow crawl up to 99%
-    }
-
-    const timer = setTimeout(() => {
-      setProgress((prev) => {
-        let increment = 0;
-        if (prev < 30) {
-          increment = Math.floor(Math.random() * 3) + 2;
-        } else if (prev < 65) {
-          increment = Math.random() > 0.25 ? 1 : 0;
-        } else if (prev < 85) {
-          increment = Math.random() > 0.55 ? 1 : 0;
-        } else {
-          increment = Math.random() > 0.85 ? 1 : 0;
-        }
-        return Math.min(prev + increment, 99);
-      });
-    }, delay);
-
-    return () => clearTimeout(timer);
-  }, [isLoading, progress]);
-
-  // Simulate dynamic download speed
-  React.useEffect(() => {
-    if (!isLoading) {
-      setDownloadSpeed('0.0 MB/s');
-      return;
-    }
-    const interval = setInterval(() => {
-      setDownloadSpeed((Math.random() * 3 + 1.5).toFixed(1) + ' MB/s');
-    }, 400);
-    return () => clearInterval(interval);
-  }, [isLoading]);
 
   // Manage loading step label text sequence separately
   React.useEffect(() => {
@@ -549,7 +501,7 @@ export default function App() {
       return;
     }
 
-    setProgress(0);
+    
     setLoadingStep(0);
     setIsLoading(true);
     setResult(null);
@@ -614,7 +566,8 @@ export default function App() {
             const profile = rapidData.author ? {
               username: rapidData.author.split(' ')[0] || "instagram_user",
               displayName: rapidData.author || "Instagram User",
-              followers: rapidData.like_count ? `${rapidData.like_count.toLocaleString()} likes` : ""
+              followers: rapidData.like_count ? `${rapidData.like_count.toLocaleString()} likes` : "",
+              avatarUrl: displayUrl
             } : undefined;
 
             const resData = {
@@ -647,7 +600,7 @@ export default function App() {
             setHistory(newHistory);
             localStorage.setItem('download_history', JSON.stringify(newHistory));
             
-            setProgress(100);
+            
             setTimeout(() => {
               setIsLoading(false);
             }, 300);
@@ -688,7 +641,7 @@ export default function App() {
         error: "Network error occurred while trying to contact the media server."
       });
     } finally {
-      setProgress(100);
+      
       setTimeout(() => {
         setIsLoading(false);
       }, 300);
@@ -696,12 +649,48 @@ export default function App() {
   };
 
   
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+
   const downloadFileClientSide = async (url: string, filename: string) => {
     try {
+      setDownloadProgress(0);
+      setHistoryToast("Starting download...");
+
       const fetchUrl = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
       
+      const response = await fetch(fetchUrl);
+      if (!response.ok) {
+        setHistoryToast("Download failed (Server Error).");
+        setTimeout(() => setHistoryToast(null), 3000);
+        setDownloadProgress(null);
+        return;
+      }
+
+      const contentLength = response.headers.get('content-length') || response.headers.get('estimated-content-length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+      let loaded = 0;
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const chunks = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          loaded += value.length;
+          if (total) {
+            setDownloadProgress(Math.round((loaded / total) * 100));
+          }
+        }
+      }
+
+      const blob = new Blob(chunks);
+      const objectUrl = window.URL.createObjectURL(blob);
+      
       const a = document.createElement('a');
-      a.href = fetchUrl;
+      a.href = objectUrl;
       a.download = filename || 'download';
       a.style.display = 'none';
       document.body.appendChild(a);
@@ -709,9 +698,17 @@ export default function App() {
       
       setTimeout(() => {
           if (document.body.contains(a)) document.body.removeChild(a);
+          window.URL.revokeObjectURL(objectUrl);
       }, 1000);
+      
+      setDownloadProgress(null);
+      setHistoryToast("Download complete!");
+      setTimeout(() => setHistoryToast(null), 3000);
     } catch (error) {
       console.error('Download setup failed:', error);
+      setDownloadProgress(null);
+      setHistoryToast("Download failed.");
+      setTimeout(() => setHistoryToast(null), 3000);
     }
   };
 
@@ -1304,7 +1301,7 @@ export default function App() {
         {/* Dynamic Media Extraction Dashboard / Loading State */}
         <AnimatePresence mode="wait">
           {isLoading && (() => {
-            const secondsRemaining = Math.max(1, Math.ceil((100 - progress) / 10));
+            
             return (
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
@@ -1325,29 +1322,27 @@ export default function App() {
 
                 {/* Status / Percentage Row */}
                 <div className="w-full flex justify-between items-center px-1 mb-3">
-                  <span className={clsx("text-sm font-medium transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>Processing request...</span>
-                  <span className={clsx("text-sm font-bold font-mono transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>{progress}%</span>
+                  <span className={clsx("text-sm font-medium transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>Extracting media details...</span>
                 </div>
 
-                {/* Shiny Blue Progress Bar Track */}
+                {/* Indeterminate Scanning Bar */}
                 <div className={clsx(
                   "w-full h-3 rounded-full overflow-hidden mb-4 shadow-inner transition-colors relative", 
                   isLight ? "bg-neutral-200" : "bg-neutral-800/80"
                 )}>
-                  <div 
-                    className="absolute top-0 left-0 h-full rounded-full transition-all duration-300 ease-out bg-blue-500 overflow-hidden shadow-[0_0_10px_rgba(59,130,246,0.6)]"
-                    style={{ width: `${progress}%` }}
+                  <motion.div 
+                    className="absolute top-0 left-0 h-full w-1/3 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]"
+                    animate={{
+                      x: ["-100%", "300%"],
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      ease: "linear",
+                      duration: 1.5,
+                    }}
                   >
-                    {/* Shiny inner sheen effect */}
                     <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer" />
-                    <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-white/30 to-transparent" />
-                  </div>
-                </div>
-
-                {/* Dynamic Remaining Time & Speed */}
-                <div className="flex justify-between items-center w-full text-xs text-neutral-500 font-medium mb-4 px-1">
-                  <span>~{secondsRemaining}s remaining</span>
-                  <span className="font-mono">{progress < 99 ? downloadSpeed : '0.0 MB/s'}</span>
+                  </motion.div>
                 </div>
 
                 {/* Status message */}
@@ -1658,40 +1653,15 @@ export default function App() {
                             )}>
                               {item.type === 'video' ? (
                                 <div className="space-y-1.5">
-                                  <span className="text-[10px] uppercase tracking-widest text-emerald-400 font-bold block">
-                                    Available Quality Formats:
-                                  </span>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    {[
-                                      { label: "1080p", sub: "Full HD" },
-                                      { label: "720p", sub: "Standard HD" },
-                                      { label: "480p", sub: "Medium SD" },
-                                      { label: "360p", sub: "Low Quality" }
-                                    ].map((opt) => (
-                                      <a
-                                        key={opt.label}
-                                        href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
-                                        
-                                        className={clsx(
-                                          "flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all border group/item-quality",
-                                          isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/5"
-                                        )}
-                                      >
-                                        <span className={clsx(
-                                          "font-extrabold text-xs transition-colors",
-                                          isLight ? "text-neutral-800 group-hover/item-quality:text-white" : "text-white group-hover/item-quality:text-white"
-                                        )}>
-                                          {opt.label}
-                                        </span>
-                                        <span className={clsx(
-                                          "text-[8px] transition-colors uppercase tracking-wider",
-                                          isLight ? "text-neutral-500 group-hover/item-quality:text-white/80" : "text-neutral-400 group-hover/item-quality:text-white/80"
-                                        )}>
-                                          {opt.sub}
-                                        </span>
-                                      </a>
-                                    ))}
-                                  </div>
+                                  <a
+                                    href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
+                                    className={clsx(
+                                      "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
+                                      isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10"
+                                    )}
+                                  >
+                                    <Download className="w-4 h-4" /> Download Video
+                                  </a>
                                 </div>
                               ) : (
                                 <a

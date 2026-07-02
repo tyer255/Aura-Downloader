@@ -4,12 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "postinstall": "PUPPETEER_CACHE_DIR=.cache/puppeteer npx puppeteer browsers install chrome",
     "dev": "tsx server.ts",
-    "build": "rm -rf .puppeteer-cache .cache/puppeteer && PUPPETEER_CACHE_DIR=.cache/puppeteer npx puppeteer browsers install chrome && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js puppeteer-cache",
+    "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -17,6 +16,7 @@
     "@bochilteam/scraper-instagram": "^5.0.0",
     "@distube/ytdl-core": "^4.16.12",
     "@google/genai": "^2.4.0",
+    "@jerrycoder/instagram-api": "^2.5.9",
     "@mrnima/instagram-downloader": "^1.0.0",
     "@sasmeee/igdl": "^0.0.1-security",
     "@tailwindcss/vite": "^4.1.14",
@@ -25,7 +25,7 @@
     "adm-zip": "^0.5.17",
     "api-dylux": "^1.8.6",
     "apify-client": "^2.23.4",
-    "btch-downloader": "^6.0.36",
+    "btch-downloader": "^6.0.37",
     "canvas-confetti": "^1.9.4",
     "cheerio": "^1.0.0-rc.12",
     "clsx": "^2.1.1",
