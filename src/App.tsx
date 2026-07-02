@@ -344,10 +344,12 @@ export default function App() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [downloadSpeed, setDownloadSpeed] = useState('0.0 MB/s');
   const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<{ url: string; title: string; timestamp: number; platform?: Tab; favorite?: boolean }[]>([]);
+  const [isHistorySpinning, setIsHistorySpinning] = useState(false);
+  const [history, setHistory] = useState<{ url: string; title: string; timestamp: number; platform?: Tab; favorite?: boolean; thumbnail?: string; appName?: string }[]>([]);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [copiedHistoryUrl, setCopiedHistoryUrl] = useState<string | null>(null);
   const [historyToast, setHistoryToast] = useState<string | null>(null);
@@ -372,9 +374,10 @@ export default function App() {
   const [isLight, setIsLight] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem('theme');
-      return stored === 'light';
+      if (stored !== null) return stored === 'light';
+      return true; // Default to light mode
     } catch (e) {
-      return false;
+      return true; // Default to light mode on error
     }
   });
 
@@ -423,6 +426,18 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [isLoading, progress]);
 
+  // Simulate dynamic download speed
+  React.useEffect(() => {
+    if (!isLoading) {
+      setDownloadSpeed('0.0 MB/s');
+      return;
+    }
+    const interval = setInterval(() => {
+      setDownloadSpeed((Math.random() * 3 + 1.5).toFixed(1) + ' MB/s');
+    }, 400);
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
   // Manage loading step label text sequence separately
   React.useEffect(() => {
     if (!isLoading) {
@@ -449,6 +464,34 @@ export default function App() {
       try {
         setHistory(JSON.parse(stored));
       } catch(e) {}
+    }
+  }, []);
+
+  // Handle PWA Web Share Target
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedText = params.get('text');
+    const sharedUrl = params.get('url');
+
+    let finalUrl = '';
+    
+    if (sharedUrl && (sharedUrl.startsWith('http://') || sharedUrl.startsWith('https://'))) {
+      finalUrl = sharedUrl;
+    } else if (sharedText) {
+      const urlMatch = sharedText.match(/https?:\/\/[^\s]+/);
+      if (urlMatch) {
+        finalUrl = urlMatch[0];
+      }
+    }
+
+    if (finalUrl) {
+      const platform = detectPlatformFromUrl(finalUrl);
+      if (platform) {
+        setActiveTab(platform);
+      }
+      setUrl(finalUrl);
+      
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
 
@@ -596,7 +639,9 @@ export default function App() {
               title: titleText, 
               timestamp: Date.now(), 
               platform: detectedPlatform,
-              favorite: false
+              favorite: false,
+              thumbnail: resData.thumbnail || (resData.media && resData.media.length > 0 ? (resData.media[0].thumbnail || resData.media[0].url) : undefined) || profile?.avatarUrl,
+              appName: TABS.find(t => t.id === detectedPlatform)?.name || 'Unknown'
             };
             const newHistory = [newEntry, ...history.filter(h => h.url !== url.trim())].slice(0, 50);
             setHistory(newHistory);
@@ -629,7 +674,9 @@ export default function App() {
           title: titleText, 
           timestamp: Date.now(), 
           platform: detectedPlatform,
-          favorite: false
+          favorite: false,
+          thumbnail: data.thumbnail || (data.media && data.media.length > 0 ? (data.media[0].thumbnail || data.media[0].url) : undefined) || data.profile?.avatarUrl,
+          appName: TABS.find(t => t.id === detectedPlatform)?.name || 'Unknown'
         };
         const newHistory = [newEntry, ...history.filter(h => h.url !== url.trim())].slice(0, 50);
         setHistory(newHistory);
@@ -734,12 +781,19 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => setShowHistory(true)}
+            onClick={() => {
+              setIsHistorySpinning(true);
+              setTimeout(() => {
+                setIsHistorySpinning(false);
+                setShowHistory(true);
+              }, 400);
+            }}
             className={clsx(
               "w-11 h-11 rounded-full flex items-center justify-center transition-all border shadow-md cursor-pointer",
               isLight 
                 ? "bg-white border-neutral-200 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100" 
-                : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:bg-white/10"
+                : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:bg-white/10",
+              isHistorySpinning && "animate-spin"
             )}
             title="Download History"
           >
@@ -766,20 +820,15 @@ export default function App() {
               
               {/* Close Slider Button on the Side (Floating on the left edge) */}
               <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
                 className="absolute left-0 top-1/2 -translate-y-1/2 -ml-14 z-30"
               >
                 <button
                   onClick={() => setShowHistory(false)}
-                  className={clsx(
-                    "w-12 h-12 rounded-full flex items-center justify-center shadow-2xl cursor-pointer transition-all hover:scale-110 active:scale-95 border",
-                    isLight
-                      ? "bg-white/90 border-white/50 text-neutral-800 hover:bg-white shadow-neutral-200/50"
-                      : "bg-[#180a0c]/90 border-white/10 text-white hover:bg-neutral-900 shadow-black/80"
-                  )}
+                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-2xl cursor-pointer transition-all hover:scale-110 active:scale-95 border bg-[#180a0c]/90 border-white/10 text-white hover:bg-neutral-900 shadow-black/80"
                   title="Close Slider"
                 >
                   <ChevronRight className="w-6 h-6" />
@@ -787,37 +836,29 @@ export default function App() {
               </motion.div>
 
               <motion.div
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ type: 'spring', damping: 30, stiffness: 220 }}
                 className={clsx(
-                  "w-screen max-w-md border-l flex flex-col h-full shadow-[0_0_50px_rgba(0,0,0,0.3)] relative overflow-hidden transition-all",
-                  isLight 
-                    ? "bg-white/40 backdrop-blur-3xl border-white/60 text-neutral-900" 
-                    : "bg-[#100607]/40 backdrop-blur-3xl border-white/5 text-neutral-100"
+                  "w-screen max-w-md border-l flex flex-col h-full shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden transition-all will-change-transform bg-black/75 backdrop-blur-3xl border-neutral-800 text-neutral-100"
                 )}
                 style={{
-                  boxShadow: isLight 
-                    ? "inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 20px 50px rgba(0, 0, 0, 0.1)" 
-                    : "inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 20px 50px rgba(0, 0, 0, 0.5)"
+                  boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.05)"
                 }}
               >
                 {/* Rainbow/Prism Underlay Glow Blobs */}
-                <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none opacity-80">
-                  <div className="absolute -top-[10%] -left-[20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-red-500/20 via-pink-500/15 to-transparent blur-[90px]" />
-                  <div className="absolute top-[25%] -right-[20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-blue-500/15 via-teal-500/10 to-transparent blur-[100px]" />
-                  <div className="absolute bottom-[5%] left-[10%] w-[70%] h-[40%] rounded-full bg-gradient-to-br from-amber-500/10 via-purple-500/15 to-transparent blur-[90px]" />
+                <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none opacity-50">
+                  <div className="absolute -top-[10%] -left-[20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-red-500/20 via-pink-500/15 to-transparent blur-3xl" />
+                  <div className="absolute top-[25%] -right-[20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-blue-500/15 via-teal-500/10 to-transparent blur-3xl" />
+                  <div className="absolute bottom-[5%] left-[10%] w-[70%] h-[40%] rounded-full bg-gradient-to-br from-amber-500/10 via-purple-500/15 to-transparent blur-3xl" />
                 </div>
 
                 {/* Top Glass Prism Glimmer line */}
                 <div className="h-[2px] w-full bg-gradient-to-r from-red-500/80 via-pink-500/80 via-purple-500/80 via-blue-500/80 via-emerald-500/80 to-yellow-500/80 opacity-90" />
 
                 {/* Header with Title & Clear All Button on Top */}
-                <div className={clsx(
-                  "p-5 flex items-center justify-between border-b transition-colors",
-                  isLight ? "border-white/40 bg-white/10" : "border-white/5 bg-black/10"
-                )}>
+                <div className="p-5 flex items-center justify-between border-b border-white/5 bg-black/20">
                   <div className="flex items-center gap-2.5">
                     <div className="p-2 bg-red-500/10 rounded-xl shrink-0 border border-red-500/20">
                       <History className="w-5 h-5 text-red-500" />
@@ -841,10 +882,7 @@ export default function App() {
                           </button>
                           <button
                             onClick={() => setConfirmClearAll(false)}
-                            className={clsx(
-                              "px-2 py-1 rounded-lg font-bold text-[10px] transition-all cursor-pointer uppercase tracking-wider",
-                              isLight ? "bg-white/80 text-neutral-700 hover:bg-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
-                            )}
+                            className="px-2 py-1 rounded-lg font-bold text-[10px] transition-all cursor-pointer uppercase tracking-wider bg-white/10 text-neutral-300 hover:bg-white/20"
                           >
                             Cancel
                           </button>
@@ -852,12 +890,7 @@ export default function App() {
                       ) : (
                         <button
                           onClick={() => setConfirmClearAll(true)}
-                          className={clsx(
-                            "px-3 py-1.5 rounded-full border text-[10px] font-black cursor-pointer transition-all uppercase tracking-wider flex items-center gap-1.5",
-                            isLight
-                              ? "bg-white/80 border-neutral-200 text-neutral-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
-                              : "bg-white/5 border-white/10 text-neutral-300 hover:bg-red-950/40 hover:text-red-400 hover:border-red-500/30"
-                          )}
+                          className="px-3 py-1.5 rounded-full border text-[10px] font-black cursor-pointer transition-all uppercase tracking-wider flex items-center gap-1.5 bg-white/5 border-white/10 text-neutral-300 hover:bg-red-950/40 hover:text-red-400 hover:border-red-500/30"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Clear All</span>
@@ -871,10 +904,7 @@ export default function App() {
                 <div className="overflow-y-auto p-5 flex-1 space-y-3 no-scrollbar relative z-10">
                   {history.length === 0 ? (
                     <div className="flex flex-col items-center justify-center text-center py-28 px-4">
-                      <div className={clsx(
-                        "w-12 h-12 rounded-full flex items-center justify-center mb-3 border shadow-sm",
-                        isLight ? "bg-white/80 border-white/40" : "bg-white/5 border-white/10"
-                      )}>
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3 border shadow-sm bg-white/5 border-white/10">
                         <History className="w-5 h-5 text-neutral-400" />
                       </div>
                       <h4 className="font-extrabold text-sm uppercase tracking-wider">No archives</h4>
@@ -912,16 +942,9 @@ export default function App() {
                             initial={{ opacity: 0, y: 12 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, x: 40 }}
-                            className={clsx(
-                              "border rounded-2xl p-4 transition-all relative flex flex-col gap-2 group/item overflow-hidden",
-                              isLight 
-                                ? "bg-white/40 hover:bg-white/70 border-white/40 shadow-sm" 
-                                : "bg-white/5 hover:bg-white/10 border-white/10 shadow-md"
-                            )}
+                            className="border rounded-2xl p-4 transition-all relative flex flex-col gap-2 group/item overflow-hidden bg-white/5 hover:bg-white/10 border-white/10 shadow-md"
                             style={{
-                              boxShadow: isLight
-                                ? "inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.02)"
-                                : "inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15)"
+                              boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15)"
                             }}
                           >
                             {/* Card Top Header: Platform indicator & Close Button on the Side */}
@@ -939,12 +962,7 @@ export default function App() {
                               {/* Close/Remove Button on the Side of each card */}
                               <button
                                 onClick={handleDelete}
-                                className={clsx(
-                                  "p-1.5 rounded-full transition-colors cursor-pointer",
-                                  isLight 
-                                    ? "text-neutral-400 hover:text-red-500 hover:bg-red-50" 
-                                    : "text-neutral-400 hover:text-red-400 hover:bg-white/5"
-                                )}
+                                className="p-1.5 rounded-full transition-colors cursor-pointer text-neutral-400 hover:text-red-400 hover:bg-white/5"
                                 title="Remove item"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -960,30 +978,29 @@ export default function App() {
                                 }
                                 setShowHistory(false);
                               }}
-                              className="text-left cursor-pointer flex-1"
+                              className="text-left cursor-pointer flex-1 flex gap-3 mt-1 items-center"
                             >
-                              <h4 className={clsx(
-                                "font-extrabold text-sm line-clamp-1 transition-colors hover:underline decoration-red-500 decoration-2",
-                                isLight ? "text-neutral-900" : "text-white"
-                              )}>
-                                {item.title}
-                              </h4>
-                              <p className="text-[11px] text-neutral-400 font-mono truncate mt-0.5 select-all">
-                                {item.url}
-                              </p>
+                              {item.thumbnail && (
+                                <div className="w-12 h-12 rounded-lg bg-neutral-900 shrink-0 overflow-hidden border border-white/10 shadow-sm">
+                                  <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-extrabold text-sm line-clamp-1 transition-colors hover:underline decoration-red-500 decoration-2 text-white">
+                                  {item.appName ? `${item.appName} - ` : ''}{item.title}
+                                </h4>
+                                <p className="text-[11px] text-neutral-400 font-mono truncate mt-0.5 select-all">
+                                  {item.url}
+                                </p>
+                              </div>
                             </div>
 
                             {/* Card Footer actions: Copy & Load */}
-                            <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-100 dark:border-white/5 mt-1">
+                            <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-white/5 mt-1">
                               {/* Copy Button */}
                               <button
                                 onClick={handleCopyUrl}
-                                className={clsx(
-                                  "inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer border transition-all hover:scale-[1.02] active:scale-[0.98]",
-                                  isLight
-                                    ? "bg-white/80 hover:bg-white border-neutral-200/80 text-neutral-700"
-                                    : "bg-white/5 hover:bg-white/10 border-white/5 text-white"
-                                )}
+                                className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer border transition-all hover:scale-[1.02] active:scale-[0.98] bg-white/5 hover:bg-white/10 border-white/5 text-white"
                               >
                                 {isCopied ? (
                                   <>
@@ -1007,12 +1024,7 @@ export default function App() {
                                   }
                                   setShowHistory(false);
                                 }}
-                                className={clsx(
-                                  "inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]",
-                                  isLight
-                                    ? "bg-neutral-900 text-white hover:bg-neutral-800"
-                                    : "bg-white text-neutral-900 hover:bg-neutral-100"
-                                )}
+                                className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] bg-white text-neutral-900 hover:bg-neutral-100"
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />
                                 <span>Load URL</span>
@@ -1041,18 +1053,10 @@ export default function App() {
                 </AnimatePresence>
 
                 {/* Bottom Slider Footer */}
-                <div className={clsx(
-                  "p-4 border-t flex justify-center transition-colors relative z-10",
-                  isLight ? "border-white/40 bg-white/15" : "border-white/5 bg-black/15"
-                )}>
+                <div className="p-4 border-t flex justify-center transition-colors relative z-10 border-white/5 bg-black/15">
                   <button
                     onClick={() => setShowHistory(false)}
-                    className={clsx(
-                      "w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border text-center hover:scale-[1.01] active:scale-[0.99]",
-                      isLight
-                        ? "bg-white/60 hover:bg-white/80 border-neutral-200 text-neutral-700"
-                        : "bg-white/5 hover:bg-white/10 border-white/10 text-white"
-                    )}
+                    className="w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border text-center hover:scale-[1.01] active:scale-[0.99] bg-white/5 hover:bg-white/10 border-white/10 text-white"
                   >
                     Close Slider
                   </button>
@@ -1217,22 +1221,42 @@ export default function App() {
 
             {/* Search & URL Input Box */}
             {['tiktok', 'facebook', 'reddit'].includes(activeTab) ? (
-              <div className={clsx(
-                "w-full max-w-2xl p-6 rounded-3xl mb-12 border flex flex-col items-center text-center gap-4 text-sm font-medium transition-colors shadow-lg backdrop-blur-sm",
-                isLight 
-                  ? "bg-blue-50/90 border-blue-200 text-blue-900" 
-                  : "bg-blue-950/20 border-blue-500/20 text-blue-200"
-              )}>
-                <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
-                  <Lock className="w-6 h-6 text-blue-500" />
+              <motion.div 
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                className={clsx(
+                  "w-full max-w-2xl p-8 sm:p-12 rounded-3xl mb-12 border flex flex-col items-center text-center gap-6 shadow-2xl relative overflow-hidden",
+                  isLight 
+                    ? "bg-white/60 backdrop-blur-xl border-white/60" 
+                    : "bg-[#1c0d0f]/60 backdrop-blur-xl border-white/10"
+                )}
+                style={{
+                  boxShadow: isLight 
+                    ? "inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 20px 50px rgba(0, 0, 0, 0.1)" 
+                    : "inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 20px 50px rgba(0, 0, 0, 0.5)"
+                }}
+              >
+                {/* Background Blobs for Glassmorphism */}
+                <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none opacity-60">
+                  <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-blue-500/20 via-purple-500/10 to-transparent blur-2xl" />
+                  <div className="absolute bottom-[0%] -right-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-pink-500/20 via-orange-500/10 to-transparent blur-2xl" />
+                </div>
+                
+                <div className={clsx(
+                  "w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg border",
+                  isLight ? "bg-white/80 border-white text-neutral-800" : "bg-white/10 border-white/20 text-white"
+                )}>
+                  <Lock className="w-8 h-8" />
                 </div>
                 <div>
-                  <h4 className="font-extrabold text-lg mb-1">Coming Soon</h4>
-                  <p className={clsx("text-sm font-medium", isLight ? "text-neutral-600" : "text-neutral-400")}>
-                    Support for {activeTabData.label} is currently in development. Please check back later!
+                  <h4 className={clsx("font-black text-2xl mb-3 tracking-tight", isLight ? "text-neutral-900" : "text-white")}>
+                    Coming Soon
+                  </h4>
+                  <p className={clsx("text-base font-medium max-w-sm mx-auto leading-relaxed", isLight ? "text-neutral-600" : "text-neutral-400")}>
+                    Support for <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-500">{activeTabData.label}</span> is currently in development. Please check back later!
                   </p>
                 </div>
-              </div>
+              </motion.div>
             ) : (
               <form onSubmit={handleDownload} className="w-full max-w-2xl mb-12 relative">
                 <div className={clsx(
@@ -1305,17 +1329,25 @@ export default function App() {
                   <span className={clsx("text-sm font-bold font-mono transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>{progress}%</span>
                 </div>
 
-                {/* Blue/Cyan Progress Bar Track */}
-                <div className={clsx("w-full h-2 rounded-full overflow-hidden mb-4 shadow-inner transition-colors", isLight ? "bg-neutral-200" : "bg-neutral-800/80")}>
+                {/* Shiny Blue Progress Bar Track */}
+                <div className={clsx(
+                  "w-full h-3 rounded-full overflow-hidden mb-4 shadow-inner transition-colors relative", 
+                  isLight ? "bg-neutral-200" : "bg-neutral-800/80"
+                )}>
                   <div 
-                    className="h-full bg-cyan-500 rounded-full transition-all duration-300 ease-out"
+                    className="absolute top-0 left-0 h-full rounded-full transition-all duration-300 ease-out bg-blue-500 overflow-hidden shadow-[0_0_10px_rgba(59,130,246,0.6)]"
                     style={{ width: `${progress}%` }}
-                  ></div>
+                  >
+                    {/* Shiny inner sheen effect */}
+                    <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer" />
+                    <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-white/30 to-transparent" />
+                  </div>
                 </div>
 
-                {/* Dynamic Remaining Time */}
-                <div className="text-xs text-neutral-500 font-medium mb-4">
-                  ~{secondsRemaining}s remaining
+                {/* Dynamic Remaining Time & Speed */}
+                <div className="flex justify-between items-center w-full text-xs text-neutral-500 font-medium mb-4 px-1">
+                  <span>~{secondsRemaining}s remaining</span>
+                  <span className="font-mono">{progress < 99 ? downloadSpeed : '0.0 MB/s'}</span>
                 </div>
 
                 {/* Status message */}
