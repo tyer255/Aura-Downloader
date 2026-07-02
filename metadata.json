@@ -1,6 +1,6 @@
 {
-  "name": "Remix: Pinterest Downloader",
-  "description": "A premium web application to download high-quality videos, images, and carousels from Pinterest.",
+  "name": "Universal Media Downloader",
+  "description": "A web application to download media from Pinterest, YouTube, Instagram, TikTok, and Reddit.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

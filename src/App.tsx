@@ -1,1117 +1,2018 @@
-import confetti from "canvas-confetti";
-import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { Search, Loader2, Download, AlertCircle, Image as ImageIcon, Film, Youtube, Image as LucideImage, History, X, Smartphone, Music, Video, Copy, Check } from "lucide-react";
+import React, { useState } from 'react';
+import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { DownloadResult } from './types';
+import clsx from 'clsx';
+import QRCode from 'qrcode';
 
-type TabType = "pinterest" | "yt-media" | "yt-channel" | "ig-media" | "fb-media" | "tt-media" | "tw-media" | "yt-playlist" | "reddit-media";
-type MediaType = "video" | "image" | "carousel" | "photo" | "audio" | "playlist" | "channel";
+const getProxiedUrl = (url?: string, inline = true) => {
+  if (!url) return '';
+  if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url;
+  }
+  // For inline media (thumbnails, video previews), load directly from source CDNs
+  // to avoid server-side rate limits and bandwidth bottlenecks.
+  if (inline) {
+    return url;
+  }
+  // Only proxy for actual downloads to force the Content-Disposition header
+  return `/api/proxy-download?url=${encodeURIComponent(url)}`;
+};
 
-const getTabLabel = (tab: TabType) => {
-  switch (tab) {
-    case "pinterest": return "Pinterest";
-    case "yt-media": return "YouTube Media";
-    case "yt-channel": return "YouTube Channel";
-    case "ig-media": return "Instagram";
-    case "fb-media": return "Facebook";
-    case "tt-media": return "TikTok";
-    case "tw-media": return "Twitter / X";
-    case "yt-playlist": return "YT Playlist";
-    case "reddit-media": return "Reddit";
-    default: return tab;
+type Tab = 'pinterest' | 'youtube' | 'instagram' | 'tiktok' | 'facebook' | 'reddit';
+
+const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string }[] = [
+  { id: 'pinterest', label: 'Pinterest', placeholder: 'Paste Pinterest Link Here', name: 'Pinterest Downloader', description: 'Extract high-quality Pinterest images, videos, and GIFs. Simply paste the Pin link and let our extraction system do the rest.' },
+  { id: 'youtube', label: 'YouTube', placeholder: 'Paste YouTube Link (Video, Short, Channel, Playlist)', name: 'YouTube Downloader', description: 'Extract high-quality YouTube videos, shorts, audio, playlists, channels, and community posts. Simply paste the link and let our extraction system do the rest.' },
+  { id: 'instagram', label: 'Instagram', placeholder: 'Paste Instagram Link Here', name: 'Instagram Downloader', description: 'Extract high-quality Instagram reels, posts, photos, carousels, and stories. Simply paste the post link and let our extraction system do the rest.' },
+  { id: 'tiktok', label: 'TikTok', placeholder: 'Paste TikTok Link Here', name: 'TikTok Downloader', description: 'Extract high-quality TikTok videos (without watermark) and slideshows. Simply paste the TikTok link and let our extraction system do the rest.' },
+  { id: 'facebook', label: 'Facebook', placeholder: 'Paste Facebook Link Here', name: 'Facebook Downloader', description: 'Extract high-quality Facebook videos, reels, and posts. Simply paste the link and let our extraction system do the rest.' },
+  { id: 'reddit', label: 'Reddit', placeholder: 'Paste Reddit Link Here', name: 'Reddit Downloader', description: 'Extract high-quality Reddit videos with audio, image galleries, and posts. Simply paste the link and let our extraction system do the rest.' },
+];
+
+const detectPlatformFromUrl = (url: string): Tab | null => {
+  const lowercase = url.trim().toLowerCase();
+  if (!lowercase) return null;
+  
+  if (lowercase.includes('pinterest.com') || lowercase.includes('pin.it')) {
+    return 'pinterest';
+  }
+  if (lowercase.includes('instagram.com') || lowercase.includes('instagr.am')) {
+    return 'instagram';
+  }
+  if (lowercase.includes('tiktok.com')) {
+    return 'tiktok';
+  }
+  if (lowercase.includes('facebook.com') || lowercase.includes('fb.watch') || lowercase.includes('fb.com')) {
+    return 'facebook';
+  }
+  if (lowercase.includes('reddit.com') || lowercase.includes('redd.it')) {
+    return 'reddit';
+  }
+  if (lowercase.includes('youtube.com') || lowercase.includes('youtu.be')) {
+    return 'youtube';
+  }
+  return null;
+};
+
+const getTabLabel = (id: Tab): string => {
+  const tab = TABS.find(t => t.id === id);
+  return tab ? tab.label : id;
+};
+
+const getPlatformDetails = (platform: Tab): { icon: React.ReactNode; colorClass: string; bgClass: string; borderClass: string } => {
+  switch (platform) {
+    case 'pinterest':
+      return {
+        icon: <ImageIcon className="w-3.5 h-3.5" />,
+        colorClass: 'text-red-500',
+        bgClass: 'bg-red-500/10',
+        borderClass: 'border-red-500/20'
+      };
+    case 'instagram':
+      return {
+        icon: <Instagram className="w-3.5 h-3.5" />,
+        colorClass: 'text-pink-500',
+        bgClass: 'bg-pink-500/10',
+        borderClass: 'border-pink-500/20'
+      };
+    case 'youtube':
+      return {
+        icon: <Youtube className="w-3.5 h-3.5" />,
+        colorClass: 'text-red-500',
+        bgClass: 'bg-red-500/10',
+        borderClass: 'border-red-500/20'
+      };
+    case 'tiktok':
+      return {
+        icon: <Music className="w-3.5 h-3.5" />,
+        colorClass: 'text-teal-400',
+        bgClass: 'bg-teal-500/10',
+        borderClass: 'border-teal-500/20'
+      };
+    case 'facebook':
+      return {
+        icon: <Facebook className="w-3.5 h-3.5" />,
+        colorClass: 'text-blue-500',
+        bgClass: 'bg-blue-500/10',
+        borderClass: 'border-blue-500/20'
+      };
+    case 'reddit':
+      return {
+        icon: <MessageSquare className="w-3.5 h-3.5" />,
+        colorClass: 'text-orange-500',
+        bgClass: 'bg-orange-500/10',
+        borderClass: 'border-orange-500/20'
+      };
+    default:
+      return {
+        icon: <History className="w-3.5 h-3.5" />,
+        colorClass: 'text-neutral-500',
+        bgClass: 'bg-neutral-500/10',
+        borderClass: 'border-neutral-500/20'
+      };
   }
 };
 
-interface SearchHistoryItem {
-  url: string;
-  tab: TabType;
-  title?: string;
-  timestamp: number;
-}
+const LOADING_STEPS = [
+  { text: "🔍 Analyzing URL format & initiating platform handshake...", target: 15 },
+  { text: "📡 Establishing cloud-allocated secure fetch tunnel...", target: 38 },
+  { text: "⚙️ Extracting structured metadata, stream links & JSON maps...", target: 65 },
+  { text: "🖼️ Locating high-resolution photo frames & video streams...", target: 88 },
+  { text: "⚡ Packing download buffers and wrapping files for instant download...", target: 98 },
+];
 
-interface FetchResponse {
-  success: boolean;
-  type?: MediaType; 
-  media_type?: "video" | "photo" | "video_formats"; 
-  thumbnail?: string; 
-  thumbnail_url?: string; 
-  mediaUrls?: string[]; 
-  download_url?: string; 
-  formats?: {quality: string, type: string, url: string}[]; 
-  dp_url?: string; 
-  banner_url?: string; 
-  posts?: {id: string, text: string, images: string[]}[];
-  error?: string;
-  message?: string;
-  username?: string;
-  title?: string;
-}
+// Dedicated component for copy-to-clipboard functionality with a modern transition state
+function CopyButton({ url, className, isLight }: { url: string; className?: string; isLight?: boolean }) {
+  const [copied, setCopied] = useState(false);
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<TabType>("pinterest");
-  const [url, setUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<FetchResponse | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
-  const [history, setHistory] = useState<SearchHistoryItem[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
-  const [fetchProgress, setFetchProgress] = useState<number>(0);
-  const [fetchTimeRemaining, setFetchTimeRemaining] = useState<number>(15);
-  const [fetchIntervalId, setFetchIntervalId] = useState<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("searchHistory");
-      if (saved) {
-        setHistory(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.error("Failed to load search history", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-    };
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-  }, []);
-
-  const urlRef = useRef(url);
-  useEffect(() => {
-    urlRef.current = url;
-  }, [url]);
-
-  useEffect(() => {
-    if (!url) return;
-    try {
-      const parsedUrl = new URL(url);
-      const hostname = parsedUrl.hostname.toLowerCase();
-      
-      if (hostname.includes('pinterest.com') || hostname.includes('pin.it')) {
-        setActiveTab('pinterest');
-      } else if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-         if (parsedUrl.pathname.includes('/playlist') || parsedUrl.searchParams.has('list')) {
-           setActiveTab('yt-playlist');
-         } else if (parsedUrl.pathname.startsWith('/@') || parsedUrl.pathname.startsWith('/c/') || parsedUrl.pathname.startsWith('/channel/') || parsedUrl.pathname.startsWith('/user/')) {
-           setActiveTab('yt-channel');
-         } else {
-           setActiveTab('yt-media');
-         }
-      } else if (hostname.includes('instagram.com')) {
-        setActiveTab('ig-media');
-      } else if (hostname.includes('facebook.com') || hostname.includes('fb.watch')) {
-        setActiveTab('fb-media');
-      } else if (hostname.includes('tiktok.com')) {
-        setActiveTab('tt-media');
-      } else if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-        setActiveTab('tw-media');
-      } else if (hostname.includes('reddit.com')) {
-        setActiveTab('reddit-media');
-      }
-    } catch (e) {
-      // Not a valid URL yet, do nothing
-    }
-  }, [url]);
-
-  const handleInstallClick = async () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setInstallPrompt(null);
-    }
-  };
-
-  const addToHistory = (searchUrl: string, searchTab: TabType, title?: string) => {
-    setHistory(prev => {
-      const newItem = { url: searchUrl, tab: searchTab, title, timestamp: Date.now() };
-      const filtered = prev.filter(item => item.url !== searchUrl);
-      const next = [newItem, ...filtered].slice(0, 10);
-      try {
-        localStorage.setItem("searchHistory", JSON.stringify(next));
-      } catch (e) {
-        console.error("Failed to save search history", e);
-      }
-      return next;
-    });
-  };
-
-  const removeFromHistory = (searchUrl: string) => {
-    setHistory(prev => {
-      const next = prev.filter(item => item.url !== searchUrl);
-      try {
-        localStorage.setItem("searchHistory", JSON.stringify(next));
-      } catch (e) {
-        console.error("Failed to update search history", e);
-      }
-      return next;
-    });
-  };
-
-  const clearHistory = () => {
-    setHistory([]);
-    try {
-      localStorage.removeItem("searchHistory");
-    } catch (e) {
-      console.error("Failed to clear search history", e);
-    }
-  };
-
-  const handleCopy = (e: React.MouseEvent, urlToCopy: string) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(urlToCopy).then(() => {
-      setCopiedUrl(urlToCopy);
-      setTimeout(() => setCopiedUrl(null), 2000);
-    }).catch(err => {
-      console.error("Failed to copy", err);
-    });
-  };
-
-  const proxyUrl = (u: string) => u ? `/api/proxy?url=${encodeURIComponent(u)}` : undefined;
-
-  const isValidPinterestUrl = (link: string) => {
-    return link.includes("pinterest.com") || link.includes("pin.it");
-  };
-
-  const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab);
-    setUrl("");
-    setError("");
-    setResult(null);
-  };
-
-  const executeSearch = async (targetUrl: string, targetTab: TabType) => {
-    setError("");
-    setResult(null);
-
-    if (!targetUrl.trim()) {
-      setError("Please enter a link.");
-      return;
-    }
-
-    if (targetTab === "pinterest" && !isValidPinterestUrl(targetUrl)) {
-      setError("Please enter a valid Pinterest link.");
-      return;
-    }
-
-    if (targetTab === "ig-media" && !targetUrl.includes("instagram.com")) {
-      setError("Please enter a valid Instagram link.");
-      return;
-    }
-
-    if (targetTab === "yt-media" && !targetUrl.includes("youtube.com") && !targetUrl.includes("youtu.be")) {
-      setError("Please enter a valid YouTube link.");
-      return;
-    }
-
-    if (targetTab === "yt-channel" && !targetUrl.includes("youtube.com/@")) {
-      setError("Please enter a valid YouTube channel link (e.g. youtube.com/@username).");
-      return;
-    }
-
-    setLoading(true);
-    setFetchProgress(0);
-    setFetchTimeRemaining(15);
-    
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      let newProgress = Math.min(95, Math.floor((elapsed / 15) * 100));
-      let newTime = Math.max(1, 15 - Math.floor(elapsed));
-      setFetchProgress(newProgress);
-      setFetchTimeRemaining(newTime);
-    }, 500);
-    setFetchIntervalId(interval);
-
-    let endpoint = "";
-    if (targetTab === "pinterest") endpoint = "/api/fetch-pinterest";
-    else if (targetTab === "yt-channel") endpoint = "/api/yt-channel";
-    else if (targetTab === "yt-media") endpoint = "/api/yt-media";
-    else if (targetTab === "ig-media") endpoint = "/api/ig-media";
-    else if (targetTab === "fb-media") endpoint = "/api/fetch-facebook";
-    else if (targetTab === "tt-media") endpoint = "/api/fetch-tiktok";
-    else if (targetTab === "tw-media") endpoint = "/api/fetch-twitter";
-    else if (targetTab === "yt-playlist") endpoint = "/api/yt-playlist";
-    else if (targetTab === "reddit-media") endpoint = "/api/universal-dl";
-
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: targetUrl }),
-      });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        setError(data.error || data.message || "Failed to fetch media.");
-      } else {
-        setFetchProgress(100);
-        setFetchTimeRemaining(0);
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#ef4444', '#ec4899', '#3b82f6', '#14b8a6', '#0ea5e9']
-        });
-        setResult(data);
-        addToHistory(targetUrl, targetTab, data.title);
-      }
-    } catch (err) {
-      console.error("Error during fetch:", err);
-      setError("An unexpected error occurred. Please try again.");
-    } finally {
-      if (interval) clearInterval(interval);
-      setFetchIntervalId(null);
-      // Let the 100% show for a brief moment before removing the loading state
-      setTimeout(() => setLoading(false), 500);
-    }
-  };
-
-  const handleSearch = async (e: React.FormEvent) => {
+  const handleCopy = async (e: React.MouseEvent) => {
     e.preventDefault();
-    executeSearch(url, activeTab);
-  };
-
-  const handleDownload = async (mediaUrl: string, fileName?: string) => {
+    e.stopPropagation();
     try {
-      setDownloading(true);
-      setDownloadProgress(0);
-      const downloadUrl = `/api/download?url=${encodeURIComponent(mediaUrl)}&filename=${encodeURIComponent(fileName || "media-download")}`;
-      
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-         // Fallback to direct download via browser if fetch/proxy fails
-         throw new Error("Download failed via API");
-      }
-      
-      const reader = response.body?.getReader();
-      const contentLength = response.headers.get('content-length');
-      const total = contentLength ? parseInt(contentLength, 10) : null;
-      let loaded = 0;
-      
-      if (!reader) {
-        const blob = await response.blob();
-        downloadBlob(blob, fileName);
-        return;
-      }
-
-      const chunks = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value);
-          loaded += value.length;
-          if (total) {
-            setDownloadProgress(Math.round((loaded / total) * 100));
-          } else {
-            setDownloadProgress(-1); // Indeterminate progress
-          }
-        }
-      }
-      
-      const blob = new Blob(chunks);
-      downloadBlob(blob, fileName);
-
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error("Download error:", err);
-      // Fallback
-      const anchor = document.createElement("a");
-      anchor.href = `/api/download?url=${encodeURIComponent(mediaUrl)}&filename=${encodeURIComponent(fileName || "media-download")}`;
-      anchor.target = "_blank";
-      anchor.download = fileName || "media-download";
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-    } finally {
-      setDownloading(false);
-      setDownloadProgress(null);
-    }
-  };
-
-  const downloadBlob = (blob: Blob, fileName?: string) => {
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = fileName || "media-download";
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 100);
-  };
-
-  const getAmbientColor = (tab: TabType) => {
-    switch (tab) {
-      case "pinterest": return "bg-red-500/20";
-      case "yt-media": return "bg-red-600/20";
-      case "yt-channel": return "bg-red-800/20";
-      case "ig-media": return "bg-pink-500/20";
-      case "fb-media": return "bg-blue-600/20";
-      case "tt-media": return "bg-teal-500/20";
-      case "tw-media": return "bg-sky-400/20";
-      case "yt-playlist": return "bg-yellow-500/20";
-      case "reddit-media": return "bg-orange-500/20";
-      default: return "bg-white/10";
+      console.error("Failed to copy link: ", err);
     }
   };
 
   return (
-    <div className="min-h-screen relative bg-[#0a0a0a] text-white flex flex-col items-center py-20 px-4 sm:px-6 lg:px-8 selection:bg-white/20 overflow-x-hidden">
-      {/* Dynamic Ambient Background */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] ${getAmbientColor(activeTab)} rounded-full blur-[120px] opacity-60 transition-colors duration-1000`} />
+    <button
+      onClick={handleCopy}
+      className={clsx(
+        "inline-flex items-center justify-center gap-1.5 font-bold transition-all uppercase tracking-wider border select-none cursor-pointer duration-300 shadow-sm",
+        copied
+          ? "bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500 shadow-emerald-500/20"
+          : isLight
+            ? "bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border-neutral-200"
+            : "bg-white/10 hover:bg-white/20 text-white border-white/10",
+        className
+      )}
+      title="Copy Direct Link"
+    >
+      {copied ? (
+        <>
+          <Check className="w-4 h-4 animate-scale-in" />
+          <span>Copied!</span>
+        </>
+      ) : (
+        <>
+          <Copy className="w-4 h-4" />
+          <span>Copy Link</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+// Reusable component to generate and display a QR code for quick mobile downloads/access
+function QRCodeButton({ url, className, isLight }: { url: string; className?: string; isLight?: boolean }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [copied, setCopied] = useState(false);
+
+  const generateQR = async () => {
+    try {
+      const dataUrl = await QRCode.toDataURL(url, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#1e1516',
+          light: '#ffffff'
+        }
+      });
+      setQrCodeUrl(dataUrl);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to generate QR Code');
+    }
+  };
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    generateQR();
+    setIsOpen(true);
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={handleOpen}
+        className={clsx(
+          "inline-flex items-center justify-center gap-1.5 font-bold transition-all uppercase tracking-wider border select-none cursor-pointer duration-300 shadow-sm",
+          isLight
+            ? "bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border-neutral-200"
+            : "bg-white/10 hover:bg-white/20 text-white border-white/10",
+          className
+        )}
+        title="Get QR Code for Mobile"
+      >
+        <QrCode className="w-4 h-4" />
+        <span>QR Code</span>
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+            onClick={() => setIsOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={clsx(
+                "w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl p-6 border flex flex-col items-center relative transition-all duration-300",
+                isLight ? "bg-white border-neutral-200 text-neutral-900" : "bg-[#1c0d0f] border-white/10 text-white"
+              )}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setIsOpen(false)}
+                className={clsx(
+                  "absolute top-4 right-4 p-2 rounded-full transition-colors cursor-pointer",
+                  isLight ? "text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100" : "text-neutral-400 hover:text-white hover:bg-white/10"
+                )}
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <QrCode className="w-8 h-8 text-[#ff1e42] mb-2" />
+              <h3 className="text-lg font-extrabold mb-1 tracking-tight">Scan for Mobile Access</h3>
+              <p className={clsx("text-xs text-center mb-6 max-w-[250px] leading-relaxed", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                Scan this code with your mobile camera to quickly access or download this file on your phone.
+              </p>
+
+              {/* QR Image Frame */}
+              <div className={clsx(
+                "p-4 rounded-2xl border flex items-center justify-center mb-6 bg-white shadow-xl transition-all",
+                isLight ? "border-neutral-200" : "border-white/5"
+              )}>
+                {qrCodeUrl ? (
+                  <img src={qrCodeUrl} alt="QR Code" className="w-44 h-44 select-none rounded-lg" />
+                ) : error ? (
+                  <div className="w-44 h-44 flex items-center justify-center text-red-500 text-xs font-semibold text-center">
+                    {error}
+                  </div>
+                ) : (
+                  <div className="w-44 h-44 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-[#ff1e42] animate-spin" />
+                  </div>
+                )}
+              </div>
+
+              {/* URL input field so they can also copy/read it */}
+              <div className="w-full">
+                <span className={clsx("text-[10px] uppercase font-black tracking-wider block mb-1.5", isLight ? "text-neutral-400" : "text-neutral-500")}>
+                  Target Direct Link:
+                </span>
+                <div className="flex gap-2">
+                  <div className={clsx(
+                    "flex-1 p-2.5 rounded-xl text-xs font-mono truncate select-all border",
+                    isLight ? "bg-neutral-50 border-neutral-200 text-neutral-600" : "bg-black/40 border-white/5 text-neutral-400"
+                  )}>
+                    {url}
+                  </div>
+                  <button
+                    onClick={handleCopyLink}
+                    className={clsx(
+                      "p-2.5 rounded-xl border flex items-center justify-center shrink-0 cursor-pointer transition-colors",
+                      copied
+                        ? "bg-emerald-500 text-white border-emerald-500"
+                        : isLight
+                          ? "bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border-neutral-200"
+                          : "bg-white/5 hover:bg-white/10 text-white border-white/10"
+                    )}
+                    title="Copy Link"
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('pinterest');
+  const [url, setUrl] = useState('');
+  const [validationError, setValidationError] = useState<{
+    title: string;
+    message: string;
+    targetTab: Tab;
+    targetTabName: string;
+  } | null>(null);
+
+  const handleUrlChange = (newUrl: string, explicitTab?: Tab) => {
+    setUrl(newUrl);
+    if (!newUrl.trim()) {
+      setValidationError(null);
+      return;
+    }
+    const currentActive = explicitTab || activeTab;
+    const detected = detectPlatformFromUrl(newUrl);
+    if (detected && detected !== currentActive) {
+      setValidationError({
+        title: "Platform Mismatch Detected",
+        message: `This URL belongs to ${getTabLabel(detected)}. It won't work correctly on the ${getTabLabel(currentActive)} downloader.`,
+        targetTab: detected,
+        targetTabName: getTabLabel(detected)
+      });
+    } else {
+      setValidationError(null);
+    }
+  };
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [result, setResult] = useState<DownloadResult | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<{ url: string; title: string; timestamp: number; platform?: Tab; favorite?: boolean }[]>([]);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [copiedHistoryUrl, setCopiedHistoryUrl] = useState<string | null>(null);
+  const [historyToast, setHistoryToast] = useState<string | null>(null);
+
+  const triggerHistoryToast = (msg: string) => {
+    setHistoryToast(msg);
+    setTimeout(() => {
+      setHistoryToast(null);
+    }, 2500);
+  };
+
+  const clearAllHistory = () => {
+    setHistory([]);
+    localStorage.removeItem('download_history');
+    setConfirmClearAll(false);
+    triggerHistoryToast("History cleared successfully!");
+  };
+
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxMediaList, setLightboxMediaList] = useState<{ url: string; type: 'video' | 'image'; title?: string }[]>([]);
+
+  const [isLight, setIsLight] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('theme');
+      return stored === 'light';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  // Save theme selection
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    } catch (e) {}
+  }, [isLight]);
+
+  // Smooth dynamic progress bar crawler up to 99%
+  React.useEffect(() => {
+    if (!isLoading) {
+      setProgress(0);
+      return;
+    }
+    if (progress >= 99) return;
+
+    let delay = 100;
+    if (progress < 30) {
+      delay = 120; // fast start
+    } else if (progress < 65) {
+      delay = 180; // moderate crawl
+    } else if (progress < 85) {
+      delay = 320; // slower crawl
+    } else {
+      delay = 600; // ultra slow crawl up to 99%
+    }
+
+    const timer = setTimeout(() => {
+      setProgress((prev) => {
+        let increment = 0;
+        if (prev < 30) {
+          increment = Math.floor(Math.random() * 3) + 2;
+        } else if (prev < 65) {
+          increment = Math.random() > 0.25 ? 1 : 0;
+        } else if (prev < 85) {
+          increment = Math.random() > 0.55 ? 1 : 0;
+        } else {
+          increment = Math.random() > 0.85 ? 1 : 0;
+        }
+        return Math.min(prev + increment, 99);
+      });
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [isLoading, progress]);
+
+  // Manage loading step label text sequence separately
+  React.useEffect(() => {
+    if (!isLoading) {
+      setLoadingStep(0);
+      return;
+    }
+
+    const stepInterval = setInterval(() => {
+      setLoadingStep((prev) => {
+        if (prev < LOADING_STEPS.length - 1) {
+          return prev + 1;
+        }
+        return prev;
+      });
+    }, 1800);
+
+    return () => clearInterval(stepInterval);
+  }, [isLoading]);
+
+  // Load history from localstorage
+  React.useEffect(() => {
+    const stored = localStorage.getItem('download_history');
+    if (stored) {
+      try {
+        setHistory(JSON.parse(stored));
+      } catch(e) {}
+    }
+  }, []);
+
+  // Lightbox keyboard navigation & body scroll lock
+  React.useEffect(() => {
+    if (lightboxIndex === null) return;
+    
+    // Lock body scroll
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLightboxIndex(null);
+      } else if (e.key === 'ArrowRight' && lightboxMediaList.length > 1) {
+        setLightboxIndex((prev) => {
+          if (prev === null) return null;
+          return (prev + 1) % lightboxMediaList.length;
+        });
+      } else if (e.key === 'ArrowLeft' && lightboxMediaList.length > 1) {
+        setLightboxIndex((prev) => {
+          if (prev === null) return null;
+          return (prev - 1 + lightboxMediaList.length) % lightboxMediaList.length;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [lightboxIndex, lightboxMediaList]);
+
+  const activeTabData = TABS.find(t => t.id === activeTab)!;
+
+  const getYoutubeId = (urlStr: string) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
+    const match = urlStr.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
+  const handleDownload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!url.trim()) return;
+
+    // Check platform matching before proceeding
+    const detected = detectPlatformFromUrl(url);
+    if (detected && detected !== activeTab) {
+      setValidationError({
+        title: "Platform Mismatch Detected",
+        message: `This URL belongs to ${getTabLabel(detected)}. It won't work correctly on the ${getTabLabel(activeTab)} downloader.`,
+        targetTab: detected,
+        targetTabName: getTabLabel(detected)
+      });
+      return;
+    }
+
+    setProgress(0);
+    setLoadingStep(0);
+    setIsLoading(true);
+    setResult(null);
+
+    // Default multi-platform downloader
+    try {
+      const detectedPlatform = detectPlatformFromUrl(url.trim()) || activeTab;
+      
+      if (detectedPlatform === 'instagram') {
+        // Direct RapidAPI Integration for Instagram
+        const encodedUrl = encodeURIComponent(url.trim());
+        const data = `url=${encodedUrl}`;
+
+        const rapidRes = await fetch('https://instagram-video-downloader13.p.rapidapi.com/index.php', {
+          method: 'POST',
+          headers: {
+            'x-rapidapi-key': 'ae760394d8msh15a59972be41f7ep1069b8jsnd6d044bdedbb',
+            'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: data
+        });
+
+        if (rapidRes.ok) {
+          const rapidData = await rapidRes.json();
+          if (rapidData && rapidData.success) {
+            let mediaList = [];
+            let mediaType = "video";
+            let displayUrl = rapidData.thumbnail || "";
+            
+            if (rapidData.medias && rapidData.medias.length > 0) {
+              if (rapidData.medias.length > 2) {
+                 const videos = rapidData.medias.filter((m: any) => m.extension !== 'm4a' && m.type !== 'audio');
+                 if (videos.length > 1) {
+                   mediaType = "carousel";
+                   videos.forEach((v: any) => {
+                     mediaList.push({
+                       url: v.url,
+                       type: v.type || "video",
+                       thumbnail: v.thumbnail || rapidData.thumbnail
+                     });
+                   });
+                 } else {
+                   mediaList.push({
+                     url: videos[0]?.url || rapidData.medias[0].url,
+                     type: videos[0]?.type || "video",
+                     thumbnail: videos[0]?.thumbnail || rapidData.thumbnail
+                   });
+                 }
+              } else {
+                 const video = rapidData.medias.find((m: any) => m.extension !== 'm4a' && m.type !== 'audio') || rapidData.medias[0];
+                 mediaList.push({
+                   url: video.url,
+                   type: video.type || "video",
+                   thumbnail: video.thumbnail || rapidData.thumbnail
+                 });
+              }
+            }
+            
+            let finalUrl = mediaList.length > 0 ? mediaList[0].url : "";
+            
+            const profile = rapidData.author ? {
+              username: rapidData.author.split(' ')[0] || "instagram_user",
+              displayName: rapidData.author || "Instagram User",
+              followers: rapidData.like_count ? `${rapidData.like_count.toLocaleString()} likes` : ""
+            } : undefined;
+
+            const resData = {
+              success: true,
+              url: finalUrl,
+              title: rapidData.title || "Instagram Post",
+              thumbnail: displayUrl,
+              mediaType,
+              media: mediaList,
+              profile,
+              qualities: [{ label: 'High', url: finalUrl }],
+              source: "rapidapi"
+            };
+            
+            setResult(resData);
+            
+            const titleText = profile 
+              ? `Profile: @${profile.username}` 
+              : (resData.title || 'Media Download');
+            const newEntry = { 
+              url: url.trim(), 
+              title: titleText, 
+              timestamp: Date.now(), 
+              platform: detectedPlatform,
+              favorite: false
+            };
+            const newHistory = [newEntry, ...history.filter(h => h.url !== url.trim())].slice(0, 50);
+            setHistory(newHistory);
+            localStorage.setItem('download_history', JSON.stringify(newHistory));
+            
+            setProgress(100);
+            setTimeout(() => {
+              setIsLoading(false);
+            }, 300);
+            return;
+          }
+        }
+      }
+
+      const res = await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() })
+      });
+      const data = await res.json();
+      setResult(data);
+      
+      if (data.success) {
+        const titleText = data.profile 
+          ? `Profile: @${data.profile.username}` 
+          : (data.title || 'Media Download');
+        const detectedPlatform = detectPlatformFromUrl(url.trim()) || activeTab;
+        const newEntry = { 
+          url: url.trim(), 
+          title: titleText, 
+          timestamp: Date.now(), 
+          platform: detectedPlatform,
+          favorite: false
+        };
+        const newHistory = [newEntry, ...history.filter(h => h.url !== url.trim())].slice(0, 50);
+        setHistory(newHistory);
+        localStorage.setItem('download_history', JSON.stringify(newHistory));
+      }
+    } catch (error) {
+      setResult({
+        success: false,
+        error: "Network error occurred while trying to contact the media server."
+      });
+    } finally {
+      setProgress(100);
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 300);
+    }
+  };
+
+  
+  const downloadFileClientSide = async (url: string, filename: string) => {
+    try {
+      const fetchUrl = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      
+      const a = document.createElement('a');
+      a.href = fetchUrl;
+      a.download = filename || 'download';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+          if (document.body.contains(a)) document.body.removeChild(a);
+      }, 1000);
+    } catch (error) {
+      console.error('Download setup failed:', error);
+    }
+  };
+
+  const handleDownloadAll = () => {
+    if (!result || !result.media) return;
+    result.media.forEach((item, index) => {
+      setTimeout(() => {
+        downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item_" + (index + 1) + ".mp4");
+      }, index * 600); // delay to prevent overwhelming
+    });
+  };
+
+  const getBgGlow = (id: Tab) => {
+    if (isLight) {
+      switch(id) {
+        case 'youtube':
+        case 'instagram': return 'from-purple-100/60 via-pink-50/30 to-neutral-50';
+        case 'tiktok': return 'from-cyan-100/60 via-teal-50/20 to-neutral-50';
+        case 'facebook': return 'from-blue-100/60 via-indigo-50/20 to-neutral-50';
+        case 'reddit': return 'from-orange-100/60 via-amber-50/20 to-neutral-50';
+        case 'pinterest': return 'from-rose-100/60 via-pink-50/10 to-neutral-50';
+        default: return 'from-neutral-100/80 via-neutral-50/40 to-neutral-50';
+      }
+    }
+    switch(id) {
+      case 'youtube':
+      case 'instagram': return 'from-purple-950/40 via-[#180a14] to-[#0a040b]';
+      case 'tiktok': return 'from-cyan-950/30 via-[#0a1416] to-[#04090b]';
+      case 'facebook': return 'from-blue-950/40 via-[#0b0e1a] to-[#05070f]';
+      case 'reddit': return 'from-orange-950/40 via-[#1b0d0a] to-[#0f0705]';
+      case 'pinterest': return 'from-rose-950/40 via-[#1a0a0f] to-[#0f0508]';
+      default: return 'from-[#1c1917]/20 via-[#141210] to-[#0c0a09]';
+    }
+  };
+
+  return (
+    <div className={clsx(
+      "min-h-screen bg-gradient-to-b flex flex-col items-center pt-8 pb-12 px-4 font-sans transition-colors duration-700",
+      isLight ? "text-neutral-900 selection:bg-red-500/10" : "text-neutral-50 selection:bg-red-500/30",
+      getBgGlow(activeTab)
+    )}>
+      
+      {/* Top Header */}
+      <div className="w-full max-w-2xl flex items-center justify-between mb-16 relative z-20">
+        <div className={clsx(
+          "flex items-center rounded-full pl-4 pr-1.5 py-1.5 transition-colors border",
+          isLight ? "bg-white border-neutral-200 text-neutral-600" : "bg-white/5 border border-white/10 text-neutral-400"
+        )}>
+          <span className="text-sm font-medium tracking-wide mr-3 uppercase">Support =</span>
+          <a href="https://youtube.com/@mridulgaming-_-official-800?si=qsAdamH6-973hgBe" target="_blank" rel="noopener noreferrer" className="bg-[#ff0000] text-white text-sm px-4 py-1.5 rounded-full font-semibold flex items-center gap-1.5 hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20">
+             <Youtube className="w-4 h-4" /> Subscribe
+          </a>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Theme Toggle Button */}
+          <button
+            onClick={() => setIsLight(!isLight)}
+            className={clsx(
+              "w-11 h-11 rounded-full flex items-center justify-center transition-all border shadow-md cursor-pointer",
+              isLight 
+                ? "bg-white border-neutral-200 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100" 
+                : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:bg-white/10"
+            )}
+            title={isLight ? "Switch to Dark Theme" : "Switch to Light Theme"}
+          >
+            {isLight ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+          </button>
+
+          <button 
+            onClick={() => setShowHistory(true)}
+            className={clsx(
+              "w-11 h-11 rounded-full flex items-center justify-center transition-all border shadow-md cursor-pointer",
+              isLight 
+                ? "bg-white border-neutral-200 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100" 
+                : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:bg-white/10"
+            )}
+            title="Download History"
+          >
+            <History className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
-      {/* Search History Drawer */}
+      {/* Glassmorphic Prism Sliding History Drawer */}
       <AnimatePresence>
         {showHistory && (
-          <>
+          <div className="fixed inset-0 z-50 overflow-hidden">
+            {/* Ambient Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowHistory(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-all"
             />
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-full sm:w-96 bg-[#0a0a0a] border-l border-white/10 z-50 p-6 overflow-y-auto"
-            >
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center space-x-2 text-white/90">
-                  <History className="w-5 h-5" />
-                  <h2 className="text-lg font-medium tracking-wide">Recent Searches</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  {history.length > 0 && (
-                    <button 
-                      onClick={clearHistory}
-                      className="text-xs text-white/50 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full transition-colors font-medium border border-white/5"
-                    >
-                      Clear All
-                    </button>
+            
+            {/* Sliding Drawer Container */}
+            <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+              
+              {/* Close Slider Button on the Side (Floating on the left edge) */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
+                className="absolute left-0 top-1/2 -translate-y-1/2 -ml-14 z-30"
+              >
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className={clsx(
+                    "w-12 h-12 rounded-full flex items-center justify-center shadow-2xl cursor-pointer transition-all hover:scale-110 active:scale-95 border",
+                    isLight
+                      ? "bg-white/90 border-white/50 text-neutral-800 hover:bg-white shadow-neutral-200/50"
+                      : "bg-[#180a0c]/90 border-white/10 text-white hover:bg-neutral-900 shadow-black/80"
                   )}
-                  <button 
+                  title="Close Slider"
+                >
+                  <ChevronRight className="w-6 h-6" />
+                </button>
+              </motion.div>
+
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 30, stiffness: 220 }}
+                className={clsx(
+                  "w-screen max-w-md border-l flex flex-col h-full shadow-[0_0_50px_rgba(0,0,0,0.3)] relative overflow-hidden transition-all",
+                  isLight 
+                    ? "bg-white/40 backdrop-blur-3xl border-white/60 text-neutral-900" 
+                    : "bg-[#100607]/40 backdrop-blur-3xl border-white/5 text-neutral-100"
+                )}
+                style={{
+                  boxShadow: isLight 
+                    ? "inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 20px 50px rgba(0, 0, 0, 0.1)" 
+                    : "inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 20px 50px rgba(0, 0, 0, 0.5)"
+                }}
+              >
+                {/* Rainbow/Prism Underlay Glow Blobs */}
+                <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none opacity-80">
+                  <div className="absolute -top-[10%] -left-[20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-red-500/20 via-pink-500/15 to-transparent blur-[90px]" />
+                  <div className="absolute top-[25%] -right-[20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-blue-500/15 via-teal-500/10 to-transparent blur-[100px]" />
+                  <div className="absolute bottom-[5%] left-[10%] w-[70%] h-[40%] rounded-full bg-gradient-to-br from-amber-500/10 via-purple-500/15 to-transparent blur-[90px]" />
+                </div>
+
+                {/* Top Glass Prism Glimmer line */}
+                <div className="h-[2px] w-full bg-gradient-to-r from-red-500/80 via-pink-500/80 via-purple-500/80 via-blue-500/80 via-emerald-500/80 to-yellow-500/80 opacity-90" />
+
+                {/* Header with Title & Clear All Button on Top */}
+                <div className={clsx(
+                  "p-5 flex items-center justify-between border-b transition-colors",
+                  isLight ? "border-white/40 bg-white/10" : "border-white/5 bg-black/10"
+                )}>
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-red-500/10 rounded-xl shrink-0 border border-red-500/20">
+                      <History className="w-5 h-5 text-red-500" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-black tracking-tight uppercase">History</h2>
+                      <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">{history.length} items</p>
+                    </div>
+                  </div>
+
+                  {/* Clear All on the Top */}
+                  {history.length > 0 && (
+                    <div>
+                      {confirmClearAll ? (
+                        <div className="flex items-center gap-1.5 bg-red-500/10 p-1 rounded-xl border border-red-500/20">
+                          <button
+                            onClick={clearAllHistory}
+                            className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 font-bold text-white text-[10px] transition-all cursor-pointer uppercase tracking-wider"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setConfirmClearAll(false)}
+                            className={clsx(
+                              "px-2 py-1 rounded-lg font-bold text-[10px] transition-all cursor-pointer uppercase tracking-wider",
+                              isLight ? "bg-white/80 text-neutral-700 hover:bg-white" : "bg-white/10 text-neutral-300 hover:bg-white/20"
+                            )}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmClearAll(true)}
+                          className={clsx(
+                            "px-3 py-1.5 rounded-full border text-[10px] font-black cursor-pointer transition-all uppercase tracking-wider flex items-center gap-1.5",
+                            isLight
+                              ? "bg-white/80 border-neutral-200 text-neutral-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                              : "bg-white/5 border-white/10 text-neutral-300 hover:bg-red-950/40 hover:text-red-400 hover:border-red-500/30"
+                          )}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Clear All</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* History list content */}
+                <div className="overflow-y-auto p-5 flex-1 space-y-3 no-scrollbar relative z-10">
+                  {history.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center text-center py-28 px-4">
+                      <div className={clsx(
+                        "w-12 h-12 rounded-full flex items-center justify-center mb-3 border shadow-sm",
+                        isLight ? "bg-white/80 border-white/40" : "bg-white/5 border-white/10"
+                      )}>
+                        <History className="w-5 h-5 text-neutral-400" />
+                      </div>
+                      <h4 className="font-extrabold text-sm uppercase tracking-wider">No archives</h4>
+                      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 max-w-xs mt-1 leading-relaxed font-medium">
+                        References will be saved automatically here for rapid one-click retrieval.
+                      </p>
+                    </div>
+                  ) : (
+                    <AnimatePresence initial={false}>
+                      {history.map((item, idx) => {
+                        const platDetails = getPlatformDetails(item.platform || 'pinterest');
+                        const isCopied = copiedHistoryUrl === item.url;
+
+                        const handleCopyUrl = async (e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          try {
+                            await navigator.clipboard.writeText(item.url);
+                            setCopiedHistoryUrl(item.url);
+                            triggerHistoryToast("Copied successfully! 📋");
+                            setTimeout(() => setCopiedHistoryUrl(null), 2000);
+                          } catch (err) {}
+                        };
+
+                        const handleDelete = (e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          const updated = history.filter((_, i) => i !== idx);
+                          setHistory(updated);
+                          localStorage.setItem('download_history', JSON.stringify(updated));
+                          triggerHistoryToast("Removed from history 🗑️");
+                        };
+
+                        return (
+                          <motion.div
+                            key={item.url + '_' + idx}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, x: 40 }}
+                            className={clsx(
+                              "border rounded-2xl p-4 transition-all relative flex flex-col gap-2 group/item overflow-hidden",
+                              isLight 
+                                ? "bg-white/40 hover:bg-white/70 border-white/40 shadow-sm" 
+                                : "bg-white/5 hover:bg-white/10 border-white/10 shadow-md"
+                            )}
+                            style={{
+                              boxShadow: isLight
+                                ? "inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.02)"
+                                : "inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15)"
+                            }}
+                          >
+                            {/* Card Top Header: Platform indicator & Close Button on the Side */}
+                            <div className="flex items-center justify-between">
+                              <span className={clsx(
+                                "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border",
+                                platDetails.bgClass,
+                                platDetails.borderClass,
+                                platDetails.colorClass
+                              )}>
+                                {platDetails.icon}
+                                <span>{getTabLabel(item.platform || 'pinterest')}</span>
+                              </span>
+                              
+                              {/* Close/Remove Button on the Side of each card */}
+                              <button
+                                onClick={handleDelete}
+                                className={clsx(
+                                  "p-1.5 rounded-full transition-colors cursor-pointer",
+                                  isLight 
+                                    ? "text-neutral-400 hover:text-red-500 hover:bg-red-50" 
+                                    : "text-neutral-400 hover:text-red-400 hover:bg-white/5"
+                                )}
+                                title="Remove item"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Card Body: Title and URL */}
+                            <div 
+                              onClick={() => {
+                                handleUrlChange(item.url, item.platform);
+                                if (item.platform) {
+                                  setActiveTab(item.platform);
+                                }
+                                setShowHistory(false);
+                              }}
+                              className="text-left cursor-pointer flex-1"
+                            >
+                              <h4 className={clsx(
+                                "font-extrabold text-sm line-clamp-1 transition-colors hover:underline decoration-red-500 decoration-2",
+                                isLight ? "text-neutral-900" : "text-white"
+                              )}>
+                                {item.title}
+                              </h4>
+                              <p className="text-[11px] text-neutral-400 font-mono truncate mt-0.5 select-all">
+                                {item.url}
+                              </p>
+                            </div>
+
+                            {/* Card Footer actions: Copy & Load */}
+                            <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-100 dark:border-white/5 mt-1">
+                              {/* Copy Button */}
+                              <button
+                                onClick={handleCopyUrl}
+                                className={clsx(
+                                  "inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer border transition-all hover:scale-[1.02] active:scale-[0.98]",
+                                  isLight
+                                    ? "bg-white/80 hover:bg-white border-neutral-200/80 text-neutral-700"
+                                    : "bg-white/5 hover:bg-white/10 border-white/5 text-white"
+                                )}
+                              >
+                                {isCopied ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-green-500" />
+                                    <span className="text-green-500">Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Copy URL</span>
+                                  </>
+                                )}
+                              </button>
+
+                              {/* Load button */}
+                              <button
+                                onClick={() => {
+                                  handleUrlChange(item.url, item.platform);
+                                  if (item.platform) {
+                                    setActiveTab(item.platform);
+                                  }
+                                  setShowHistory(false);
+                                }}
+                                className={clsx(
+                                  "inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]",
+                                  isLight
+                                    ? "bg-neutral-900 text-white hover:bg-neutral-800"
+                                    : "bg-white text-neutral-900 hover:bg-neutral-100"
+                                )}
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                <span>Load URL</span>
+                              </button>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  )}
+                </div>
+
+                {/* Floating toast notification */}
+                <AnimatePresence>
+                  {historyToast && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 15 }}
+                      className="absolute bottom-6 left-6 right-6 z-40 bg-neutral-900 text-white text-[11px] font-bold py-3 px-4 rounded-xl shadow-2xl flex items-center gap-2.5 border border-white/10 backdrop-blur-md"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                      <span>{historyToast}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Bottom Slider Footer */}
+                <div className={clsx(
+                  "p-4 border-t flex justify-center transition-colors relative z-10",
+                  isLight ? "border-white/40 bg-white/15" : "border-white/5 bg-black/15"
+                )}>
+                  <button
                     onClick={() => setShowHistory(false)}
-                    className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors text-white/70 hover:text-white"
+                    className={clsx(
+                      "w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border text-center hover:scale-[1.01] active:scale-[0.99]",
+                      isLight
+                        ? "bg-white/60 hover:bg-white/80 border-neutral-200 text-neutral-700"
+                        : "bg-white/5 hover:bg-white/10 border-white/10 text-white"
+                    )}
+                  >
+                    Close Slider
+                  </button>
+                </div>
+
+              </motion.div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <div className="w-full max-w-4xl flex flex-col items-center text-center relative z-10">
+        
+        {/* Navigation Tabs Bar */}
+        <div className={clsx(
+          "w-full max-w-2xl border rounded-2xl p-2 flex items-center overflow-x-auto no-scrollbar mb-8 shadow-2xl relative z-10 transition-colors",
+          isLight ? "bg-white border-neutral-200/80" : "bg-[#1e1516] border-white/5"
+        )}>
+          <div className="flex items-center min-w-max gap-1">
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab.id;
+              
+              const getTabColor = (id: Tab) => {
+                if (isLight) {
+                  switch(id) {
+                    case 'youtube': return 'shadow-[0_0_15px_rgba(255,0,0,0.15)]';
+                    case 'instagram': return 'shadow-[0_0_15px_rgba(225,48,108,0.15)]';
+                    case 'tiktok': return 'shadow-[0_0_15px_rgba(0,242,254,0.15)]';
+                    case 'facebook': return 'shadow-[0_0_15px_rgba(24,119,242,0.15)]';
+                    case 'reddit': return 'shadow-[0_0_15px_rgba(255,69,0,0.15)]';
+                    case 'pinterest': return 'shadow-[0_0_15px_rgba(230,0,35,0.15)]';
+                    default: return 'shadow-md';
+                  }
+                }
+                switch(id) {
+                  case 'youtube': return 'shadow-[0_0_15px_rgba(255,0,0,0.4)]';
+                  case 'instagram': return 'shadow-[0_0_15px_rgba(225,48,108,0.4)]';
+                  case 'tiktok': return 'shadow-[0_0_15px_rgba(0,242,254,0.4)]';
+                  case 'facebook': return 'shadow-[0_0_15px_rgba(24,119,242,0.4)]';
+                  case 'reddit': return 'shadow-[0_0_15px_rgba(255,69,0,0.4)]';
+                  case 'pinterest': return 'shadow-[0_0_15px_rgba(230,0,35,0.4)]';
+                  default: return 'shadow-md';
+                }
+              };
+
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setResult(null);
+                    setValidationError(null);
+                    // Retain the URL if it happens to match the newly selected tab, or clear it if it doesn't
+                    const detected = detectPlatformFromUrl(url);
+                    if (detected !== tab.id) {
+                      setUrl('');
+                    } else {
+                      setValidationError(null);
+                    }
+                  }}
+                  className={clsx(
+                    "px-6 py-3 rounded-xl text-base font-semibold transition-all whitespace-nowrap cursor-pointer relative",
+                    isActive 
+                      ? isLight 
+                        ? "text-white" 
+                        : "text-black"
+                      : isLight
+                        ? "text-neutral-600 hover:text-neutral-950"
+                        : "text-neutral-400 hover:text-white"
+                  )}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeTabGlow"
+                      className={clsx(
+                        "absolute inset-0 rounded-xl -z-10 transition-colors duration-500",
+                        isLight ? "bg-neutral-900" : "bg-white",
+                        getTabColor(tab.id)
+                      )}
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Tab-switching Dynamic Content Wrapper */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.25, ease: "easeInOut" }}
+            className="w-full flex flex-col items-center"
+          >
+            {/* Active Tab Badge */}
+            <div className={clsx(
+              "inline-flex items-center gap-2 border text-sm px-5 py-2 rounded-full mb-8 shadow-sm transition-colors",
+              isLight ? "bg-white border-neutral-200 text-neutral-800" : "bg-white/5 border border-white/10 text-neutral-200"
+            )}>
+              <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></div>
+              {activeTabData.name}
+            </div>
+
+            {/* Hero Area */}
+            <h1 className={clsx(
+              "text-5xl sm:text-[3.5rem] leading-[1.1] font-bold mb-6 transition-colors",
+              isLight ? "text-neutral-900" : "text-white"
+            )}>
+              Download<br />Anything.
+            </h1>
+            <p className={clsx(
+              "text-[1.1rem] leading-relaxed max-w-sm mx-auto mb-16 transition-colors",
+              isLight ? "text-neutral-600" : "text-neutral-400"
+            )}>
+              {activeTabData.description}
+            </p>
+
+            {/* Platform Mismatch Warning Alert Box */}
+            <AnimatePresence>
+              {validationError && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className={clsx(
+                    "w-full max-w-2xl p-4.5 rounded-3xl mb-8 border flex flex-col sm:flex-row items-center justify-between gap-4 text-sm font-medium transition-colors text-left shadow-lg backdrop-blur-sm",
+                    isLight 
+                      ? "bg-amber-50/90 border-amber-200 text-amber-900" 
+                      : "bg-amber-950/20 border-amber-500/20 text-amber-200"
+                  )}
+                >
+                  <div className="flex items-center gap-3.5">
+                    <AlertCircle className="w-5.5 h-5.5 text-amber-500 shrink-0" />
+                    <div>
+                      <h4 className="font-extrabold text-base tracking-tight mb-0.5">{validationError.title}</h4>
+                      <p className={clsx("text-xs font-medium leading-relaxed", isLight ? "text-neutral-600" : "text-neutral-400")}>
+                        {validationError.message}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prevUrl = url;
+                      setActiveTab(validationError.targetTab);
+                      setResult(null);
+                      setValidationError(null);
+                      setUrl(prevUrl);
+                    }}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold transition-all text-xs cursor-pointer shadow-md hover:shadow-lg shadow-amber-500/20 whitespace-nowrap uppercase tracking-wider"
+                  >
+                    Switch to {validationError.targetTabName}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Search & URL Input Box */}
+            {['tiktok', 'facebook', 'reddit'].includes(activeTab) ? (
+              <div className={clsx(
+                "w-full max-w-2xl p-6 rounded-3xl mb-12 border flex flex-col items-center text-center gap-4 text-sm font-medium transition-colors shadow-lg backdrop-blur-sm",
+                isLight 
+                  ? "bg-blue-50/90 border-blue-200 text-blue-900" 
+                  : "bg-blue-950/20 border-blue-500/20 text-blue-200"
+              )}>
+                <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                  <Lock className="w-6 h-6 text-blue-500" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-lg mb-1">Coming Soon</h4>
+                  <p className={clsx("text-sm font-medium", isLight ? "text-neutral-600" : "text-neutral-400")}>
+                    Support for {activeTabData.label} is currently in development. Please check back later!
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleDownload} className="w-full max-w-2xl mb-12 relative">
+                <div className={clsx(
+                  "relative flex items-center w-full border rounded-full p-2 pl-6 sm:pl-8 shadow-2xl backdrop-blur-xl group transition-all",
+                  isLight 
+                    ? "bg-white border-neutral-200 hover:border-neutral-300 focus-within:border-neutral-400" 
+                    : "bg-[#1c0d0f]/80 border-white/[0.08] hover:border-white/15 focus-within:border-white/20"
+                )}>
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(e) => handleUrlChange(e.target.value)}
+                    placeholder={activeTabData.placeholder}
+                    required
+                    className={clsx(
+                      "w-full bg-transparent text-base sm:text-lg placeholder-neutral-400 outline-none py-3 pr-20 transition-colors",
+                      isLight ? "text-neutral-900 placeholder-neutral-400" : "text-white placeholder-neutral-500"
+                    )}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isLoading || !url}
+                    className={clsx(
+                      "absolute right-2 top-2 bottom-2 w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shrink-0 shadow-lg cursor-pointer",
+                      isLight 
+                        ? "bg-neutral-950 text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:opacity-50" 
+                        : "bg-[#cccccc] text-neutral-800 hover:bg-white disabled:bg-neutral-800 disabled:opacity-50"
+                    )}
+                  >
+                    {isLoading ? (
+                      <div className={clsx(
+                        "w-5 h-5 border-[2.5px] rounded-full animate-spin",
+                        isLight ? "border-neutral-400/40 border-t-neutral-100" : "border-neutral-400/40 border-t-neutral-800"
+                      )} />
+                    ) : (
+                      <Search className={clsx("w-5 h-5 sm:w-6 sm:h-6", isLight ? "text-white" : "text-neutral-800")} />
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Dynamic Media Extraction Dashboard / Loading State */}
+        <AnimatePresence mode="wait">
+          {isLoading && (() => {
+            const secondsRemaining = Math.max(1, Math.ceil((100 - progress) / 10));
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -30 }}
+                className="w-full max-w-md mx-auto flex flex-col items-center mt-4"
+              >
+                {/* Central Card with Spinner */}
+                <div className={clsx(
+                  "w-full aspect-square border rounded-[36px] flex items-center justify-center shadow-[0_25px_50px_rgba(0,0,0,0.5)] backdrop-blur-xl relative mb-8 overflow-hidden transition-colors",
+                  isLight ? "bg-white border-neutral-200" : "bg-[#1e1315]/70 border-[#301618]"
+                )}>
+                  <div className="relative w-14 h-14 flex items-center justify-center">
+                    <div className={clsx("absolute inset-0 border-4 rounded-full", isLight ? "border-neutral-200" : "border-neutral-800/60")}></div>
+                    <div className={clsx("absolute inset-0 border-4 rounded-full animate-spin", isLight ? "border-t-neutral-800" : "border-t-neutral-400/80")}></div>
+                  </div>
+                </div>
+
+                {/* Status / Percentage Row */}
+                <div className="w-full flex justify-between items-center px-1 mb-3">
+                  <span className={clsx("text-sm font-medium transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>Processing request...</span>
+                  <span className={clsx("text-sm font-bold font-mono transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>{progress}%</span>
+                </div>
+
+                {/* Blue/Cyan Progress Bar Track */}
+                <div className={clsx("w-full h-2 rounded-full overflow-hidden mb-4 shadow-inner transition-colors", isLight ? "bg-neutral-200" : "bg-neutral-800/80")}>
+                  <div 
+                    className="h-full bg-cyan-500 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+
+                {/* Dynamic Remaining Time */}
+                <div className="text-xs text-neutral-500 font-medium mb-4">
+                  ~{secondsRemaining}s remaining
+                </div>
+
+                {/* Status message */}
+                <div className={clsx("text-sm font-semibold tracking-wide transition-colors", isLight ? "text-neutral-600" : "text-neutral-400")}>
+                  Processing Link...
+                </div>
+              </motion.div>
+            );
+          })()}
+        </AnimatePresence>
+
+        {/* Results Area */}
+        <AnimatePresence mode="wait">
+          {result && !isLoading && (
+            <motion.div
+              initial={{ opacity: 0, y: 25 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -25 }}
+              transition={{ duration: 0.3 }}
+              className="w-full text-left"
+            >
+              {result.success ? (
+                <div className="space-y-6">
+                  
+                  {/* PROFILE TEMPLATE */}
+                  {result.mediaType === 'profile' && result.profile && (
+                    <div className={clsx(
+                      "border rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md transition-colors",
+                      isLight ? "bg-white border-neutral-200" : "bg-[#1e1516] border-white/10"
+                    )}>
+                      
+                      {/* Banner Backplate */}
+                      <div className="h-32 sm:h-44 bg-gradient-to-r from-red-600 via-pink-600 to-indigo-600 relative">
+                        {result.profile.bannerUrl && (
+                          <img 
+                            src={getProxiedUrl(result.profile.bannerUrl)} 
+                            alt="Cover Banner" 
+                            className="w-full h-full object-cover opacity-50 cursor-zoom-in hover:opacity-70 transition-opacity" 
+                            onClick={() => {
+                              if (result.profile?.bannerUrl) {
+                                setLightboxMediaList([{
+                                  url: result.profile.bannerUrl,
+                                  type: 'image',
+                                  title: `${result.profile.displayName || result.profile.username || 'User'}'s Cover Banner`
+                                }]);
+                                setLightboxIndex(0);
+                              }
+                            }}
+                          />
+                        )}
+                        <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm text-neutral-300 text-[10px] px-3 py-1.5 rounded-full uppercase tracking-widest font-bold">
+                          PROFILE ASSET REPORT
+                        </div>
+                      </div>
+
+                      {/* Header DP Circle & Info */}
+                      <div className="px-6 pb-6 sm:px-8 sm:pb-8 relative">
+                        <div className="flex flex-col sm:flex-row sm:items-end justify-between -mt-16 mb-6 gap-4">
+                          <div 
+                            className="relative group cursor-zoom-in"
+                            onClick={() => {
+                              const imgUrl = result.profile?.avatarUrl || result.thumbnail;
+                              if (imgUrl) {
+                                setLightboxMediaList([{
+                                  url: imgUrl,
+                                  type: 'image',
+                                  title: `${result.profile?.displayName || result.profile?.username || 'User'}'s Profile Picture`
+                                }]);
+                                setLightboxIndex(0);
+                              }
+                            }}
+                          >
+                            <div className="absolute inset-0 bg-gradient-to-tr from-pink-500 via-red-500 to-yellow-500 rounded-full blur-md opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all"></div>
+                            <img 
+                              src={getProxiedUrl(result.profile.avatarUrl || result.thumbnail || "/images/avatar_placeholder.png")} 
+                              alt="Profile DP" 
+                              className={clsx(
+                                "w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-4 relative z-10 bg-neutral-900 group-hover:scale-[1.03] transition-transform",
+                                isLight ? "border-white" : "border-[#1e1516]"
+                              )}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'https://picsum.photos/200';
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Names Details */}
+                        <div className="mb-6">
+                          <h3 className={clsx("text-2xl sm:text-3xl font-extrabold transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                            {result.profile.displayName || result.profile.username}
+                          </h3>
+                          <p className="text-red-500 font-mono text-sm mt-1">@{result.profile.username}</p>
+                          {result.profile.bio && (
+                            <p className={clsx(
+                              "text-sm mt-4 leading-relaxed max-w-2xl p-4 rounded-xl border transition-colors",
+                              isLight ? "text-neutral-700 bg-neutral-50 border-neutral-200" : "text-neutral-300 bg-white/5 border-white/5"
+                            )}>
+                              {result.profile.bio}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Stat Counters Row */}
+                        <div className={clsx(
+                          "flex items-center gap-8 border-t pt-6 flex-wrap transition-colors",
+                          isLight ? "border-neutral-200" : "border-white/5"
+                        )}>
+                          {result.profile.followers && (
+                            <div>
+                              <span className={clsx("text-xl sm:text-2xl font-black transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                                {result.profile.followers}
+                              </span>
+                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-500" : "text-neutral-400")}>Followers</p>
+                            </div>
+                          )}
+                          {result.profile.following && (
+                            <div>
+                              <span className={clsx("text-xl sm:text-2xl font-black transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                                {result.profile.following}
+                              </span>
+                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-500" : "text-neutral-400")}>Following</p>
+                            </div>
+                          )}
+                          {result.profile.postsCount && (
+                            <div>
+                              <span className={clsx("text-xl sm:text-2xl font-black transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                                {result.profile.postsCount}
+                              </span>
+                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-500" : "text-neutral-400")}>Posts</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Profile Assets Downloader */}
+                        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-5">
+                          {result.profile.avatarUrl && (
+                            <div className={clsx(
+                              "flex flex-col p-6 rounded-3xl border backdrop-blur-2xl shadow-xl transition-all hover:scale-[1.01] hover:shadow-2xl relative overflow-hidden",
+                              isLight ? "bg-white/80 border-white/50" : "bg-white/10 border-white/20"
+                            )}>
+                              {/* Glassmorphism ambient glow */}
+                              <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/20 rounded-full blur-[40px] pointer-events-none" />
+                              <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-pink-500/20 rounded-full blur-[40px] pointer-events-none" />
+                              
+                              <div className="flex flex-col items-center text-center gap-4 mb-6 relative z-10">
+                                <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
+                                  <img src={getProxiedUrl(result.profile.avatarUrl)} alt="Logo" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                </div>
+                                <div className="mt-2">
+                                  <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Profile Logo</h4>
+                                  <p className={clsx("text-sm mt-1", isLight ? "text-neutral-600" : "text-neutral-300")}>High-resolution avatar image</p>
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-3 mt-auto relative z-10">
+                                <a
+                                  href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.avatarUrl!, (result.profile?.username || "user") + "_avatar.jpg"); }}
+                                  className={clsx(
+                                    "w-full text-center text-sm font-bold px-4 py-4 rounded-xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-md hover:shadow-lg hover:-translate-y-0.5",
+                                    isLight ? "bg-neutral-900 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black"
+                                  )}
+                                >
+                                  <Download className="w-5 h-5" /> Download Logo
+                                </a>
+                                <div className="flex flex-col sm:flex-row gap-2 w-full">
+                                  <CopyButton url={result.profile.avatarUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
+                                  <QRCodeButton url={result.profile.avatarUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {result.profile.bannerUrl && (
+                            <div className={clsx(
+                              "flex flex-col p-6 rounded-3xl border backdrop-blur-2xl shadow-xl transition-all hover:scale-[1.01] hover:shadow-2xl relative overflow-hidden",
+                              isLight ? "bg-white/80 border-white/50" : "bg-white/10 border-white/20"
+                            )}>
+                              {/* Glassmorphism ambient glow */}
+                              <div className="absolute -top-10 -left-10 w-32 h-32 bg-purple-500/20 rounded-full blur-[40px] pointer-events-none" />
+                              <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-cyan-500/20 rounded-full blur-[40px] pointer-events-none" />
+
+                              <div className="flex flex-col items-center text-center gap-4 mb-6 relative z-10">
+                                <div className="w-full h-36 sm:h-44 rounded-2xl overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
+                                  <img src={getProxiedUrl(result.profile.bannerUrl)} alt="Banner" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                </div>
+                                <div className="mt-2">
+                                  <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Cover Banner</h4>
+                                  <p className={clsx("text-sm mt-1", isLight ? "text-neutral-600" : "text-neutral-300")}>Full-width background image</p>
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-3 mt-auto relative z-10">
+                                <a
+                                  href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.bannerUrl!, (result.profile?.username || "user") + "_banner.jpg"); }}
+                                  className={clsx(
+                                    "w-full text-center text-sm font-bold px-4 py-4 rounded-xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-md hover:shadow-lg hover:-translate-y-0.5",
+                                    isLight ? "bg-neutral-900 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black"
+                                  )}
+                                >
+                                  <Download className="w-5 h-5" /> Download Banner
+                                </a>
+                                <div className="flex flex-col sm:flex-row gap-2 w-full">
+                                  <CopyButton url={result.profile.bannerUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
+                                  <QRCodeButton url={result.profile.bannerUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                    </div>
+                  )}
+
+                  {/* CAROUSEL / COMMUNITY MULTI-PHOTO TEMPLATE */}
+                  {result.mediaType === 'carousel' && result.media && result.media.length > 0 && (
+                    <div className="space-y-6">
+                      
+                      {/* Top Action Control Panel */}
+                      <div className={clsx(
+                        "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-3xl backdrop-blur-md border transition-colors",
+                        isLight ? "bg-white border-neutral-200 shadow-md" : "bg-white/5 border border-white/10"
+                      )}>
+                        <div>
+                          <div className="flex items-center gap-2 text-emerald-400 mb-1">
+                            <CheckCircle2 className="w-5 h-5" />
+                            <span className="font-semibold text-sm tracking-wide">CAROUSEL ASSETS READY</span>
+                          </div>
+                          <h3 className={clsx("text-xl font-bold line-clamp-1 transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                            {result.title || "Multi-File Album"}
+                          </h3>
+                          <p className={clsx("text-xs transition-colors mt-1", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                            {result.media.length} items extracted from URL link
+                          </p>
+                        </div>
+                        <button 
+                          onClick={handleDownloadAll}
+                          className={clsx(
+                            "px-6 py-3 rounded-full font-bold transition-all shadow-lg flex items-center gap-2 text-sm shrink-0 uppercase tracking-wider cursor-pointer",
+                            isLight ? "bg-neutral-950 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black shadow-white/10"
+                          )}
+                        >
+                          <Download className="w-4 h-4" /> Download All
+                        </button>
+                      </div>
+
+                      {/* Photo/Video Grid List */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                        {result.media.map((item, index) => (
+                          <div 
+                            key={index} 
+                            className={clsx(
+                              "border rounded-2xl overflow-hidden shadow-xl flex flex-col group hover:scale-[1.02] transition-all",
+                              isLight ? "bg-white border-neutral-200" : "bg-white/[0.03] border-white/10 backdrop-blur-xl"
+                            )}
+                          >
+                            
+                            {/* Card Display Container */}
+                            <div 
+                              className="aspect-square bg-black relative overflow-hidden flex items-center justify-center cursor-zoom-in group-hover:opacity-90 transition-opacity"
+                              onClick={() => {
+                                if (result.media) {
+                                  const list = result.media.map((m, i) => ({
+                                    url: m.url,
+                                    type: m.type,
+                                    title: `${result.title || 'Media'} - Item #${i + 1}`
+                                  }));
+                                  setLightboxMediaList(list);
+                                  setLightboxIndex(index);
+                                }
+                              }}
+                            >
+                              {item.type === 'video' ? (
+                                <div className="w-full h-full relative">
+                                  {item.thumbnail ? (
+                                    <img src={getProxiedUrl(item.thumbnail)} alt={`Video slide ${index + 1}`} className="w-full h-full object-cover opacity-80" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center bg-neutral-900">
+                                      <Film className="w-10 h-10 text-neutral-600" />
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                                    <Tv className="w-8 h-8 text-white/80 animate-pulse animate-duration-1000" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <img 
+                                  src={getProxiedUrl(item.url)} 
+                                  alt={`Image slide ${index + 1}`} 
+                                  className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = "";
+                                  }}
+                                />
+                              )}
+                              <span className="absolute top-3 left-3 bg-black/75 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-full font-black">
+                                ITEM #{index + 1}
+                              </span>
+                              <span className="absolute top-3 right-3 bg-white/10 backdrop-blur-md text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                                {item.type}
+                              </span>
+                            </div>
+
+                             {/* Card Download Button Footer with standard quality options for videos */}
+                            <div className={clsx(
+                              "p-4 border-t mt-auto flex flex-col gap-3 transition-colors",
+                              isLight ? "bg-neutral-50 border-neutral-100" : "bg-black/30 border-white/5"
+                            )}>
+                              {item.type === 'video' ? (
+                                <div className="space-y-1.5">
+                                  <span className="text-[10px] uppercase tracking-widest text-emerald-400 font-bold block">
+                                    Available Quality Formats:
+                                  </span>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                      { label: "1080p", sub: "Full HD" },
+                                      { label: "720p", sub: "Standard HD" },
+                                      { label: "480p", sub: "Medium SD" },
+                                      { label: "360p", sub: "Low Quality" }
+                                    ].map((opt) => (
+                                      <a
+                                        key={opt.label}
+                                        href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
+                                        
+                                        className={clsx(
+                                          "flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all border group/item-quality",
+                                          isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/5"
+                                        )}
+                                      >
+                                        <span className={clsx(
+                                          "font-extrabold text-xs transition-colors",
+                                          isLight ? "text-neutral-800 group-hover/item-quality:text-white" : "text-white group-hover/item-quality:text-white"
+                                        )}>
+                                          {opt.label}
+                                        </span>
+                                        <span className={clsx(
+                                          "text-[8px] transition-colors uppercase tracking-wider",
+                                          isLight ? "text-neutral-500 group-hover/item-quality:text-white/80" : "text-neutral-400 group-hover/item-quality:text-white/80"
+                                        )}>
+                                          {opt.sub}
+                                        </span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <a
+                                  href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
+                                  
+                                  className={clsx(
+                                    "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
+                                    isLight ? "bg-white hover:bg-neutral-900 hover:text-white border-neutral-200 text-neutral-800" : "bg-white/5 hover:bg-white hover:text-black border border-white/10 text-white"
+                                  )}
+                                >
+                                  <Download className="w-3.5 h-3.5" /> Download Image
+                                </a>
+                              )}
+                              <div className="flex flex-col sm:flex-row gap-2 w-full">
+                                <CopyButton url={item.url} isLight={isLight} className="w-full sm:flex-1 rounded-xl px-3 py-2.5 text-xs justify-center" />
+                                <QRCodeButton url={item.url} isLight={isLight} className="w-full sm:flex-1 rounded-xl px-3 py-2.5 text-xs justify-center" />
+                              </div>
+                            </div>
+
+                          </div>
+                        ))}
+                      </div>
+
+                    </div>
+                  )}
+
+                  {/* STANDARD SINGLE FILE TEMPLATE */}
+                  {result.mediaType !== 'profile' && result.mediaType !== 'carousel' && (
+                    <div className={clsx(
+                      "border rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row backdrop-blur-sm transition-colors",
+                      isLight ? "bg-white border-neutral-200" : "bg-white/5 border border-white/10"
+                    )}>
+                      {result.thumbnail ? (
+                        <div 
+                          className="w-full md:w-2/5 aspect-[4/3] md:aspect-auto bg-black relative flex items-center justify-center overflow-hidden min-h-[220px] cursor-zoom-in group/thumb"
+                          onClick={() => {
+                            setLightboxMediaList([{
+                              url: result.url || result.thumbnail || '',
+                              type: result.mediaType === 'video' ? 'video' : 'image',
+                              title: result.title || "Ready File Asset"
+                            }]);
+                            setLightboxIndex(0);
+                          }}
+                        >
+                          <img 
+                            src={getProxiedUrl(result.thumbnail)} 
+                            alt="Media thumbnail" 
+                            className="w-full h-full object-cover opacity-90 group-hover/thumb:scale-105 group-hover/thumb:opacity-100 transition-all duration-300"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "";
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity duration-300">
+                            <div className="bg-white/20 backdrop-blur-md p-3 rounded-full text-white border border-white/20">
+                              <Maximize2 className="w-5 h-5" />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div 
+                          className={clsx(
+                            "w-full md:w-2/5 aspect-[4/3] md:aspect-auto flex items-center justify-center min-h-[200px] cursor-zoom-in transition-colors",
+                            isLight ? "bg-neutral-100 hover:bg-neutral-200" : "bg-white/5 hover:bg-white/10"
+                          )}
+                          onClick={() => {
+                            if (result.url) {
+                              setLightboxMediaList([{
+                                url: result.url,
+                                type: result.mediaType === 'video' ? 'video' : 'image',
+                                title: result.title || "Ready File Asset"
+                              }]);
+                              setLightboxIndex(0);
+                            }
+                          }}
+                        >
+                          <Film className="w-12 h-12 text-neutral-600 animate-pulse" />
+                        </div>
+                      )}
+                      
+                      <div className={clsx(
+                        "p-6 md:p-8 flex-1 flex flex-col justify-center transition-colors",
+                        isLight ? "bg-neutral-50/50" : "bg-black/20"
+                      )}>
+                        <div className="flex items-center gap-2 text-emerald-500 mb-3">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="font-semibold text-sm tracking-wide">EXTRACTION SUCCESSFUL</span>
+                        </div>
+                        <h3 className={clsx("text-xl font-bold mb-6 line-clamp-3 leading-snug transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                          {result.title || "Ready File Asset"}
+                        </h3>
+                        {result.description && (
+                          <p className={clsx(
+                            "text-xs line-clamp-2 mb-6 leading-relaxed p-3 rounded-lg border transition-all",
+                            isLight ? "text-neutral-600 bg-neutral-100/50 border-neutral-200" : "text-neutral-400 bg-black/10 border-white/5"
+                          )}>
+                            {result.description}
+                          </p>
+                        )}
+                        {result.qualities && result.qualities.length > 0 ? (
+                          <div className="flex flex-col gap-4 w-full">
+                            <div className={clsx("border-t pt-4 mt-1 transition-colors", isLight ? "border-neutral-200" : "border-white/10")}>
+                              <span className="text-xs uppercase tracking-widest text-emerald-500 font-bold block mb-3">
+                                Available Video Quality Formats:
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                                {result.qualities.map((q, idx) => (
+                                  <a
+                                    key={idx}
+                                    href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + ".mp4"); }}
+                                    
+                                    className={clsx(
+                                      "flex items-center justify-between p-3 rounded-xl transition-all border group/quality",
+                                      isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10"
+                                    )}
+                                  >
+                                    <div className="flex flex-col text-left">
+                                      <span className={clsx(
+                                        "font-bold text-sm transition-colors",
+                                        isLight ? "text-neutral-800 group-hover/quality:text-white" : "text-white group-hover/quality:text-white"
+                                      )}>
+                                        {q.label}
+                                      </span>
+                                      {q.size && (
+                                        <span className={clsx(
+                                          "text-xs transition-colors",
+                                          isLight ? "text-neutral-500 group-hover/quality:text-white/80" : "text-neutral-400 group-hover/quality:text-white/80"
+                                        )}>
+                                          {q.size}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className={clsx("p-2 rounded-lg transition-colors", isLight ? "bg-neutral-100 group-hover/quality:bg-white/20" : "bg-white/10 group-hover/quality:bg-white/20")}>
+                                      <Download className="w-4 h-4 text-emerald-500 group-hover/quality:text-white" />
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                            {result.url && (
+                              <div className={clsx("flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center mt-2 border-t pt-4 transition-colors w-full", isLight ? "border-neutral-200" : "border-white/5")}>
+                                <a
+                                  href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + ".mp4"); }}
+                                  
+                                  className={clsx(
+                                    "w-full sm:w-auto inline-flex items-center justify-center gap-2 border px-6 py-3 rounded-full font-bold transition-all uppercase tracking-wider text-xs cursor-pointer",
+                                    isLight ? "bg-white border-neutral-200 text-neutral-800 hover:bg-neutral-900 hover:text-white" : "bg-white/10 hover:bg-white hover:text-black border-white/10 text-white"
+                                  )}
+                                >
+                                  <Download className="w-4 h-4" /> Download Default File
+                                </a>
+                                <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
+                                <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
+                              </div>
+                            )}
+                          </div>
+                        ) : result.url ? (
+                          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center w-full">
+                            <a
+                              href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + ".mp4"); }}
+                              
+                              className={clsx(
+                                "w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-bold transition-all shadow-lg hover:shadow-xl uppercase tracking-wider text-sm cursor-pointer",
+                                isLight ? "bg-neutral-950 text-white hover:bg-neutral-800" : "bg-white hover:bg-neutral-200 text-black"
+                              )}
+                            >
+                              <Download className="w-5 h-5" /> Download Media File
+                            </a>
+                            <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3.5 rounded-full text-sm" />
+                            <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3.5 rounded-full text-sm" />
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              ) : (
+                <div className={clsx(
+                  "border rounded-3xl p-6 flex items-start gap-4 backdrop-blur-sm shadow-xl transition-colors",
+                  isLight ? "bg-red-50/70 border-red-200 text-red-600" : "bg-red-500/10 border border-red-500/20 text-red-400"
+                )}>
+                  <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-lg mb-1">Extraction Failed</h4>
+                    <p className={clsx(
+                      "leading-relaxed text-sm font-medium transition-colors",
+                      isLight ? "text-red-600/90" : "text-red-400/80"
+                    )}>
+                      {result.error || "The URL link is unsupported, private, or being blocked by the origin servers."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+      </div>
+
+      {/* Footer */}
+      <div className="mt-auto pt-16 text-center relative z-10">
+        <p className={clsx(
+          "text-sm font-medium transition-colors",
+          isLight ? "text-neutral-400" : "text-neutral-500"
+        )}>
+          all right reserved by @Mridul-Downloader-app made by = Mridul ❤️
+        </p>
+      </div>
+
+      {/* Lightbox Modal */}
+      <AnimatePresence>
+        {lightboxIndex !== null && lightboxMediaList[lightboxIndex] && (() => {
+          const activeItem = lightboxMediaList[lightboxIndex];
+          const hasMultiple = lightboxMediaList.length > 1;
+
+          const handlePrev = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            setLightboxIndex((prev) => {
+              if (prev === null) return null;
+              return (prev - 1 + lightboxMediaList.length) % lightboxMediaList.length;
+            });
+          };
+
+          const handleNext = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            setLightboxIndex((prev) => {
+              if (prev === null) return null;
+              return (prev + 1) % lightboxMediaList.length;
+            });
+          };
+
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col items-center justify-between p-4 sm:p-6"
+              onClick={() => setLightboxIndex(null)}
+            >
+              {/* Top Navigation & Action Controls */}
+              <div className="w-full flex items-center justify-between text-white z-10 py-2">
+                <div className="flex flex-col max-w-[70%]">
+                  <span className="text-xs uppercase tracking-widest text-neutral-400 font-bold">
+                    {hasMultiple ? `Asset ${lightboxIndex + 1} of ${lightboxMediaList.length}` : 'High Resolution Asset Preview'}
+                  </span>
+                  <h4 className="text-sm sm:text-base font-semibold truncate text-white/90">
+                    {activeItem.title || "Social Media Attachment"}
+                  </h4>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {/* Download Direct Link Button */}
+                  <a
+                    href="#" onClick={(e) => { e.preventDefault(); e.stopPropagation(); downloadFileClientSide(activeItem.url, (activeItem.title || "download").slice(0, 30).trim() + "_preview.mp4"); }}
+                    className="p-2 sm:p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/10 shadow-lg flex items-center justify-center"
+                    title="Download Media File"
+                  >
+                    <Download className="w-5 h-5" />
+                  </a>
+
+                  {/* Close Lightbox Button */}
+                  <button
+                    onClick={() => setLightboxIndex(null)}
+                    className="p-2 sm:p-2.5 bg-white/10 hover:bg-white/25 hover:rotate-90 text-white rounded-full transition-all border border-white/10 shadow-lg flex items-center justify-center"
+                    title="Close preview"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
-              {history.length === 0 ? (
-                <div className="text-center text-white/40 mt-12 text-sm">
-                  No recent searches found.
-                </div>
-              ) : (
-                <div className="flex flex-col space-y-8">
-                  {Object.entries(
-                    history.reduce((acc, item) => {
-                      const label = getTabLabel(item.tab);
-                      if (!acc[label]) acc[label] = [];
-                      acc[label].push(item);
-                      return acc;
-                    }, {} as Record<string, typeof history>)
-                  ).map(([category, items]) => (
-                    <div key={category} className="space-y-3">
-                      <h3 className="text-xs font-semibold text-white/40 uppercase tracking-widest sticky top-0 bg-[#0a0a0a]/95 backdrop-blur-md pb-2 z-10">{category}</h3>
-                      {items.map((item, idx) => (
-                        <div 
-                          key={`${item.url}-${item.timestamp}-${idx}`}
-                          className="group flex flex-col p-4 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-xl transition-all cursor-pointer"
-                          onClick={() => {
-                            setActiveTab(item.tab);
-                            setUrl(item.url);
-                            setShowHistory(false);
-                            executeSearch(item.url, item.tab);
-                          }}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-medium tracking-wider text-white/40">
-                              {new Date(item.timestamp).toLocaleDateString()}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={(e) => handleCopy(e, item.url)}
-                                className="p-1.5 rounded-full hover:bg-white/10 text-white/30 hover:text-white transition-colors"
-                                title="Copy Link"
-                              >
-                                {copiedUrl === item.url ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeFromHistory(item.url);
-                                }}
-                                className="p-1.5 rounded-full hover:bg-white/10 text-white/30 hover:text-white transition-colors"
-                                title="Remove"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                          {item.title && (
-                            <span className="text-sm font-medium text-white/90 truncate w-full mb-1">{item.title}</span>
-                          )}
-                          <span className="text-xs text-white/50 truncate w-full mb-3">{item.url}</span>
-                          <button
-                            onClick={(e) => {
-                               e.stopPropagation();
-                               setActiveTab(item.tab);
-                               setUrl(item.url);
-                               setShowHistory(false);
-                               executeSearch(item.url, item.tab);
-                            }}
-                            className="w-full flex items-center justify-center gap-2 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-lg transition-colors mt-auto"
-                          >
-                             <Download className="w-3.5 h-3.5" />
-                             Download Again
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Top Left Support Button */}
-      <div className="absolute top-6 left-4 sm:left-6 z-30 flex items-center gap-2 sm:gap-3 backdrop-blur-sm bg-black/20 p-1.5 pr-2 rounded-full border border-white/5">
-        <span className="text-white/60 text-xs sm:text-sm font-medium pl-2 sm:pl-3">SUPPORT =</span>
-        <a 
-          href="https://youtube.com/@mridulgaming-_-official-800?si=cyOe09O4c_wJ_tPN" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-[#FF0000] text-white hover:bg-[#FF0000]/90 border border-[#FF0000]/50 hover:border-white/20 rounded-full font-medium transition-all shadow-[0_0_15px_rgba(255,0,0,0.3)] hover:shadow-[0_0_25px_rgba(255,0,0,0.5)] hover:scale-105 active:scale-95"
-        >
-          <Youtube className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span className="text-xs sm:text-sm tracking-wide">Subscribe</span>
-        </a>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="absolute top-6 right-4 sm:right-6 z-30 flex items-center gap-2 sm:gap-3">
-        {installPrompt && (
-          <button
-            onClick={handleInstallClick}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-black hover:bg-white/90 border border-white/20 rounded-full font-medium transition-all shadow-lg shadow-white/10"
-            title="Install App"
-          >
-            <Smartphone className="w-4 h-4" />
-            <span className="text-sm">Install App</span>
-          </button>
-        )}
-        <button
-          onClick={() => setShowHistory(true)}
-          className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/70 hover:text-white transition-all backdrop-blur-md shadow-lg"
-          title="Search History"
-        >
-          <History className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Background ambient effects */}
-      <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-white/5 blur-[120px] rounded-full pointer-events-none" />
-      <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-white/5 blur-[120px] rounded-full pointer-events-none" />
-
-      <main className="w-full max-w-4xl relative z-10 flex flex-col items-center px-4 sm:px-6">
-        
-        {/* Tabs */}
-        <div className="w-full mb-8 z-30 sticky top-4 px-4">
-          <div className="w-full overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-2 -mb-2 flex justify-start sm:justify-center">
-            <div className="flex flex-nowrap items-center gap-2 min-w-max p-1.5 bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl md:rounded-full shadow-2xl">
-              <button
-                onClick={() => handleTabChange("pinterest")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "pinterest" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                Pinterest
-              </button>
-              <button
-                onClick={() => handleTabChange("yt-media")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "yt-media" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                YT Media
-              </button>
-              <button
-                onClick={() => handleTabChange("yt-channel")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "yt-channel" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                YT Channel
-              </button>
-              <button
-                onClick={() => handleTabChange("ig-media")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "ig-media" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                Instagram
-              </button>
-              <button
-                onClick={() => handleTabChange("fb-media")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "fb-media" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                Facebook
-              </button>
-              <button
-                onClick={() => handleTabChange("tt-media")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "tt-media" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                TikTok
-              </button>
-              <button
-                onClick={() => handleTabChange("tw-media")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "tw-media" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                Twitter/X
-              </button>
-              <button
-                onClick={() => handleTabChange("reddit-media")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "reddit-media" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                Reddit
-              </button>
-              <button
-                onClick={() => handleTabChange("yt-playlist")}
-                className={`px-5 py-2.5 rounded-xl md:rounded-full text-sm font-medium transition-all ${
-                  activeTab === "yt-playlist" ? "bg-white text-black shadow-lg" : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                YT Playlist
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Header section */}
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-          className="text-center mb-12 px-4"
-        >
-          <div className="inline-flex items-center justify-center space-x-2 mb-4 bg-white/5 border border-white/10 backdrop-blur-md px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium text-white/80 whitespace-normal text-center">
-            <span className={`w-2 h-2 rounded-full animate-pulse flex-shrink-0 ${activeTab === 'pinterest' ? 'bg-red-500' : activeTab === 'ig-media' ? 'bg-pink-500' : activeTab === 'fb-media' ? 'bg-blue-600' : activeTab === 'tt-media' ? 'bg-black' : activeTab === 'tw-media' ? 'bg-blue-400' : activeTab === 'yt-playlist' ? 'bg-yellow-500' : activeTab === 'reddit-media' ? 'bg-orange-500' : 'bg-red-600'}`} />
-            <span>{activeTab === 'pinterest' ? 'Pinterest Downloader' : activeTab === 'yt-media' ? 'YouTube Downloader' : activeTab === 'ig-media' ? 'Instagram Downloader' : activeTab === 'fb-media' ? 'Facebook Downloader' : activeTab === 'tt-media' ? 'TikTok Downloader' : activeTab === 'tw-media' ? 'Twitter Downloader' : activeTab === 'yt-playlist' ? 'YouTube Playlist Downloader' : activeTab === 'reddit-media' ? 'Reddit Downloader' : 'YouTube Channel Extractor'}</span>
-          </div>
-          <h1 className="text-4xl md:text-6xl font-semibold tracking-tight mb-4 text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60">
-            {activeTab === 'pinterest' ? 'Download Anything.' : activeTab === 'yt-media' ? 'Get YT Media.' : activeTab === 'ig-media' ? 'Get IG Media.' : activeTab === 'fb-media' ? 'Get FB Media.' : activeTab === 'tt-media' ? 'Get TT Media.' : activeTab === 'tw-media' ? 'Get X Media.' : activeTab === 'yt-playlist' ? 'Get Playlists.' : activeTab === 'reddit-media' ? 'Get Reddit Media.' : 'Extract Banners.'}
-          </h1>
-          <p className="text-white/50 text-lg max-w-xl mx-auto font-light">
-            {activeTab === 'pinterest' ? 'High-quality videos, images, and carousels. Just paste the link and let the engine do the rest.' : 
-             activeTab === 'yt-media' ? 'Download YouTube Videos and Shorts.' : 
-             activeTab === 'ig-media' ? 'Download Instagram Reels, Posts, and DP.' :
-             activeTab === 'fb-media' ? 'Download Facebook Reels and Videos seamlessly.' : 
-             activeTab === 'tt-media' ? 'Download TikTok Videos without watermarks.' : 
-             activeTab === 'tw-media' ? 'Download Twitter / X Videos and Photos seamlessly.' : 
-             activeTab === 'yt-playlist' ? 'Extract all videos from a YouTube Playlist to download them individually without zipped files.' :
-             activeTab === 'reddit-media' ? 'Download Reddit Videos and GIFs with audio intact.' :
-             'Extract Profile Pictures and Channel Banners directly from any YouTube channel link.'}
-          </p>
-        </motion.div>
-
-        {/* Input Section */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full max-w-2xl"
-        >
-          <form onSubmit={handleSearch} className="relative group">
-            <div className="absolute inset-0 bg-white/10 rounded-3xl blur-xl transition-all duration-500 group-hover:bg-white/20 group-hover:blur-2xl" />
-            <div className="relative flex items-center bg-white/10 backdrop-blur-2xl border border-white/20 rounded-[2rem] p-2 transition-all duration-500 focus-within:border-white/40 focus-within:bg-white/15 shadow-[0_8px_32px_rgba(255,255,255,0.1)] focus-within:shadow-[0_8px_40px_rgba(255,255,255,0.2)]">
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder={
-                  activeTab === 'pinterest' ? "Paste Pinterest Link Here" : 
-                  activeTab === 'yt-media' ? "Paste YouTube Video/Short Link Here" : 
-                  activeTab === 'ig-media' ? "Paste Instagram Reel/Post/Profile Link Here" :
-                  "Paste YouTube Channel Link Here (@username)"
-                }
-                className="flex-1 bg-transparent border-none outline-none text-white placeholder:text-white/50 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-lg font-light w-full focus:ring-0"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="bg-white text-black hover:bg-white/90 disabled:bg-white/50 disabled:cursor-not-allowed transition-all duration-300 px-6 sm:px-8 py-3 sm:py-4 rounded-[1.5rem] font-medium flex items-center justify-center space-x-2 shrink-0 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
-              >
-                {loading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <span className="hidden sm:inline">Search</span>
-                    <Search className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-
-          {/* Error Message */}
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
-                className="mt-6 flex items-center justify-center space-x-2 text-red-400 bg-red-400/10 border border-red-400/20 px-4 py-3 rounded-xl backdrop-blur-md"
-              >
-                <AlertCircle className="w-5 h-5" />
-                <span className="text-sm font-medium">{error}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Search History removed to slide-out drawer */}
-        </motion.div>
-
-        {/* Results Area */}
-        <AnimatePresence mode="wait">
-          {loading && (
-            <motion.div
-              key="loading-skeleton"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="w-full mt-16 max-w-md mx-auto flex flex-col items-center space-y-6 px-4"
-            >
-              {/* Skeleton Image/Video Box */}
-              <div className="w-full aspect-square sm:aspect-video rounded-3xl bg-white/5 border border-white/10 overflow-hidden relative shadow-2xl">
-                <motion.div 
-                  className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                  animate={{ x: ["-100%", "200%"] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-white/20 animate-spin" />
-                </div>
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="w-full space-y-3 mt-4">
-                <div className="flex justify-between text-xs text-white/70 font-medium">
-                  <span>Processing request...</span>
-                  <span>{fetchProgress}%</span>
-                </div>
-                <div className="w-full h-1.5 bg-white/5 border border-white/10 rounded-full overflow-hidden relative shadow-inner">
-                  <motion.div 
-                    className="absolute top-0 left-0 bottom-0 bg-gradient-to-r from-blue-500 to-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.8)]"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${fetchProgress}%` }}
-                    transition={{ ease: "easeOut", duration: 0.5 }}
-                  />
-                </div>
-                <div className="text-center text-xs text-white/50 font-medium animate-pulse">
-                  {fetchProgress === 100 ? "Finalizing details..." : `~${fetchTimeRemaining}s remaining`}
-                </div>
-              </div>
-              
-              <p className="text-white/40 text-sm font-light tracking-wide pt-2">
-                {activeTab === 'yt-channel' ? 'Analyzing Channel...' : 
-                 'Processing Link...'}
-              </p>
-            </motion.div>
-          )}
-
-          {result && !loading && (
-            <motion.div
-              key="results"
-              initial={{ opacity: 0, y: 50, scale: 0.9, filter: "blur(10px)" }}
-              animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, y: 30, scale: 0.95, filter: "blur(5px)" }}
-              transition={{ 
-                duration: 0.8, 
-                delay: 0.1, 
-                ease: [0.16, 1, 0.3, 1],
-                type: "spring",
-                bounce: 0.3
-              }}
-              className="w-full mt-16 flex flex-col items-center px-4"
-            >
-              
-              {/* Video Result */}
-              {result.type === "video" && (result.thumbnail || result.thumbnail_url) && (result.mediaUrls?.[0] || result.download_url) && (
-                <motion.div 
-                  whileHover={{ scale: 1.02 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  className="w-full max-w-md flex flex-col items-center space-y-6"
-                >
-                  <div className="relative group rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/50 aspect-[3/4] w-full">
-                    <img 
-                      src={proxyUrl(result.thumbnail || result.thumbnail_url || '')} 
-                      alt="Video thumbnail" 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                      <div className="w-16 h-16 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center border border-white/20">
-                        <Film className="w-6 h-6 text-white" />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-4 w-full">
-                    <button 
-                      onClick={() => handleDownload((result.thumbnail || result.thumbnail_url)!, "thumbnail.jpg")}
-                      className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md text-white px-6 py-4 rounded-xl font-medium flex items-center justify-center space-x-2 transition-all"
-                    >
-                      <ImageIcon className="w-5 h-5" />
-                      <span>Download Thumbnail</span>
-                    </button>
-                    <button 
-                      onClick={() => handleDownload((result.mediaUrls?.[0] || result.download_url)!, "video.mp4")}
-                      className="flex-1 bg-white text-black hover:bg-white/90 px-6 py-4 rounded-xl font-medium flex items-center justify-center space-x-2 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)]"
-                    >
-                      <Download className="w-5 h-5" />
-                      <span>Download Video</span>
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Single Image Result */}
-              {result.type === "image" && (result.mediaUrls?.[0] || result.download_url) && (
-                <motion.div 
-                  whileHover={{ scale: 1.02 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  className="w-full max-w-md flex flex-col items-center space-y-6"
-                >
-                   <div className="relative group rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/50 aspect-[3/4] w-full">
-                    <img 
-                      src={proxyUrl(result.mediaUrls?.[0] || result.download_url || '')} 
-                      alt="Single image" 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                  </div>
-                  <button 
-                    onClick={() => handleDownload((result.mediaUrls?.[0] || result.download_url)!, "image.jpg")}
-                    className="w-full bg-white text-black hover:bg-white/90 px-6 py-4 rounded-xl font-medium flex items-center justify-center space-x-2 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)]"
+              {/* Central Display Stage */}
+              <div className="flex-1 w-full flex items-center justify-center relative">
+                {/* Left Switch Button */}
+                {hasMultiple && (
+                  <button
+                    onClick={handlePrev}
+                    className="absolute left-2 sm:left-4 z-20 p-3 sm:p-4 bg-white/5 hover:bg-white/15 text-white rounded-full transition-all border border-white/5 shadow-xl flex items-center justify-center backdrop-blur-sm group"
                   >
-                    <Download className="w-5 h-5" />
-                    <span>Download Image</span>
+                    <ChevronLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
                   </button>
-                </motion.div>
-              )}
+                )}
 
-              {/* Carousel Result */}
-              {result.type === "carousel" && result.mediaUrls && (
-                <div className="w-full max-w-5xl">
-                   <div className="flex items-center justify-between mb-8 px-4">
-                     <h3 className="text-xl font-medium text-white/90">Carousel Images ({result.mediaUrls.length})</h3>
-                   </div>
-                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {result.mediaUrls.map((url, idx) => (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 * idx, duration: 0.5, ease: "easeOut" }}
-                        key={idx} 
-                        className="flex flex-col space-y-4"
-                      >
-                         <div className="relative group rounded-2xl overflow-hidden border border-white/10 shadow-xl bg-black/50 aspect-[3/4] w-full">
-                          <img 
-                            src={proxyUrl(url)} 
-                            alt={`Carousel item ${idx + 1}`} 
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          />
-                        </div>
-                        <button 
-                          onClick={() => handleDownload(url, `image-${idx + 1}.jpg`)}
-                          className="w-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md text-white px-4 py-3 rounded-xl font-medium flex items-center justify-center space-x-2 transition-all"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span>Download Image</span>
-                        </button>
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* YT Media Result (Video / Photo / Formats) */}
-              {(result.media_type === "video" || result.media_type === "photo" || result.media_type === "video_formats") && (result.download_url || result.formats) && (
-                <div className="w-full max-w-md flex flex-col items-center space-y-6">
-                  <div className="relative group rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black w-full flex justify-center items-center">
-                    <img 
-                      src={result.thumbnail_url ? proxyUrl(result.thumbnail_url) : 'https://placehold.co/600x400/1a1a1a/444444?text=Thumbnail+Unavailable'} 
-                      alt="YouTube media thumbnail" 
-                      className="w-full max-h-[60vh] object-contain transition-transform duration-700 group-hover:scale-105 opacity-90"
+                {/* Media Component Body */}
+                <motion.div
+                  key={lightboxIndex}
+                  initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -15 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                  className="max-w-full max-h-[75vh] flex items-center justify-center relative select-none"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {activeItem.type === 'video' ? (
+                    <video
+                      src={getProxiedUrl(activeItem.url)}
+                      controls
+                      autoPlay
+                      playsInline
+                      className="max-w-full max-h-[75vh] rounded-2xl object-contain shadow-[0_25px_60px_rgba(0,0,0,0.8)] border border-white/5"
+                    />
+                  ) : (
+                    <img
+                      src={getProxiedUrl(activeItem.url)}
+                      alt={activeItem.title || "Full Resolution Preview"}
+                      className="max-w-full max-h-[75vh] rounded-2xl object-contain shadow-[0_25px_60px_rgba(0,0,0,0.8)] border border-white/5"
+                      referrerPolicy="no-referrer"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://placehold.co/600x400/1a1a1a/444444?text=Thumbnail+Unavailable';
+                        (e.target as HTMLImageElement).src = "";
                       }}
                     />
-                    {(result.media_type === "video" || result.media_type === "video_formats") && (
-                      <div className="absolute inset-0 bg-black/10 flex items-center justify-center pointer-events-none">
-                        <div className="w-16 h-16 rounded-full bg-[#FF0000] shadow-[0_0_20px_rgba(255,0,0,0.5)] flex items-center justify-center">
-                          <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="w-full flex flex-col gap-4">
-                    {result.title && (
-                      <h3 className="text-white/90 font-medium text-lg text-center px-4 leading-tight">
-                        {result.title}
-                      </h3>
-                    )}
-                    
-                    {result.message && (
-                      <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-4 rounded-xl text-center leading-relaxed">
-                        {result.message}
-                      </div>
-                    )}
-
-                    {result.thumbnail_url && (
-                      <button 
-                        onClick={() => handleDownload(result.thumbnail_url!, "youtube-thumbnail.jpg")}
-                        className="w-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md text-white px-6 py-4 rounded-xl font-medium flex items-center justify-center space-x-2 transition-all"
-                      >
-                        <ImageIcon className="w-5 h-5" />
-                        <span>Download Thumbnail</span>
-                      </button>
-                    )}
-                    
-                    {/* Backward compat for old media type */}
-                    {result.download_url && result.media_type !== "video_formats" && (!result.formats || result.formats.length === 0) && !result.message && (
-                      <button 
-                        onClick={() => handleDownload(result.download_url!, result.media_type === "video" ? "youtube-video.mp4" : "youtube-photo.jpg")}
-                        className="w-full bg-white text-black hover:bg-white/90 px-6 py-4 rounded-xl font-medium flex items-center justify-center space-x-2 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)]"
-                      >
-                        <Download className="w-5 h-5" />
-                        <span>Download {result.media_type === "video" ? "Video" : "Photo"}</span>
-                      </button>
-                    )}
-
-                    {/* Formats rendering */}
-                    {result.formats && result.formats.length > 0 && (
-                      <div className="w-full flex flex-col gap-3 mt-2">
-                         <div className="w-full grid grid-cols-1 gap-3">
-                           {result.formats.map((fmt, idx) => {
-                             const isHighQuality = fmt.type === "video" && (fmt.quality.includes("1080") || fmt.quality.includes("720") || fmt.quality.includes("4K"));
-                             return (
-                               <button 
-                                 key={idx}
-                                 onClick={() => handleDownload(fmt.url, fmt.type === "audio" ? "youtube-audio.mp3" : "youtube-video.mp4")}
-                                 className={`w-full px-4 sm:px-6 py-3 sm:py-4 rounded-xl font-medium flex items-center justify-between transition-all overflow-hidden ${fmt.type === "audio" ? 'bg-white/10 hover:bg-white/20 text-white border border-white/10' : 'bg-white hover:bg-white/90 text-black shadow-lg hover:shadow-xl'}`}
-                               >
-                                 <div className="flex items-center space-x-2 sm:space-x-3">
-                                   <Download className={`w-4 h-4 sm:w-5 sm:h-5 ${isHighQuality ? 'text-blue-600' : ''} shrink-0`} />
-                                   <span className="text-sm sm:text-base text-left flex flex-wrap items-center gap-1">
-                                     <span>Download {fmt.type === "audio" ? "Audio" : "Video"}</span>
-                                     <span className="font-bold opacity-80">({fmt.quality})</span>
-                                   </span>
-                                 </div>
-                                 {isHighQuality && (
-                                   <span className="text-[10px] sm:text-xs uppercase tracking-widest font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded-md shrink-0 ml-2">HQ</span>
-                                 )}
-                               </button>
-                             );
-                           })}
-                         </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Channel / Profile Result */}
-              {(result.dp_url || result.banner_url) && (
-                <div className="w-full max-w-3xl flex flex-col items-center space-y-12">
-                  {result.banner_url && (
-                    <div className="w-full flex flex-col items-center space-y-4">
-                      <h3 className="text-xl font-medium text-white/90 self-start">Channel Banner</h3>
-                      <div className="relative group rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/50 aspect-[16/3] w-full">
-                        <img 
-                          src={proxyUrl(result.banner_url || '')} 
-                          alt="Channel Banner" 
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                        />
-                      </div>
-                      <button 
-                        onClick={() => handleDownload(result.banner_url!, "banner.jpg")}
-                        className="w-full bg-white text-black hover:bg-white/90 px-6 py-4 rounded-xl font-medium flex items-center justify-center space-x-2 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)]"
-                      >
-                        <Download className="w-5 h-5" />
-                        <span>Download Banner</span>
-                      </button>
-                    </div>
                   )}
+                </motion.div>
 
-                  {result.dp_url && (
-                    <div className="w-full flex flex-col items-center space-y-4 max-w-sm mx-auto">
-                      <h3 className="text-xl font-medium text-white/90">Profile Picture {result.username ? `(@${result.username})` : ''}</h3>
-                      <div className="relative group rounded-full overflow-hidden border border-white/10 shadow-2xl bg-black/50 aspect-square w-48 h-48 mx-auto">
-                        <img 
-                          src={proxyUrl(result.dp_url || '')} 
-                          alt="Profile Picture" 
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                        />
-                      </div>
-                      <button 
-                        onClick={() => handleDownload(result.dp_url!, "dp.jpg")}
-                        className="w-full bg-white/10 text-white hover:bg-white/20 border border-white/20 px-6 py-4 rounded-xl font-medium flex items-center justify-center space-x-2 transition-all"
-                      >
-                        <Download className="w-5 h-5" />
-                        <span>Download DP</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+                {/* Right Switch Button */}
+                {hasMultiple && (
+                  <button
+                    onClick={handleNext}
+                    className="absolute right-2 sm:right-4 z-20 p-3 sm:p-4 bg-white/5 hover:bg-white/15 text-white rounded-full transition-all border border-white/5 shadow-xl flex items-center justify-center backdrop-blur-sm group"
+                  >
+                    <ChevronRight className="w-6 h-6 group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                )}
+              </div>
 
-              {/* Playlist Result */}
-              {result.type === "playlist" && result.playlistItems && (
-                <div className="w-full max-w-3xl flex flex-col items-center space-y-6">
-                  <div className="w-full bg-white/5 border border-white/10 rounded-2xl p-6 shadow-xl text-left">
-                    <h3 className="text-xl font-semibold text-white/90 mb-2">Playlist: {result.title}</h3>
-                    <p className="text-sm text-white/60 mb-6">{result.playlistItems.length} items found</p>
-                    <div className="space-y-3">
-                      {result.playlistItems.map((item: any, idx: number) => (
-                         <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-black/40 border border-white/5 hover:bg-white/5 transition-colors">
-                           <div className="flex items-center space-x-3 overflow-hidden">
-                             <div className="text-white/40 font-mono text-sm w-6">{idx + 1}</div>
-                             <div className="truncate pr-4">
-                               <p className="text-sm font-medium text-white/90 truncate">{item.title}</p>
-                               <p className="text-xs text-white/50">{item.duration ? `${Math.floor(item.duration / 60)}:${(item.duration % 60).toString().padStart(2, '0')}` : 'Unknown duration'}</p>
-                             </div>
-                           </div>
-                           <button 
-                             onClick={() => {
-                               // Quick set to yt-media and search
-                               setTargetUrl(item.url);
-                               handleTabChange('yt-media');
-                             }}
-                             className="shrink-0 bg-white/10 hover:bg-white/20 text-white p-2 rounded-lg transition-all"
-                             title="Load this video"
-                           >
-                             <Download className="w-4 h-4" />
-                           </button>
-                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Community Posts Result */}
-              {result.posts && result.posts.length > 0 && (
-                <div className="w-full max-w-3xl flex flex-col items-center space-y-8">
-                  <h3 className="text-xl font-medium text-white/90 self-start">Community Posts</h3>
-                  {result.posts.map((post, idx) => (
-                    <div key={post.id || idx} className="w-full bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col space-y-4 shadow-xl">
-                      {post.text && (
-                        <div className="text-white/80 whitespace-pre-wrap font-light text-sm sm:text-base leading-relaxed">
-                          {post.text}
-                        </div>
-                      )}
-                      
-                      {post.images && post.images.length > 0 && (
-                        <div className={`grid gap-4 mt-4 ${post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                          {post.images.map((imgUrl, imgIdx) => (
-                            <div key={imgIdx} className="flex flex-col space-y-3">
-                              <div className="relative rounded-xl overflow-hidden border border-white/10 aspect-video bg-black/40 group">
-                                <img 
-                                  src={proxyUrl(imgUrl)} 
-                                  alt={`Post Attachment ${imgIdx + 1}`}
-                                  className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
-                                />
-                              </div>
-                              <button 
-                                onClick={() => handleDownload(imgUrl, `community-post-${post.id || idx}-${imgIdx + 1}.jpg`)}
-                                className="w-full bg-white/5 hover:bg-white/10 text-white py-2 rounded-lg font-medium flex items-center justify-center space-x-2 transition-all text-sm"
-                              >
-                                <Download className="w-4 h-4" />
-                                <span>Download</span>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
+              {/* Bottom Instructions Info */}
+              <div className="py-2 text-center text-xs text-neutral-500 font-medium">
+                {hasMultiple ? "Tip: Use Arrow Keys (← / →) or click outside to dismiss" : "Tip: Click outside or press ESC to dismiss"}
+              </div>
             </motion.div>
-          )}
-        </AnimatePresence>
-
-      </main>
-
-      {/* Download Progress Overlay */}
-      <AnimatePresence>
-        {downloading && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#1a1a1a] border border-white/10 rounded-2xl p-4 shadow-2xl z-50 flex flex-col space-y-3"
-          >
-            <div className="flex items-center justify-between px-1">
-              <span className="text-sm font-medium text-white flex items-center space-x-2">
-                <Loader2 className="w-4 h-4 animate-spin text-white/70" />
-                <span>Downloading Media...</span>
-              </span>
-              <span className="text-xs text-white/50 font-mono">
-                {downloadProgress === -1 || downloadProgress === null ? 'Fetching...' : `${downloadProgress}%`}
-              </span>
-            </div>
-            
-            <div className="relative w-full h-2 bg-white/5 rounded-full overflow-hidden">
-              {downloadProgress === -1 || downloadProgress === null ? (
-                <motion.div 
-                  className="absolute inset-y-0 left-0 bg-white/40 w-1/2 rounded-full"
-                  animate={{ x: ["-100%", "200%"] }}
-                  transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                />
-              ) : (
-                <motion.div 
-                  className="absolute inset-y-0 left-0 bg-white/80 rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${downloadProgress}%` }}
-                  transition={{ ease: "easeOut" }}
-                />
-              )}
-            </div>
-          </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
-
-      <footer className="mt-auto pt-16 pb-8 text-center text-white/40 text-xs sm:text-sm font-light tracking-wide w-full">
-        all right reserved by @Mridul-Downloader-app made by = Mridul ❤️
-      </footer>
+      
+      {/* Global CSS Injectors for custom features */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        @keyframes scan {
+          0% { transform: translateY(-10px); }
+          50% { transform: translateY(195px); }
+          100% { transform: translateY(-10px); }
+        }
+        .animate-scan {
+          animation: scan 2.8s ease-in-out infinite;
+        }
+      `}} />
     </div>
   );
 }
