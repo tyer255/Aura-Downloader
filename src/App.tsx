@@ -6,9 +6,13 @@ import clsx from 'clsx';
 import QRCode from 'qrcode';
 
 const getProxiedUrl = (url?: string, inline = true) => {
-  if (!url) return '';
+  if (!url) return '/images/avatar_placeholder.png';
   if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) {
     return url;
+  }
+  // For Instagram/Facebook CDNs, always proxy to bypass client-side CORS/403 blocks
+  if (url.includes('instagram.com') || url.includes('cdninstagram.com') || url.includes('fbcdn.net')) {
+    return `/api/proxy-download?url=${encodeURIComponent(url)}&inline=true`;
   }
   // For inline media (thumbnails, video previews), load directly from source CDNs
   // to avoid server-side rate limits and bandwidth bottlenecks.
@@ -509,105 +513,6 @@ export default function App() {
     // Default multi-platform downloader
     try {
       const detectedPlatform = detectPlatformFromUrl(url.trim()) || activeTab;
-      
-      if (detectedPlatform === 'instagram') {
-        // Direct RapidAPI Integration for Instagram
-        const encodedUrl = encodeURIComponent(url.trim());
-        const data = `url=${encodedUrl}`;
-
-        const rapidRes = await fetch('https://instagram-video-downloader13.p.rapidapi.com/index.php', {
-          method: 'POST',
-          headers: {
-            'x-rapidapi-key': 'ae760394d8msh15a59972be41f7ep1069b8jsnd6d044bdedbb',
-            'x-rapidapi-host': 'instagram-video-downloader13.p.rapidapi.com',
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body: data
-        });
-
-        if (rapidRes.ok) {
-          const rapidData = await rapidRes.json();
-          if (rapidData && rapidData.success) {
-            let mediaList = [];
-            let mediaType = "video";
-            let displayUrl = rapidData.thumbnail || "";
-            
-            if (rapidData.medias && rapidData.medias.length > 0) {
-              if (rapidData.medias.length > 2) {
-                 const videos = rapidData.medias.filter((m: any) => m.extension !== 'm4a' && m.type !== 'audio');
-                 if (videos.length > 1) {
-                   mediaType = "carousel";
-                   videos.forEach((v: any) => {
-                     mediaList.push({
-                       url: v.url,
-                       type: v.type || "video",
-                       thumbnail: v.thumbnail || rapidData.thumbnail
-                     });
-                   });
-                 } else {
-                   mediaList.push({
-                     url: videos[0]?.url || rapidData.medias[0].url,
-                     type: videos[0]?.type || "video",
-                     thumbnail: videos[0]?.thumbnail || rapidData.thumbnail
-                   });
-                 }
-              } else {
-                 const video = rapidData.medias.find((m: any) => m.extension !== 'm4a' && m.type !== 'audio') || rapidData.medias[0];
-                 mediaList.push({
-                   url: video.url,
-                   type: video.type || "video",
-                   thumbnail: video.thumbnail || rapidData.thumbnail
-                 });
-              }
-            }
-            
-            let finalUrl = mediaList.length > 0 ? mediaList[0].url : "";
-            
-            const profile = rapidData.author ? {
-              username: rapidData.author.split(' ')[0] || "instagram_user",
-              displayName: rapidData.author || "Instagram User",
-              followers: rapidData.like_count ? `${rapidData.like_count.toLocaleString()} likes` : "",
-              avatarUrl: displayUrl
-            } : undefined;
-
-            const resData = {
-              success: true,
-              url: finalUrl,
-              title: rapidData.title || "Instagram Post",
-              thumbnail: displayUrl,
-              mediaType,
-              media: mediaList,
-              profile,
-              qualities: [{ label: 'High', url: finalUrl }],
-              source: "rapidapi"
-            };
-            
-            setResult(resData);
-            
-            const titleText = profile 
-              ? `Profile: @${profile.username}` 
-              : (resData.title || 'Media Download');
-            const newEntry = { 
-              url: url.trim(), 
-              title: titleText, 
-              timestamp: Date.now(), 
-              platform: detectedPlatform,
-              favorite: false,
-              thumbnail: resData.thumbnail || (resData.media && resData.media.length > 0 ? (resData.media[0].thumbnail || resData.media[0].url) : undefined) || profile?.avatarUrl,
-              appName: TABS.find(t => t.id === detectedPlatform)?.name || 'Unknown'
-            };
-            const newHistory = [newEntry, ...history.filter(h => h.url !== url.trim())].slice(0, 50);
-            setHistory(newHistory);
-            localStorage.setItem('download_history', JSON.stringify(newHistory));
-            
-            
-            setTimeout(() => {
-              setIsLoading(false);
-            }, 300);
-            return;
-          }
-        }
-      }
 
       const res = await fetch('/api/download', {
         method: 'POST',
@@ -1322,32 +1227,30 @@ export default function App() {
 
                 {/* Status / Percentage Row */}
                 <div className="w-full flex justify-between items-center px-1 mb-3">
-                  <span className={clsx("text-sm font-medium transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>Extracting media details...</span>
+                  <span className={clsx("text-sm font-medium transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>
+                    Extracting media details...
+                  </span>
+                  <span className="text-sm font-bold text-blue-500">
+                    {LOADING_STEPS[loadingStep].target}%
+                  </span>
                 </div>
 
-                {/* Indeterminate Scanning Bar */}
+                {/* Determinate Progress Bar */}
                 <div className={clsx(
                   "w-full h-3 rounded-full overflow-hidden mb-4 shadow-inner transition-colors relative", 
                   isLight ? "bg-neutral-200" : "bg-neutral-800/80"
                 )}>
                   <motion.div 
-                    className="absolute top-0 left-0 h-full w-1/3 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]"
-                    animate={{
-                      x: ["-100%", "300%"],
-                    }}
-                    transition={{
-                      repeat: Infinity,
-                      ease: "linear",
-                      duration: 1.5,
-                    }}
-                  >
-                    <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer" />
-                  </motion.div>
+                    className="absolute top-0 left-0 h-full rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]"
+                    initial={{ width: "0%" }}
+                    animate={{ width: `${LOADING_STEPS[loadingStep].target}%` }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
                 </div>
 
                 {/* Status message */}
                 <div className={clsx("text-sm font-semibold tracking-wide transition-colors", isLight ? "text-neutral-600" : "text-neutral-400")}>
-                  Processing Link...
+                  {LOADING_STEPS[loadingStep].text}
                 </div>
               </motion.div>
             );

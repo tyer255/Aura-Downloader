@@ -1,11 +1,10 @@
 import express from "express";
+import youtubedl from "youtube-dl-exec";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import youtubedl from "youtube-dl-exec";
 import ytdl from "@distube/ytdl-core";
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
-import puppeteer from "puppeteer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { ytmp4 as vredenYtmp4 } from "@vreden/youtube_scraper";
 import btch from "btch-downloader";
@@ -90,16 +89,15 @@ ${links}
 
 // Fetch webpage with robust headers
 async function fetchPageHtml(url: string): Promise<string> {
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
       'Cache-Control': 'no-cache',
       'Pragma': 'no-cache'
-    },
-    timeout: 4000
-  } as any);
+    }
+  }, 4000);
   if (!response.ok) {
     throw new Error(`Webpage fetch failed with status ${response.status}`);
   }
@@ -107,6 +105,25 @@ async function fetchPageHtml(url: string): Promise<string> {
 }
 
 // High speed timeout wrapper to keep the backend ultra responsive
+async function fetchWithTimeout(url: string, options: any = {}, timeoutMs: number = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err: any) {
+    clearTimeout(id);
+    if (err.name === 'AbortError') {
+      throw new Error('Timeout');
+    }
+    throw err;
+  }
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: any = null): Promise<T> {
   let timer: NodeJS.Timeout;
   const timeoutPromise = new Promise<T>((_, reject) => {
@@ -125,49 +142,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: any = nu
     }
     throw err;
   });
-}
-
-// Fetch webpage using Puppeteer to bypass JS-heavy blocks
-async function fetchPageWithPuppeteer(url: string): Promise<string> {
-  console.log("Opening Puppeteer for URL:", url);
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-extensions'
-    ]
-  });
-  try {
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
-    // Speed up loading by intercepting and blocking heavy assets (CSS, images, fonts, media, track files)
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const type = req.resourceType();
-      if (['image', 'stylesheet', 'font', 'media', 'other', 'manifest', 'texttrack'].includes(type)) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
-
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 6000 });
-    
-    // Reduce static timeout significantly because assets are blocked and the JS DOM is loaded almost instantly
-    await new Promise(r => setTimeout(r, 200));
-    
-    const content = await page.content();
-    return content;
-  } finally {
-    await browser.close();
-  }
 }
 
 // Local parser fallback that uses cheerio to extract high-fidelity standard metadata from HTML
@@ -306,22 +280,12 @@ async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
       (lowerHtml.includes('captcha') && htmlContent.length < 20000);
 
     if (isBlocked) {
-      console.log("Direct fetch HTML seems too short, blocked, or redirected to login. Falling back to Puppeteer...");
-      htmlContent = await fetchPageWithPuppeteer(crawlUrl);
+      
+      htmlContent = "";
     }
   } catch (err: any) {
     // If blocked, run Puppeteer
-    console.log("Direct fetch failed, falling back to Puppeteer:", err.message);
-    try {
-      let crawlUrl = url;
-      if (url.toLowerCase().includes("instagram.com") && !isProfile) {
-        const shortcode = getInstagramShortcode(url);
-        if (shortcode) crawlUrl = `https://www.instagram.com/p/${shortcode}/embed/`;
-      }
-      htmlContent = await fetchPageWithPuppeteer(crawlUrl);
-    } catch (puppeteerErr: any) {
-      console.log("Puppeteer fetch failed too:", puppeteerErr.message);
-    }
+    
   }
 
   // Ensure we have some content
@@ -779,7 +743,7 @@ async function extractWithCobalt(url: string) {
 
   try {
     console.log("[Cobalt] Querying working instances directory...");
-    const res = await withTimeout(fetch('https://cobalt.directory/api/working'), 5000) as any;
+    const res = await fetchWithTimeout("https://cobalt.directory/api/working", {}, 5000) as any;
     if (res && res.ok) {
       const data = await res.json();
       if (data && data.data) {
@@ -800,22 +764,21 @@ async function extractWithCobalt(url: string) {
     console.log("[Cobalt] Failed to fetch dynamic cobalt instances list:", e.message);
   }
 
-  instances = Array.from(new Set(instances.filter(Boolean))).slice(0, 15);
+  instances = Array.from(new Set(instances.filter(Boolean))).slice(0, 5);
   console.log(`[Cobalt Debug] URLs to try: ${instances.length} endpoints for: ${url}`);
 
   for (const inst of instances) {
     try {
       console.log(`[Cobalt Debug] Sending extraction POST request to: ${inst}`);
-      const response = await withTimeout(fetch(inst, {
+      const response = await fetchWithTimeout(inst, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },
-        body: JSON.stringify({
-          url: url
-        })
-      }), 7000) as any;
+        body: JSON.stringify({ url })
+      }, 4000) as any;
 
       if (!response.ok) {
         // Silently continue to next instance if one fails (many public instances now require JWT)
@@ -1234,6 +1197,7 @@ async function startServer() {
         } catch (e) {}
       }
 
+
       // ========================================================
       // 4. ULTIMATE Fallback: AI Direct Parsing
       // ========================================================
@@ -1241,6 +1205,13 @@ async function startServer() {
       const aiResult = await extractWithAI(url, false);
       if (aiResult && aiResult.success && (aiResult.url || (aiResult.media && aiResult.media.length > 0))) {
         return res.json(aiResult);
+      }
+
+      if (classification.platform === 'instagram') {
+        return res.status(400).json({
+          success: false,
+          error: "Instagram extraction failed. Due to recent Instagram policy changes, public API access is blocked and cookies/login are required. The developer is working on a fix."
+        });
       }
 
       return res.status(400).json({
