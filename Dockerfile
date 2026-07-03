@@ -52,7 +52,7 @@ RUN npm ci
 
 # Set the cache dir so puppeteer browsers install goes to the right place inside the container
 ENV PUPPETEER_CACHE_DIR=/app/puppeteer-cache
-RUN npx puppeteer browsers install chrome
+# RUN npx puppeteer browsers install chrome
 
 # Copy the rest of the application
 COPY . .
