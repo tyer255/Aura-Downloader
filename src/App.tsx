@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { DownloadResult } from './types';
 import clsx from 'clsx';
 import QRCode from 'qrcode';
+import { requestNotificationPermission, showNotification } from './lib/notifications';
 
 const getProxiedUrl = (url?: string, inline = true) => {
   if (!url) return '/images/avatar_placeholder.png';
@@ -493,6 +494,8 @@ export default function App() {
     e.preventDefault();
     if (!url.trim()) return;
 
+    requestNotificationPermission();
+
     // Check platform matching before proceeding
     const detected = detectPlatformFromUrl(url);
     if (detected && detected !== activeTab) {
@@ -558,6 +561,7 @@ export default function App() {
 
   const downloadFileClientSide = async (url: string, filename: string) => {
     try {
+      requestNotificationPermission();
       setDownloadProgress(0);
       setHistoryToast("Starting download...");
 
@@ -609,11 +613,19 @@ export default function App() {
       setDownloadProgress(null);
       setHistoryToast("Download complete!");
       setTimeout(() => setHistoryToast(null), 3000);
+      showNotification("Download Complete", {
+        body: `Successfully downloaded: ${filename}`,
+        icon: '/vite.svg'
+      });
     } catch (error) {
       console.error('Download setup failed:', error);
       setDownloadProgress(null);
       setHistoryToast("Download failed.");
       setTimeout(() => setHistoryToast(null), 3000);
+      showNotification("Download Failed", {
+        body: `Failed to download: ${filename}`,
+        icon: '/vite.svg'
+      });
     }
   };
 
