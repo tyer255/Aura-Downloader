@@ -1,0 +1,26 @@
+      // ========================================================
+      // 4. ULTIMATE Fallback: AI Direct Parsing
+      // ========================================================
+      console.log("Engaging universal AI fallback for:", url);
+      const aiResult = await extractWithAI(url, false);
+      if (aiResult && aiResult.success && (aiResult.url || (aiResult.media && aiResult.media.length > 0))) {
+        return res.json(aiResult);
+      }
+      if (classification.platform === 'instagram') {
+        return res.status(400).json({
+          success: false,
+          error: "Instagram extraction failed. Due to recent Instagram policy changes, public API access is blocked and cookies/login are required. The developer is working on a fix."
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        error: "Could not extract media URL. Please ensure the link is public and accessible."
+      });
+    } catch (e: any) {
+      console.log("Global Downloader Error:", e.message);
+      return res.status(500).json({
+        success: false,
+        error: "An unexpected extraction error occurred: " + e.message
+      });
+    }
+  });

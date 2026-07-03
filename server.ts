@@ -1,5 +1,5 @@
 import express from "express";
-import youtubedl from "youtube-dl-exec";
+
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import ytdl from "@distube/ytdl-core";
@@ -400,126 +400,6 @@ function getInstagramShortcode(url: string): string | null {
   }
 }
 
-// Helpers to extract qualities and file sizes from yt-dlp metadata
-function getFilesizeStr(f: any): string {
-  if (f.filesize) {
-    return `${(f.filesize / (1024 * 1024)).toFixed(1)} MB`;
-  } else if (f.filesize_approx) {
-    return `~${(f.filesize_approx / (1024 * 1024)).toFixed(1)} MB`;
-  }
-  return "";
-}
-
-function extractQualitiesFromYtDlp(output: any): any[] {
-  if (!output || !output.formats) return [];
-  
-  const qualities: any[] = [];
-  
-  // Sort formats by height descending
-  const sortedFormats = [...output.formats].sort((a: any, b: any) => {
-    const hA = a.height || 0;
-    const hB = b.height || 0;
-    return hB - hA;
-  });
-
-  // Find a solid stream with audio as a fallback url
-  const bestWithAudio = output.formats.find((f: any) => f.url && f.acodec && f.acodec !== 'none' && f.acodec !== null && f.vcodec && f.vcodec !== 'none') || output;
-  const fallbackUrl = bestWithAudio.url || output.url;
-
-  for (const f of sortedFormats) {
-    if (!f.url) continue;
-    if (f.vcodec === 'none' || f.vcodec === null) continue;
-    
-    const height = f.height || 0;
-    if (height === 0) continue;
-    
-    const hasAudio = f.acodec && f.acodec !== 'none' && f.acodec !== null;
-    
-    let label = `${height}p`;
-    if (f.fps) {
-      label += ` ${f.fps}fps`;
-    }
-    if (!hasAudio) {
-      label += " (No Audio)";
-    } else {
-      label += " (with Audio)";
-    }
-    
-    const existing = qualities.find(q => q.height === height);
-    if (existing) {
-      if (!existing.hasAudio && hasAudio) {
-        const idx = qualities.indexOf(existing);
-        qualities[idx] = {
-          label,
-          url: f.url,
-          ext: f.ext || "mp4",
-          size: getFilesizeStr(f),
-          height,
-          hasAudio
-        };
-      }
-      continue;
-    }
-    
-    qualities.push({
-      label,
-      url: f.url,
-      ext: f.ext || "mp4",
-      size: getFilesizeStr(f),
-      height,
-      hasAudio
-    });
-  }
-
-  // Ensure standard 1080p, 720p, 480p, 360p are ALWAYS visible
-  const standardHeights = [
-    { target: 1080, label: "1080p (Full HD)", size: "High Definition" },
-    { target: 720, label: "720p (HD Video)", size: "Standard HD" },
-    { target: 480, label: "480p (SD Video)", size: "Standard Definition" },
-    { target: 360, label: "360p (Mobile Video)", size: "Low Bandwidth" }
-  ];
-
-  const finalQualities: any[] = [];
-  
-  // First, map any found qualities that match our target heights or are close
-  for (const std of standardHeights) {
-    const matched = qualities.find(q => q.height === std.target && q.hasAudio) || 
-                    qualities.find(q => q.height === std.target) ||
-                    qualities.find(q => Math.abs(q.height - std.target) < 100 && q.hasAudio);
-    
-    if (matched) {
-      finalQualities.push({
-        label: `${std.target}p (${matched.hasAudio ? "with Audio" : "Original Stream"})`,
-        url: matched.url,
-        ext: matched.ext,
-        size: matched.size || std.size
-      });
-    } else if (fallbackUrl) {
-      // If missing, add fallback pointing to best stream with audio!
-      finalQualities.push({
-        label: std.label,
-        url: fallbackUrl,
-        ext: "mp4",
-        size: std.size
-      });
-    }
-  }
-
-  // Add any other unique qualities not added yet (e.g. 1440p, 2160p)
-  for (const q of qualities) {
-    const isClose = standardHeights.some(std => Math.abs(q.height - std.target) < 100);
-    if (!isClose && q.height > 1080) {
-      finalQualities.unshift({
-        label: `${q.height}p (Ultra HD)`,
-        url: q.url,
-        ext: q.ext,
-        size: q.size || "Best Quality"
-      });
-    }
-  }
-
-  return finalQualities.slice(0, 8);
-}
 
 // Fallback quality generator for simple or single-stream extractions
 function getFallbackQualities(url: string, mediaType: string = "video") {
@@ -1072,43 +952,6 @@ async function startServer() {
       }
 
       // ========================================================
-      // 3. FALLBACK TO YT-DLP FOR STREAMS (Skip for YouTube)
-      // ========================================================
-      if (classification.platform !== 'youtube') {
-        try {
-          const output = await withTimeout(youtubedl(url, {
-            dumpSingleJson: true,
-            noCheckCertificates: true,
-            noWarnings: true,
-            preferFreeFormats: true,
-            addHeader: [
-              'referer:google.com',
-              'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-            ]
-          }), 15000) as any;
-
-          let directUrl = output.url;
-          const qualities = extractQualitiesFromYtDlp(output);
-          if (!directUrl && qualities.length > 0) {
-            directUrl = qualities[0].url;
-          }
-
-          if (directUrl) {
-            return res.json({
-              success: true,
-              url: directUrl,
-              title: output.title || "Media Download",
-              thumbnail: output.thumbnail,
-              mediaType: output.playlist ? "carousel" : "video",
-              qualities: qualities,
-              source: "yt-dlp"
-            });
-          }
-        } catch (e) {}
-      }
-
-
-      // ========================================================
       // 4. ULTIMATE Fallback: AI Direct Parsing
       // ========================================================
       console.log("Engaging universal AI fallback for:", url);
@@ -1116,19 +959,16 @@ async function startServer() {
       if (aiResult && aiResult.success && (aiResult.url || (aiResult.media && aiResult.media.length > 0))) {
         return res.json(aiResult);
       }
-
       if (classification.platform === 'instagram') {
         return res.status(400).json({
           success: false,
           error: "Instagram extraction failed. Due to recent Instagram policy changes, public API access is blocked and cookies/login are required. The developer is working on a fix."
         });
       }
-
       return res.status(400).json({
         success: false,
         error: "Could not extract media URL. Please ensure the link is public and accessible."
       });
-
     } catch (e: any) {
       console.log("Global Downloader Error:", e.message);
       return res.status(500).json({
