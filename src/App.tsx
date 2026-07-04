@@ -6,6 +6,10 @@ import clsx from 'clsx';
 import QRCode from 'qrcode';
 import { requestNotificationPermission, showNotification } from './lib/notifications';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const PROXY_BASE = `${SUPABASE_URL}/functions/v1/proxy-download`;
+
 const getProxiedUrl = (url?: string, inline = true) => {
   if (!url) return '/images/avatar_placeholder.png';
   if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) {
@@ -13,15 +17,13 @@ const getProxiedUrl = (url?: string, inline = true) => {
   }
   // For Instagram/Facebook CDNs, always proxy to bypass client-side CORS/403 blocks
   if (url.includes('instagram.com') || url.includes('cdninstagram.com') || url.includes('fbcdn.net')) {
-    return `/api/proxy-download?url=${encodeURIComponent(url)}&inline=true`;
+    return `${PROXY_BASE}?url=${encodeURIComponent(url)}&inline=true`;
   }
   // For inline media (thumbnails, video previews), load directly from source CDNs
-  // to avoid server-side rate limits and bandwidth bottlenecks.
   if (inline) {
     return url;
   }
-  // Only proxy for actual downloads to force the Content-Disposition header
-  return `/api/proxy-download?url=${encodeURIComponent(url)}`;
+  return `${PROXY_BASE}?url=${encodeURIComponent(url)}`;
 };
 
 type Tab = 'pinterest' | 'youtube' | 'instagram' | 'tiktok' | 'facebook' | 'reddit';
@@ -517,9 +519,12 @@ export default function App() {
     try {
       const detectedPlatform = detectPlatformFromUrl(url.trim()) || activeTab;
 
-      const res = await fetch('/api/download', {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/download`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
         body: JSON.stringify({ url: url.trim() })
       });
       const data = await res.json();
@@ -565,9 +570,11 @@ export default function App() {
       setDownloadProgress(0);
       setHistoryToast("Starting download...");
 
-      const fetchUrl = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      const fetchUrl = `${PROXY_BASE}?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
       
-      const response = await fetch(fetchUrl);
+      const response = await fetch(fetchUrl, {
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+      });
       if (!response.ok) {
         setHistoryToast("Download failed (Server Error).");
         setTimeout(() => setHistoryToast(null), 3000);
