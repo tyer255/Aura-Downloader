@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { PrivacyPolicy, TermsConditions, DMCA, About, Contact, FAQ, NotFound, ServerError, CookiePolicy } from './pages/StaticPages';
+import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { m as motion, LazyMotion, domMax, AnimatePresence } from 'motion/react';
 import { DownloadResult } from './types';
 import clsx from 'clsx';
-import QRCode from 'qrcode';
+
 import { requestNotificationPermission, showNotification } from './lib/notifications';
 
 const getProxiedUrl = (url?: string, inline = true) => {
@@ -38,15 +41,15 @@ const getProxiedUrl = (url?: string, inline = true) => {
 
 type Tab = 'pinterest' | 'youtube' | 'instagram' | 'tiktok' | 'facebook' | 'reddit' | 'x' | 'linkedin';
 
-const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string }[] = [
-  { id: 'pinterest', label: 'Pinterest', placeholder: 'Paste Pinterest Link Here', name: 'Pinterest Downloader', description: 'Extract high-quality Pinterest images, videos, and GIFs. Simply paste the Pin link and let our extraction system do the rest.' },
-  { id: 'youtube', label: 'YouTube', placeholder: 'Paste YouTube Link (Video, Short, Channel, Playlist)', name: 'YouTube Downloader', description: 'Extract high-quality YouTube videos, shorts, audio, playlists, channels, and community posts. Simply paste the link and let our extraction system do the rest.' },
-  { id: 'instagram', label: 'Instagram', placeholder: 'Paste Instagram Link Here', name: 'Instagram Downloader', description: 'Extract high-quality Instagram reels, posts, photos, carousels, and stories. Simply paste the post link and let our extraction system do the rest.' },
-  { id: 'tiktok', label: 'TikTok', placeholder: 'Paste TikTok Link Here', name: 'TikTok Downloader', description: 'Extract high-quality TikTok videos (without watermark) and slideshows. Simply paste the TikTok link and let our extraction system do the rest.' },
-  { id: 'facebook', label: 'Facebook', placeholder: 'Paste Facebook Link Here', name: 'Facebook Downloader', description: 'Extract high-quality Facebook videos, reels, and posts. Simply paste the link and let our extraction system do the rest.' },
-  { id: 'reddit', label: 'Reddit', placeholder: 'Paste Reddit Link Here', name: 'Reddit Downloader', description: 'Extract high-quality Reddit videos with audio, image galleries, and posts. Simply paste the link and let our extraction system do the rest.' },
-  { id: 'x', label: 'X (Twitter)', placeholder: 'Paste X / Twitter Link Here', name: 'X / Twitter Downloader', description: 'Extract high-quality videos, GIFs, and images from X (Twitter) posts. Simply paste the tweet link and let our extraction system do the rest.' },
-  { id: 'linkedin', label: 'LinkedIn', placeholder: 'Paste LinkedIn Post Link Here', name: 'LinkedIn Downloader', description: 'Extract high-quality videos, images, and documents from LinkedIn posts. Simply paste the link and let our extraction system do the rest.' },
+const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string; title: string; }[] = [
+  { id: 'pinterest', label: 'Pinterest', placeholder: 'Paste Pinterest Link Here', name: 'Pinterest Downloader', title: 'Pinterest Downloader - Video & Image Saver', description: 'Download high-quality Pinterest images, videos, and GIFs for free. Our fast Pinterest downloader works on all devices without watermarks.' },
+  { id: 'youtube', label: 'YouTube', placeholder: 'Paste YouTube Link (Video, Short, Channel, Playlist)', name: 'YouTube Downloader', title: 'YouTube Downloader - Video & Audio Saver', description: 'Download YouTube videos and audio in HD quality. The fastest free YouTube video downloader for MP4 and MP3 formats.' },
+  { id: 'instagram', label: 'Instagram', placeholder: 'Paste Instagram Link Here', name: 'Instagram Downloader', title: 'Instagram Downloader - Save Photos & Videos', description: 'Download Instagram videos, photos, stories, IGTV and carousels for free. Fast and secure Instagram media saver.' },
+  { id: 'tiktok', label: 'TikTok', placeholder: 'Paste TikTok Link Here', name: 'TikTok Downloader', title: 'TikTok Downloader - No Watermark Video Saver', description: 'Download TikTok videos without watermark. Fast, free HD TikTok video and MP3 audio downloader.' },
+  { id: 'facebook', label: 'Facebook', placeholder: 'Paste Facebook Link Here', name: 'Facebook Downloader', title: 'Facebook Video Downloader - Save FB Videos', description: 'Download Facebook videos and reels in high quality. Free and fast FB video saver.' },
+  { id: 'reddit', label: 'Reddit', placeholder: 'Paste Reddit Link Here', name: 'Reddit Downloader', title: 'Reddit Video Downloader - Save Videos with Audio', description: 'Download Reddit videos with sound and audio. Save Reddit images, GIFs, and media fast and free.' },
+  { id: 'x', label: 'X (Twitter)', placeholder: 'Paste X / Twitter Link Here', name: 'X / Twitter Downloader', title: 'X (Twitter) Video Downloader - Save Tweets', description: 'Download videos and GIFs from X (Twitter). Fast, free, and secure X media saver.' },
+  { id: 'linkedin', label: 'LinkedIn', placeholder: 'Paste LinkedIn Post Link Here', name: 'LinkedIn Downloader', title: 'LinkedIn Video Downloader - Save LI Videos', description: 'Download LinkedIn videos, images, and documents. Save professional media from LinkedIn posts easily.' },
 ];
 
 const detectPlatformFromUrl = (url: string): Tab | null => {
@@ -215,7 +218,8 @@ function QRCodeButton({ url, className, isLight }: { url: string; className?: st
 
   const generateQR = async () => {
     try {
-      const dataUrl = await QRCode.toDataURL(url, {
+      const qrcodeLib = await import('qrcode');
+      const dataUrl = await (qrcodeLib.default || qrcodeLib).toDataURL(url, {
         width: 300,
         margin: 2,
         color: {
@@ -298,12 +302,15 @@ function QRCodeButton({ url, className, isLight }: { url: string; className?: st
               </p>
 
               {/* QR Image Frame */}
-              <div className={clsx(
+              
+      
+
+    <div className={clsx(
                 "p-4 rounded-2xl border flex items-center justify-center mb-6 bg-white shadow-xl transition-all",
                 isLight ? "border-neutral-200" : "border-white/5"
               )}>
                 {qrCodeUrl ? (
-                  <img src={qrCodeUrl} alt="QR Code" className="w-44 h-44 select-none rounded-lg" />
+                  <img src={qrCodeUrl} alt="QR Code" className="w-44 h-44 select-none rounded-lg"  loading="lazy" decoding="async" width="400" height="400" />
                 ) : error ? (
                   <div className="w-44 h-44 flex items-center justify-center text-red-500 text-xs font-semibold text-center">
                     {error}
@@ -351,8 +358,13 @@ function QRCodeButton({ url, className, isLight }: { url: string; className?: st
   );
 }
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('pinterest');
+function DownloaderView({ routeTab }: { routeTab?: Tab }) {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<Tab>(routeTab || 'pinterest');
+  
+  useEffect(() => {
+    if (routeTab) setActiveTab(routeTab);
+  }, [routeTab]);
   const [url, setUrl] = useState('');
   const [validationError, setValidationError] = useState<{
     title: string;
@@ -408,7 +420,7 @@ export default function App() {
   };
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [lightboxMediaList, setLightboxMediaList] = useState<{ url: string; type: 'video' | 'image'; title?: string }[]>([]);
+  const [lightboxMediaList, setLightboxMediaList] = useState<{ url: string; type: "video" | "image"; title?: string; thumbnail?: string }[]>([]);
 
   const [isLight, setIsLight] = useState<boolean>(() => {
     try {
@@ -696,24 +708,34 @@ export default function App() {
   };
 
   return (
+    <>
+      <Helmet>
+        <title>{activeTabData.title}</title>
+        <meta name="description" content={activeTabData.description} />
+        <meta property="og:title" content={activeTabData.title} />
+        <meta property="og:description" content={activeTabData.description} />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:card" content="summary_large_image" />
+      </Helmet>
+      <LazyMotion features={domMax}>
     <div className={clsx(
-      "min-h-screen bg-gradient-to-b flex flex-col items-center pt-8 pb-12 px-4 font-sans transition-colors duration-700",
+        "min-h-screen bg-gradient-to-b flex flex-col items-center pt-8 pb-12 px-4 font-sans transition-colors duration-700",
       isLight ? "text-neutral-900 selection:bg-red-500/10" : "text-neutral-50 selection:bg-red-500/30",
       getBgGlow(activeTab)
     )}>
       
       {/* Top Header */}
-      <div className="w-full max-w-2xl flex items-center justify-between mb-16 relative z-20">
+      <div className="w-full max-w-2xl flex flex-row items-center justify-between mb-8 sm:mb-16 relative z-20 gap-2 overflow-x-auto no-scrollbar">
         <div className={clsx(
-          "flex items-center rounded-full pl-4 pr-1.5 py-1.5 transition-colors border",
+          "flex items-center rounded-full pl-3 sm:pl-4 pr-1 sm:pr-1.5 py-1 sm:py-1.5 transition-colors border shrink-0",
           isLight ? "bg-white border-neutral-200 text-neutral-600" : "bg-white/5 border border-white/10 text-neutral-400"
         )}>
-          <span className="text-sm font-medium tracking-wide mr-3 uppercase">Support =</span>
-          <a href="https://youtube.com/@mridulgaming-_-official-800?si=qsAdamH6-973hgBe" target="_blank" rel="noopener noreferrer" className="bg-[#ff0000] text-white text-sm px-4 py-1.5 rounded-full font-semibold flex items-center gap-1.5 hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20">
-             <Youtube className="w-4 h-4" /> Subscribe
+          <span className="text-xs sm:text-sm font-medium tracking-wide mr-2 sm:mr-3 uppercase whitespace-nowrap">Support =</span>
+          <a href="https://youtube.com/@mridulgaming-_-official-800?si=qsAdamH6-973hgBe" target="_blank" rel="noopener noreferrer" className="bg-[#ff0000] text-white text-xs sm:text-sm px-3 sm:px-4 py-1 sm:py-1.5 rounded-full font-semibold flex items-center gap-1.5 hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 whitespace-nowrap">
+             <Youtube className="w-3 h-3 sm:w-4 sm:h-4" /> Subscribe
           </a>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Theme Toggle Button */}
           <button
             onClick={() => setIsLight(!isLight)}
@@ -901,12 +923,12 @@ export default function App() {
                             </span>
                             
                             {/* Close/Remove Button on the Side of each card */}
-                            <button
+                            <button aria-label="Close"
                               onClick={handleDelete}
                               className="p-1.5 rounded-full transition-colors cursor-pointer text-white/40 hover:text-red-400 hover:bg-white/5"
                               title="Remove item"
                             >
-                              <X className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
 
@@ -915,7 +937,7 @@ export default function App() {
                             onClick={() => {
                               handleUrlChange(item.url, item.platform);
                               if (item.platform) {
-                                  setActiveTab(item.platform);
+                                  navigate(item.platform === 'pinterest' ? '/' : `/${item.platform}-downloader`);
                               }
                               setShowHistory(false);
                             }}
@@ -923,7 +945,7 @@ export default function App() {
                           >
                             {item.thumbnail && (
                               <div className="w-12 h-12 rounded-lg bg-neutral-950 shrink-0 overflow-hidden border border-white/10 shadow-sm relative group-hover/item:scale-105 transition-transform">
-                                <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
+                                <img src={item.thumbnail} alt="" className="w-full h-full object-cover"  loading="lazy" decoding="async" width="400" height="400" />
                               </div>
                             )}
                             <div className="flex-1 min-w-0">
@@ -961,7 +983,7 @@ export default function App() {
                               onClick={() => {
                                 handleUrlChange(item.url, item.platform);
                                 if (item.platform) {
-                                  setActiveTab(item.platform);
+                                  navigate(item.platform === 'pinterest' ? '/' : `/${item.platform}-downloader`);
                                 }
                                 setShowHistory(false);
                               }}
@@ -1164,45 +1186,7 @@ export default function App() {
             </AnimatePresence>
 
             {/* Search & URL Input Box */}
-            {['tiktok', 'facebook', 'reddit'].includes(activeTab) ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className={clsx(
-                  "w-full max-w-2xl p-8 sm:p-12 rounded-3xl mb-12 border flex flex-col items-center text-center gap-6 shadow-2xl relative overflow-hidden",
-                  isLight 
-                    ? "bg-white/60 backdrop-blur-xl border-white/60" 
-                    : "bg-[#1c0d0f]/60 backdrop-blur-xl border-white/10"
-                )}
-                style={{
-                  boxShadow: isLight 
-                    ? "inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 20px 50px rgba(0, 0, 0, 0.1)" 
-                    : "inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 20px 50px rgba(0, 0, 0, 0.5)"
-                }}
-              >
-                {/* Background Blobs for Glassmorphism */}
-                <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none opacity-60">
-                  <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-blue-500/20 via-purple-500/10 to-transparent blur-2xl" />
-                  <div className="absolute bottom-[0%] -right-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-pink-500/20 via-orange-500/10 to-transparent blur-2xl" />
-                </div>
-                
-                <div className={clsx(
-                  "w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg border",
-                  isLight ? "bg-white/80 border-white text-neutral-800" : "bg-white/10 border-white/20 text-white"
-                )}>
-                  <Lock className="w-8 h-8" />
-                </div>
-                <div>
-                  <h4 className={clsx("font-black text-2xl mb-3 tracking-tight", isLight ? "text-neutral-900" : "text-white")}>
-                    Coming Soon
-                  </h4>
-                  <p className={clsx("text-base font-medium max-w-sm mx-auto leading-relaxed", isLight ? "text-neutral-600" : "text-neutral-400")}>
-                    Support for <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-500">{activeTabData.label}</span> is currently in development. Please check back later!
-                  </p>
-                </div>
-              </motion.div>
-            ) : (
-              <form onSubmit={handleDownload} className="w-full max-w-2xl mb-12 relative">
+            <form onSubmit={handleDownload} className="w-full max-w-2xl mb-12 relative">
                 <div className={clsx(
                   "relative flex items-center w-full border rounded-full p-2 pl-6 sm:pl-8 shadow-2xl backdrop-blur-xl group transition-all",
                   isLight 
@@ -1215,6 +1199,7 @@ export default function App() {
                     onChange={(e) => handleUrlChange(e.target.value)}
                     placeholder={activeTabData.placeholder}
                     required
+                    aria-label="Social media post or media URL"
                     className={clsx(
                       "w-full bg-transparent text-base sm:text-lg placeholder-neutral-400 outline-none py-3 pr-20 transition-colors",
                       isLight ? "text-neutral-900 placeholder-neutral-400" : "text-white placeholder-neutral-500"
@@ -1223,6 +1208,7 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={isLoading || !url}
+                    aria-label="Start fetching media"
                     className={clsx(
                       "absolute right-2 top-2 bottom-2 w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shrink-0 shadow-lg cursor-pointer",
                       isLight 
@@ -1241,7 +1227,6 @@ export default function App() {
                   </button>
                 </div>
               </form>
-            )}
           </motion.div>
         </AnimatePresence>
 
@@ -1435,7 +1420,7 @@ export default function App() {
                               
                               <div className="flex flex-col items-center text-center gap-4 mb-6 relative z-10">
                                 <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
-                                  <img src={getProxiedUrl(result.profile.avatarUrl)} alt="Logo" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                  <img src={getProxiedUrl(result.profile.avatarUrl)} alt="Logo" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" width="400" height="400" />
                                 </div>
                                 <div className="mt-2">
                                   <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Profile Logo</h4>
@@ -1443,15 +1428,14 @@ export default function App() {
                                 </div>
                               </div>
                               <div className="flex flex-col gap-3 mt-auto relative z-10">
-                                <a
-                                  href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.avatarUrl!, (result.profile?.username || "user") + "_avatar.jpg"); }}
+                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.avatarUrl!, (result.profile?.username || "user") + "_avatar.jpg"); }}
                                   className={clsx(
                                     "w-full text-center text-sm font-bold px-4 py-4 rounded-xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-md hover:shadow-lg hover:-translate-y-0.5",
                                     isLight ? "bg-neutral-900 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black"
                                   )}
                                 >
                                   <Download className="w-5 h-5" /> Download Logo
-                                </a>
+                                </button>
                                 <div className="flex flex-col sm:flex-row gap-2 w-full">
                                   <CopyButton url={result.profile.avatarUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
                                   <QRCodeButton url={result.profile.avatarUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
@@ -1471,7 +1455,7 @@ export default function App() {
 
                               <div className="flex flex-col items-center text-center gap-4 mb-6 relative z-10">
                                 <div className="w-full h-36 sm:h-44 rounded-2xl overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
-                                  <img src={getProxiedUrl(result.profile.bannerUrl)} alt="Banner" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                  <img src={getProxiedUrl(result.profile.bannerUrl)} alt="Banner" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" width="400" height="400" />
                                 </div>
                                 <div className="mt-2">
                                   <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Cover Banner</h4>
@@ -1479,15 +1463,14 @@ export default function App() {
                                 </div>
                               </div>
                               <div className="flex flex-col gap-3 mt-auto relative z-10">
-                                <a
-                                  href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.bannerUrl!, (result.profile?.username || "user") + "_banner.jpg"); }}
+                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.bannerUrl!, (result.profile?.username || "user") + "_banner.jpg"); }}
                                   className={clsx(
                                     "w-full text-center text-sm font-bold px-4 py-4 rounded-xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-md hover:shadow-lg hover:-translate-y-0.5",
                                     isLight ? "bg-neutral-900 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black"
                                   )}
                                 >
                                   <Download className="w-5 h-5" /> Download Banner
-                                </a>
+                                </button>
                                 <div className="flex flex-col sm:flex-row gap-2 w-full">
                                   <CopyButton url={result.profile.bannerUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
                                   <QRCodeButton url={result.profile.bannerUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
@@ -1562,7 +1545,7 @@ export default function App() {
                               {item.type === 'video' ? (
                                 <div className="w-full h-full relative">
                                   {item.thumbnail ? (
-                                    <img src={getProxiedUrl(item.thumbnail)} alt={`Video slide ${index + 1}`} className="w-full h-full object-cover opacity-80" />
+                                    <img src={getProxiedUrl(item.thumbnail)} alt={`Video slide ${index + 1}`} className="w-full h-full object-cover opacity-80"  loading="lazy" decoding="async" width="400" height="400" />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center bg-neutral-900">
                                       <Film className="w-10 h-10 text-neutral-600" />
@@ -1598,19 +1581,17 @@ export default function App() {
                             )}>
                               {item.type === 'video' ? (
                                 <div className="space-y-1.5">
-                                  <a
-                                    href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
+                                  <button type="button"                                     onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
                                     className={clsx(
                                       "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
                                       isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10"
                                     )}
                                   >
                                     <Download className="w-4 h-4" /> Download Video
-                                  </a>
+                                  </button>
                                 </div>
                               ) : (
-                                <a
-                                  href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
+                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
                                   
                                   className={clsx(
                                     "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
@@ -1618,7 +1599,7 @@ export default function App() {
                                   )}
                                 >
                                   <Download className="w-3.5 h-3.5" /> Download Image
-                                </a>
+                                </button>
                               )}
                               <div className="flex flex-col sm:flex-row gap-2 w-full">
                                 <CopyButton url={item.url} isLight={isLight} className="w-full sm:flex-1 rounded-xl px-3 py-2.5 text-xs justify-center" />
@@ -1646,7 +1627,8 @@ export default function App() {
                             setLightboxMediaList([{
                               url: result.url || result.thumbnail || '',
                               type: result.mediaType === 'video' ? 'video' : 'image',
-                              title: result.title || "Ready File Asset"
+                              title: result.title || "Ready File Asset",
+                              thumbnail: result.thumbnail
                             }]);
                             setLightboxIndex(0);
                           }}
@@ -1677,7 +1659,8 @@ export default function App() {
                               setLightboxMediaList([{
                                 url: result.url,
                                 type: result.mediaType === 'video' ? 'video' : 'image',
-                                title: result.title || "Ready File Asset"
+                                title: result.title || "Ready File Asset",
+                                thumbnail: result.thumbnail
                               }]);
                               setLightboxIndex(0);
                             }
@@ -1714,9 +1697,8 @@ export default function App() {
                               </span>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                                 {result.qualities.map((q, idx) => (
-                                  <a
-                                    key={idx}
-                                    href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + ".mp4"); }}
+                                  <button type="button"                                     key={idx}
+                                    onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + ".mp4"); }}
                                     
                                     className={clsx(
                                       "flex items-center justify-between p-3 rounded-xl transition-all border group/quality",
@@ -1742,14 +1724,13 @@ export default function App() {
                                     <div className={clsx("p-2 rounded-lg transition-colors", isLight ? "bg-neutral-100 group-hover/quality:bg-white/20" : "bg-white/10 group-hover/quality:bg-white/20")}>
                                       <Download className="w-4 h-4 text-emerald-500 group-hover/quality:text-white" />
                                     </div>
-                                  </a>
+                                  </button>
                                 ))}
                               </div>
                             </div>
                             {result.url && (
                               <div className={clsx("flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center mt-2 border-t pt-4 transition-colors w-full", isLight ? "border-neutral-200" : "border-white/5")}>
-                                <a
-                                  href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + ".mp4"); }}
+                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + ".mp4"); }}
                                   
                                   className={clsx(
                                     "w-full sm:w-auto inline-flex items-center justify-center gap-2 border px-6 py-3 rounded-full font-bold transition-all uppercase tracking-wider text-xs cursor-pointer",
@@ -1757,7 +1738,7 @@ export default function App() {
                                   )}
                                 >
                                   <Download className="w-4 h-4" /> Download Default File
-                                </a>
+                                </button>
                                 <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
                                 <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
                               </div>
@@ -1765,8 +1746,7 @@ export default function App() {
                           </div>
                         ) : result.url ? (
                           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center w-full">
-                            <a
-                              href="#" onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + ".mp4"); }}
+                            <button type="button"                               onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + ".mp4"); }}
                               
                               className={clsx(
                                 "w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-bold transition-all shadow-lg hover:shadow-xl uppercase tracking-wider text-sm cursor-pointer",
@@ -1774,7 +1754,7 @@ export default function App() {
                               )}
                             >
                               <Download className="w-5 h-5" /> Download Media File
-                            </a>
+                            </button>
                             <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3.5 rounded-full text-sm" />
                             <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3.5 rounded-full text-sm" />
                           </div>
@@ -1793,11 +1773,27 @@ export default function App() {
                   <div>
                     <h4 className="font-bold text-lg mb-1">Extraction Failed</h4>
                     <p className={clsx(
-                      "leading-relaxed text-sm font-medium transition-colors",
+                      "leading-relaxed text-sm font-medium transition-colors mb-4",
                       isLight ? "text-red-600/90" : "text-red-400/80"
                     )}>
                       {result.error || "The URL link is unsupported, private, or being blocked by the origin servers."}
                     </p>
+                    {(result.thumbnail || result.title) && (
+                      <div className={clsx(
+                        "mt-4 p-4 rounded-xl border flex gap-4 items-center bg-black/20",
+                        isLight ? "border-red-200" : "border-red-500/20"
+                      )}>
+                        {result.thumbnail && (
+                          <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10">
+                            <img src={getProxiedUrl(result.thumbnail)} alt="Thumbnail" className="w-full h-full object-cover"  loading="lazy" decoding="async" width="400" height="400" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wider opacity-60 mb-1">Recovered Metadata</p>
+                          {result.title && <p className="text-sm font-semibold line-clamp-2">{result.title}</p>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1808,14 +1804,39 @@ export default function App() {
       </div>
 
       {/* Footer */}
-      <div className="mt-auto pt-16 text-center relative z-10">
-        <p className={clsx(
-          "text-sm font-medium transition-colors",
-          isLight ? "text-neutral-400" : "text-neutral-500"
-        )}>
-          all right reserved by @Mridul-Downloader-app made by = Mridul ❤️
-        </p>
-      </div>
+      <footer className="mt-auto pt-24 pb-8 w-full max-w-7xl mx-auto px-4 relative z-10">
+        <div className={clsx("grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-12 py-8 border-y", isLight ? "border-neutral-200/60" : "border-white/10")}>
+          {TABS.map((tab) => (
+            <Link 
+              key={tab.id} 
+              to={`/${tab.id}-downloader`}
+              className={clsx(
+                "flex flex-col gap-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200",
+                isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"
+              )}
+            >
+              {tab.name}
+            </Link>
+          ))}
+        </div>
+        <div className="text-center flex flex-col items-center gap-4">
+          <div className="flex flex-wrap justify-center gap-4 text-sm font-medium">
+            <Link to="/about" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>About</Link>
+            <Link to="/contact" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Contact</Link>
+            <Link to="/faq" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>FAQ</Link>
+            <Link to="/privacy-policy" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Privacy Policy</Link>
+            <Link to="/cookie-policy" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Cookie Policy</Link>
+            <Link to="/terms" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Terms & Conditions</Link>
+            <Link to="/dmca" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>DMCA</Link>
+          </div>
+          <p className={clsx(
+            "text-sm font-medium transition-colors",
+            isLight ? "text-neutral-500" : "text-neutral-500"
+          )}>
+            all right reserved by @Mridul-Downloader-app made by = Mridul ❤️
+          </p>
+        </div>
+      </footer>
 
       {/* Lightbox Modal */}
       <AnimatePresence>
@@ -1860,13 +1881,12 @@ export default function App() {
 
                 <div className="flex items-center gap-3">
                   {/* Download Direct Link Button */}
-                  <a
-                    href="#" onClick={(e) => { e.preventDefault(); e.stopPropagation(); downloadFileClientSide(activeItem.url, (activeItem.title || "download").slice(0, 30).trim() + "_preview.mp4"); }}
+                  <button type="button"                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); downloadFileClientSide(activeItem.url, (activeItem.title || "download").slice(0, 30).trim() + "_preview.mp4"); }}
                     className="p-2 sm:p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/10 shadow-lg flex items-center justify-center"
                     title="Download Media File"
                   >
                     <Download className="w-5 h-5" />
-                  </a>
+                  </button>
 
                   {/* Close Lightbox Button */}
                   <button
@@ -1883,11 +1903,11 @@ export default function App() {
               <div className="flex-1 w-full flex items-center justify-center relative">
                 {/* Left Switch Button */}
                 {hasMultiple && (
-                  <button
+                  <button aria-label="Previous"
                     onClick={handlePrev}
                     className="absolute left-2 sm:left-4 z-20 p-3 sm:p-4 bg-white/5 hover:bg-white/15 text-white rounded-full transition-all border border-white/5 shadow-xl flex items-center justify-center backdrop-blur-sm group"
                   >
-                    <ChevronLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
+                <ChevronLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
                   </button>
                 )}
 
@@ -1904,14 +1924,14 @@ export default function App() {
                   {activeItem.type === 'video' ? (
                     <video
                       src={getProxiedUrl(activeItem.url)}
+                      poster={activeItem.thumbnail ? getProxiedUrl(activeItem.thumbnail) : undefined}
                       controls
                       autoPlay
                       playsInline
                       className="max-w-full max-h-[75vh] rounded-2xl object-contain shadow-[0_25px_60px_rgba(0,0,0,0.8)] border border-white/5"
                     />
                   ) : (
-                    <img
-                      src={getProxiedUrl(activeItem.url)}
+                    <img                       src={getProxiedUrl(activeItem.url)}
                       alt={activeItem.title || "Full Resolution Preview"}
                       className="max-w-full max-h-[75vh] rounded-2xl object-contain shadow-[0_25px_60px_rgba(0,0,0,0.8)] border border-white/5"
                       referrerPolicy="no-referrer"
@@ -1924,11 +1944,11 @@ export default function App() {
 
                 {/* Right Switch Button */}
                 {hasMultiple && (
-                  <button
+                  <button aria-label="Next"
                     onClick={handleNext}
                     className="absolute right-2 sm:right-4 z-20 p-3 sm:p-4 bg-white/5 hover:bg-white/15 text-white rounded-full transition-all border border-white/5 shadow-xl flex items-center justify-center backdrop-blur-sm group"
                   >
-                    <ChevronRight className="w-6 h-6 group-hover:translate-x-0.5 transition-transform" />
+                <ChevronRight className="w-6 h-6 group-hover:translate-x-0.5 transition-transform" />
                   </button>
                 )}
               </div>
@@ -1980,5 +2000,32 @@ export default function App() {
         }
       `}} />
     </div>
+    </LazyMotion>
+    </>
+  );
+}
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<DownloaderView routeTab="pinterest" />} />
+      <Route path="/youtube-downloader" element={<DownloaderView routeTab="youtube" />} />
+      <Route path="/instagram-downloader" element={<DownloaderView routeTab="instagram" />} />
+      <Route path="/tiktok-downloader" element={<DownloaderView routeTab="tiktok" />} />
+      <Route path="/facebook-downloader" element={<DownloaderView routeTab="facebook" />} />
+      <Route path="/reddit-downloader" element={<DownloaderView routeTab="reddit" />} />
+      <Route path="/x-downloader" element={<DownloaderView routeTab="x" />} />
+      <Route path="/linkedin-downloader" element={<DownloaderView routeTab="linkedin" />} />
+      <Route path="/pinterest-downloader" element={<DownloaderView routeTab="pinterest" />} />
+      
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsConditions />} />
+      <Route path="/dmca" element={<DMCA />} />
+      <Route path="/about" element={<About />} />
+      <Route path="/contact" element={<Contact />} />
+      <Route path="/faq" element={<FAQ />} />
+      <Route path="/500" element={<ServerError />} />
+      <Route path="/cookie-policy" element={<CookiePolicy />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
   );
 }
