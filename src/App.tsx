@@ -1,32 +1,42 @@
 import React, { useState } from 'react';
-import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock } from 'lucide-react';
+import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DownloadResult } from './types';
 import clsx from 'clsx';
 import QRCode from 'qrcode';
 import { requestNotificationPermission, showNotification } from './lib/notifications';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-const PROXY_BASE = `${SUPABASE_URL}/functions/v1/proxy-download`;
-
 const getProxiedUrl = (url?: string, inline = true) => {
   if (!url) return '/images/avatar_placeholder.png';
   if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) {
     return url;
   }
-  // For Instagram/Facebook CDNs, always proxy to bypass client-side CORS/403 blocks
-  if (url.includes('instagram.com') || url.includes('cdninstagram.com') || url.includes('fbcdn.net')) {
-    return `${PROXY_BASE}?url=${encodeURIComponent(url)}&inline=true`;
+  // For Instagram/Facebook/TikTok/Reddit CDNs, always proxy to bypass client-side CORS/403 blocks/hotlink protections
+  if (
+    url.includes('instagram.com') || 
+    url.includes('cdninstagram.com') || 
+    url.includes('fbcdn.net') || 
+    url.includes('tiktokcdn') || 
+    url.includes('ttwstatic') || 
+    url.includes('redd.it') || 
+    url.includes('redditstatic') ||
+    url.includes('twimg.com') ||
+    url.includes('twitter.com') ||
+    url.includes('licdn.com') ||
+    url.includes('linkedin.com')
+  ) {
+    return `/api/proxy-download?url=${encodeURIComponent(url)}&inline=true`;
   }
   // For inline media (thumbnails, video previews), load directly from source CDNs
+  // to avoid server-side rate limits and bandwidth bottlenecks.
   if (inline) {
     return url;
   }
-  return `${PROXY_BASE}?url=${encodeURIComponent(url)}`;
+  // Only proxy for actual downloads to force the Content-Disposition header
+  return `/api/proxy-download?url=${encodeURIComponent(url)}`;
 };
 
-type Tab = 'pinterest' | 'youtube' | 'instagram' | 'tiktok' | 'facebook' | 'reddit';
+type Tab = 'pinterest' | 'youtube' | 'instagram' | 'tiktok' | 'facebook' | 'reddit' | 'x' | 'linkedin';
 
 const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string }[] = [
   { id: 'pinterest', label: 'Pinterest', placeholder: 'Paste Pinterest Link Here', name: 'Pinterest Downloader', description: 'Extract high-quality Pinterest images, videos, and GIFs. Simply paste the Pin link and let our extraction system do the rest.' },
@@ -35,6 +45,8 @@ const TABS: { id: Tab; label: string; placeholder: string; name: string; descrip
   { id: 'tiktok', label: 'TikTok', placeholder: 'Paste TikTok Link Here', name: 'TikTok Downloader', description: 'Extract high-quality TikTok videos (without watermark) and slideshows. Simply paste the TikTok link and let our extraction system do the rest.' },
   { id: 'facebook', label: 'Facebook', placeholder: 'Paste Facebook Link Here', name: 'Facebook Downloader', description: 'Extract high-quality Facebook videos, reels, and posts. Simply paste the link and let our extraction system do the rest.' },
   { id: 'reddit', label: 'Reddit', placeholder: 'Paste Reddit Link Here', name: 'Reddit Downloader', description: 'Extract high-quality Reddit videos with audio, image galleries, and posts. Simply paste the link and let our extraction system do the rest.' },
+  { id: 'x', label: 'X (Twitter)', placeholder: 'Paste X / Twitter Link Here', name: 'X / Twitter Downloader', description: 'Extract high-quality videos, GIFs, and images from X (Twitter) posts. Simply paste the tweet link and let our extraction system do the rest.' },
+  { id: 'linkedin', label: 'LinkedIn', placeholder: 'Paste LinkedIn Post Link Here', name: 'LinkedIn Downloader', description: 'Extract high-quality videos, images, and documents from LinkedIn posts. Simply paste the link and let our extraction system do the rest.' },
 ];
 
 const detectPlatformFromUrl = (url: string): Tab | null => {
@@ -58,6 +70,12 @@ const detectPlatformFromUrl = (url: string): Tab | null => {
   }
   if (lowercase.includes('youtube.com') || lowercase.includes('youtu.be')) {
     return 'youtube';
+  }
+  if (lowercase.includes('x.com') || lowercase.includes('twitter.com')) {
+    return 'x';
+  }
+  if (lowercase.includes('linkedin.com')) {
+    return 'linkedin';
   }
   return null;
 };
@@ -110,6 +128,20 @@ const getPlatformDetails = (platform: Tab): { icon: React.ReactNode; colorClass:
         colorClass: 'text-orange-500',
         bgClass: 'bg-orange-500/10',
         borderClass: 'border-orange-500/20'
+      };
+    case 'x':
+      return {
+        icon: <Twitter className="w-3.5 h-3.5" />,
+        colorClass: 'text-neutral-800 dark:text-neutral-200',
+        bgClass: 'bg-neutral-500/10 dark:bg-white/10',
+        borderClass: 'border-neutral-500/20 dark:border-white/20'
+      };
+    case 'linkedin':
+      return {
+        icon: <Linkedin className="w-3.5 h-3.5" />,
+        colorClass: 'text-sky-500',
+        bgClass: 'bg-sky-500/10',
+        borderClass: 'border-sky-500/20'
       };
     default:
       return {
@@ -519,12 +551,9 @@ export default function App() {
     try {
       const detectedPlatform = detectPlatformFromUrl(url.trim()) || activeTab;
 
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/download`, {
+      const res = await fetch('/api/download', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim() })
       });
       const data = await res.json();
@@ -570,11 +599,9 @@ export default function App() {
       setDownloadProgress(0);
       setHistoryToast("Starting download...");
 
-      const fetchUrl = `${PROXY_BASE}?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      const fetchUrl = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
       
-      const response = await fetch(fetchUrl, {
-        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-      });
+      const response = await fetch(fetchUrl);
       if (!response.ok) {
         setHistoryToast("Download failed (Server Error).");
         setTimeout(() => setHistoryToast(null), 3000);
@@ -710,7 +737,7 @@ export default function App() {
               }, 400);
             }}
             className={clsx(
-              "w-11 h-11 rounded-full flex items-center justify-center transition-all border shadow-md cursor-pointer",
+              "w-11 h-11 rounded-full flex items-center justify-center transition-all border shadow-md cursor-pointer relative group",
               isLight 
                 ? "bg-white border-neutral-200 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100" 
                 : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:bg-white/10",
@@ -718,81 +745,55 @@ export default function App() {
             )}
             title="Download History"
           >
-            <History className="w-5 h-5" />
+            <History className="w-5 h-5 relative z-10 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
+            <div className="absolute inset-0 rounded-full bg-white/0 group-hover:bg-white/5 blur-md transition-all"></div>
           </button>
         </div>
       </div>
 
-      {/* Glassmorphic Prism Sliding History Drawer */}
+      {/* Glassmorphic Sliding History Drawer */}
       <AnimatePresence>
         {showHistory && (
           <div className="fixed inset-0 z-50 overflow-hidden">
-            {/* Ambient Backdrop */}
+            {/* Ambient Backdrop Overlay */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
               onClick={() => setShowHistory(false)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-all"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 cursor-pointer"
             />
             
-            {/* Sliding Drawer Container */}
-            <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+            {/* Premium History Slider Container */}
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "tween", duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="fixed top-0 right-0 h-full w-full sm:w-[400px] ultra-glass z-50 flex flex-col text-white"
+            >
+              <div className="ambient-highlight"></div>
               
-              {/* Close Slider Button on the Side (Floating on the left edge) */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
-                className="absolute left-0 top-1/2 -translate-y-1/2 -ml-14 z-30"
-              >
-                <button
-                  onClick={() => setShowHistory(false)}
-                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-2xl cursor-pointer transition-all hover:scale-110 active:scale-95 border bg-[#180a0c]/90 border-white/10 text-white hover:bg-neutral-900 shadow-black/80"
-                  title="Close Slider"
-                >
-                  <ChevronRight className="w-6 h-6" />
-                </button>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ type: 'spring', damping: 30, stiffness: 220 }}
-                className={clsx(
-                  "w-screen max-w-md border-l flex flex-col h-full shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden transition-all will-change-transform bg-black/75 backdrop-blur-3xl border-neutral-800 text-neutral-100"
-                )}
-                style={{
-                  boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.05)"
-                }}
-              >
-                {/* Rainbow/Prism Underlay Glow Blobs */}
-                <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none opacity-50">
-                  <div className="absolute -top-[10%] -left-[20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-red-500/20 via-pink-500/15 to-transparent blur-3xl" />
-                  <div className="absolute top-[25%] -right-[20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-blue-500/15 via-teal-500/10 to-transparent blur-3xl" />
-                  <div className="absolute bottom-[5%] left-[10%] w-[70%] h-[40%] rounded-full bg-gradient-to-br from-amber-500/10 via-purple-500/15 to-transparent blur-3xl" />
-                </div>
-
-                {/* Top Glass Prism Glimmer line */}
-                <div className="h-[2px] w-full bg-gradient-to-r from-red-500/80 via-pink-500/80 via-purple-500/80 via-blue-500/80 via-emerald-500/80 to-yellow-500/80 opacity-90" />
-
-                {/* Header with Title & Clear All Button on Top */}
-                <div className="p-5 flex items-center justify-between border-b border-white/5 bg-black/20">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-red-500/10 rounded-xl shrink-0 border border-red-500/20">
-                      <History className="w-5 h-5 text-red-500" />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-black tracking-tight uppercase">History</h2>
-                      <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">{history.length} items</p>
-                    </div>
+              {/* Header */}
+              <div className="px-8 py-7 flex justify-between items-center shrink-0 relative">
+                {/* Subtle separator line */}
+                <div className="absolute bottom-0 left-8 right-8 h-[1px] bg-gradient-to-r from-white/10 via-white/5 to-transparent"></div>
+                
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 shadow-inner">
+                    <History className="w-5 h-5 text-white/90" />
                   </div>
-
-                  {/* Clear All on the Top */}
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tight text-white/90">History</h2>
+                    <p className="text-xs text-white/40 mt-0.5">{history.length} recent activities</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3 relative z-20">
+                  {/* Clear All Header Action */}
                   {history.length > 0 && (
-                    <div>
+                    <div className="relative">
                       {confirmClearAll ? (
                         <div className="flex items-center gap-1.5 bg-red-500/10 p-1 rounded-xl border border-red-500/20">
                           <button
@@ -811,7 +812,7 @@ export default function App() {
                       ) : (
                         <button
                           onClick={() => setConfirmClearAll(true)}
-                          className="px-3 py-1.5 rounded-full border text-[10px] font-black cursor-pointer transition-all uppercase tracking-wider flex items-center gap-1.5 bg-white/5 border-white/10 text-neutral-300 hover:bg-red-950/40 hover:text-red-400 hover:border-red-500/30"
+                          className="px-3 py-1.5 rounded-full border text-[10px] font-black cursor-pointer transition-all uppercase tracking-wider flex items-center gap-1.5 bg-white/5 border-white/10 text-white/80 hover:bg-red-950/40 hover:text-red-400 hover:border-red-500/30"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Clear All</span>
@@ -819,79 +820,144 @@ export default function App() {
                       )}
                     </div>
                   )}
-                </div>
 
-                {/* History list content */}
-                <div className="overflow-y-auto p-5 flex-1 space-y-3 no-scrollbar relative z-10">
-                  {history.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center text-center py-28 px-4">
-                      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3 border shadow-sm bg-white/5 border-white/10">
-                        <History className="w-5 h-5 text-neutral-400" />
+                  {/* Close Button */}
+                  <button 
+                    onClick={() => setShowHistory(false)}
+                    className="text-white/40 hover:text-white bg-white/0 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all p-2.5 rounded-full hover:rotate-90 duration-300 cursor-pointer"
+                    title="Close Slider"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content Area */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar relative z-10">
+                {history.length === 0 ? (
+                  <div className="px-6 py-4 flex-1 h-full flex flex-col items-center justify-center relative min-h-[350px]">
+                    {/* Floating particles / abstract background elements for empty state */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-white/5 rounded-full blur-[50px] pointer-events-none" />
+
+                    <div className="relative flex flex-col items-center text-center opacity-80 hover:opacity-100 transition-opacity duration-500">
+                      {/* Glowing Empty Icon */}
+                      <div className="w-20 h-20 mb-6 rounded-3xl bg-gradient-to-tr from-white/5 to-white/[0.02] border border-white/10 shadow-[inset_0_0_20px_rgba(255,255,255,0.02)] flex items-center justify-center relative group">
+                        {/* Subtle pulsing glow */}
+                        <div className="absolute inset-0 bg-white/5 rounded-3xl blur-xl animate-pulse" />
+                        <Archive className="w-8 h-8 text-white/30 relative z-10" />
                       </div>
-                      <h4 className="font-extrabold text-sm uppercase tracking-wider">No archives</h4>
-                      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 max-w-xs mt-1 leading-relaxed font-medium">
-                        References will be saved automatically here for rapid one-click retrieval.
+                      
+                      <h3 className="text-base font-medium text-white/80 mb-1.5">No recent history</h3>
+                      <p className="text-sm text-white/40 max-w-[220px] leading-relaxed">
+                        Items you process or download will automatically appear here.
                       </p>
                     </div>
-                  ) : (
-                    <AnimatePresence initial={false}>
-                      {history.map((item, idx) => {
-                        const platDetails = getPlatformDetails(item.platform || 'pinterest');
-                        const isCopied = copiedHistoryUrl === item.url;
+                  </div>
+                ) : (
+                  <AnimatePresence initial={false}>
+                    {history.map((item, idx) => {
+                      const platDetails = getPlatformDetails(item.platform || 'pinterest');
+                      const isCopied = copiedHistoryUrl === item.url;
 
-                        const handleCopyUrl = async (e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          try {
-                            await navigator.clipboard.writeText(item.url);
-                            setCopiedHistoryUrl(item.url);
-                            triggerHistoryToast("Copied successfully! 📋");
-                            setTimeout(() => setCopiedHistoryUrl(null), 2000);
-                          } catch (err) {}
-                        };
+                      const handleCopyUrl = async (e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        try {
+                          await navigator.clipboard.writeText(item.url);
+                          setCopiedHistoryUrl(item.url);
+                          triggerHistoryToast("Copied successfully! 📋");
+                          setTimeout(() => setCopiedHistoryUrl(null), 2000);
+                        } catch (err) {}
+                      };
 
-                        const handleDelete = (e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          const updated = history.filter((_, i) => i !== idx);
-                          setHistory(updated);
-                          localStorage.setItem('download_history', JSON.stringify(updated));
-                          triggerHistoryToast("Removed from history 🗑️");
-                        };
+                      const handleDelete = (e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        const updated = history.filter((_, i) => i !== idx);
+                        setHistory(updated);
+                        localStorage.setItem('download_history', JSON.stringify(updated));
+                        triggerHistoryToast("Removed from history 🗑️");
+                      };
 
-                        return (
-                          <motion.div
-                            key={item.url + '_' + idx}
-                            initial={{ opacity: 0, y: 12 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, x: 40 }}
-                            className="border rounded-2xl p-4 transition-all relative flex flex-col gap-2 group/item overflow-hidden bg-white/5 hover:bg-white/10 border-white/10 shadow-md"
-                            style={{
-                              boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15)"
+                      return (
+                        <motion.div
+                          key={item.url + '_' + idx}
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: 40 }}
+                          className="border rounded-2xl p-4.5 transition-all relative flex flex-col gap-3 group/item overflow-hidden bg-white/[0.02] hover:bg-white/[0.06] border-white/5 hover:border-white/10 shadow-lg shadow-black/30"
+                          style={{
+                            boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15)"
+                          }}
+                        >
+                          {/* Card Top Header: Platform indicator & Close Button */}
+                          <div className="flex items-center justify-between">
+                            <span className={clsx(
+                              "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border",
+                              platDetails.bgClass,
+                              platDetails.borderClass,
+                              platDetails.colorClass
+                            )}>
+                              {platDetails.icon}
+                              <span>{getTabLabel(item.platform || 'pinterest')}</span>
+                            </span>
+                            
+                            {/* Close/Remove Button on the Side of each card */}
+                            <button
+                              onClick={handleDelete}
+                              className="p-1.5 rounded-full transition-colors cursor-pointer text-white/40 hover:text-red-400 hover:bg-white/5"
+                              title="Remove item"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Card Body: Title and URL */}
+                          <div 
+                            onClick={() => {
+                              handleUrlChange(item.url, item.platform);
+                              if (item.platform) {
+                                  setActiveTab(item.platform);
+                              }
+                              setShowHistory(false);
                             }}
+                            className="text-left cursor-pointer flex-1 flex gap-3 mt-1 items-center"
                           >
-                            {/* Card Top Header: Platform indicator & Close Button on the Side */}
-                            <div className="flex items-center justify-between">
-                              <span className={clsx(
-                                "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border",
-                                platDetails.bgClass,
-                                platDetails.borderClass,
-                                platDetails.colorClass
-                              )}>
-                                {platDetails.icon}
-                                <span>{getTabLabel(item.platform || 'pinterest')}</span>
-                              </span>
-                              
-                              {/* Close/Remove Button on the Side of each card */}
-                              <button
-                                onClick={handleDelete}
-                                className="p-1.5 rounded-full transition-colors cursor-pointer text-neutral-400 hover:text-red-400 hover:bg-white/5"
-                                title="Remove item"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
+                            {item.thumbnail && (
+                              <div className="w-12 h-12 rounded-lg bg-neutral-950 shrink-0 overflow-hidden border border-white/10 shadow-sm relative group-hover/item:scale-105 transition-transform">
+                                <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-sm line-clamp-1 transition-colors text-white/90 hover:text-white group-hover/item:underline decoration-white/30">
+                                {item.appName ? `${item.appName} - ` : ''}{item.title}
+                              </h4>
+                              <p className="text-[11px] text-white/40 font-mono truncate mt-0.5 select-all">
+                                {item.url}
+                              </p>
                             </div>
+                          </div>
 
-                            {/* Card Body: Title and URL */}
-                            <div 
+                          {/* Card Footer actions: Copy & Load */}
+                          <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-white/5 mt-1">
+                            {/* Copy Button */}
+                            <button
+                              onClick={handleCopyUrl}
+                              className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer border transition-all hover:scale-[1.02] active:scale-[0.98] bg-white/5 hover:bg-white/10 border-white/5 text-white"
+                            >
+                              {isCopied ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span className="text-emerald-400">Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5 text-white/60" />
+                                  <span>Copy URL</span>
+                                </>
+                              )}
+                            </button>
+
+                            {/* Load button */}
+                            <button
                               onClick={() => {
                                 handleUrlChange(item.url, item.platform);
                                 if (item.platform) {
@@ -899,92 +965,45 @@ export default function App() {
                                 }
                                 setShowHistory(false);
                               }}
-                              className="text-left cursor-pointer flex-1 flex gap-3 mt-1 items-center"
+                              className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] bg-white text-neutral-900 hover:bg-neutral-100"
                             >
-                              {item.thumbnail && (
-                                <div className="w-12 h-12 rounded-lg bg-neutral-900 shrink-0 overflow-hidden border border-white/10 shadow-sm">
-                                  <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
-                                </div>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-extrabold text-sm line-clamp-1 transition-colors hover:underline decoration-red-500 decoration-2 text-white">
-                                  {item.appName ? `${item.appName} - ` : ''}{item.title}
-                                </h4>
-                                <p className="text-[11px] text-neutral-400 font-mono truncate mt-0.5 select-all">
-                                  {item.url}
-                                </p>
-                              </div>
-                            </div>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Load URL</span>
+                            </button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                )}
+              </div>
 
-                            {/* Card Footer actions: Copy & Load */}
-                            <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-white/5 mt-1">
-                              {/* Copy Button */}
-                              <button
-                                onClick={handleCopyUrl}
-                                className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer border transition-all hover:scale-[1.02] active:scale-[0.98] bg-white/5 hover:bg-white/10 border-white/5 text-white"
-                              >
-                                {isCopied ? (
-                                  <>
-                                    <Check className="w-3.5 h-3.5 text-green-500" />
-                                    <span className="text-green-500">Copied</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="w-3.5 h-3.5" />
-                                    <span>Copy URL</span>
-                                  </>
-                                )}
-                              </button>
-
-                              {/* Load button */}
-                              <button
-                                onClick={() => {
-                                  handleUrlChange(item.url, item.platform);
-                                  if (item.platform) {
-                                    setActiveTab(item.platform);
-                                  }
-                                  setShowHistory(false);
-                                }}
-                                className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] bg-white text-neutral-900 hover:bg-neutral-100"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                <span>Load URL</span>
-                              </button>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </AnimatePresence>
-                  )}
-                </div>
-
-                {/* Floating toast notification */}
-                <AnimatePresence>
-                  {historyToast && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 15 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 15 }}
-                      className="absolute bottom-6 left-6 right-6 z-40 bg-neutral-900 text-white text-[11px] font-bold py-3 px-4 rounded-xl shadow-2xl flex items-center gap-2.5 border border-white/10 backdrop-blur-md"
-                    >
-                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                      <span>{historyToast}</span>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Bottom Slider Footer */}
-                <div className="p-4 border-t flex justify-center transition-colors relative z-10 border-white/5 bg-black/15">
-                  <button
-                    onClick={() => setShowHistory(false)}
-                    className="w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border text-center hover:scale-[1.01] active:scale-[0.99] bg-white/5 hover:bg-white/10 border-white/10 text-white"
+              {/* Floating toast notification */}
+              <AnimatePresence>
+                {historyToast && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 15 }}
+                    className="absolute bottom-20 left-6 right-6 z-40 bg-neutral-900 text-white text-[11px] font-bold py-3 px-4 rounded-xl shadow-2xl flex items-center gap-2.5 border border-white/10 backdrop-blur-md"
                   >
-                    Close Slider
-                  </button>
-                </div>
+                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                    <span>{historyToast}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-              </motion.div>
-            </div>
+              {/* Bottom Slider Footer */}
+              <div className="p-4 border-t flex justify-center transition-colors relative z-10 border-white/5 bg-black/15">
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border border-white/10 text-center hover:scale-[1.01] active:scale-[0.99] bg-white/5 hover:bg-white/10 text-white"
+                >
+                  Close Slider
+                </button>
+              </div>
+
+            </motion.div>
           </div>
         )}
       </AnimatePresence>
@@ -1009,6 +1028,8 @@ export default function App() {
                     case 'facebook': return 'shadow-[0_0_15px_rgba(24,119,242,0.15)]';
                     case 'reddit': return 'shadow-[0_0_15px_rgba(255,69,0,0.15)]';
                     case 'pinterest': return 'shadow-[0_0_15px_rgba(230,0,35,0.15)]';
+                    case 'x': return 'shadow-[0_0_15px_rgba(0,0,0,0.1)]';
+                    case 'linkedin': return 'shadow-[0_0_15px_rgba(10,102,194,0.15)]';
                     default: return 'shadow-md';
                   }
                 }
@@ -1019,6 +1040,8 @@ export default function App() {
                   case 'facebook': return 'shadow-[0_0_15px_rgba(24,119,242,0.4)]';
                   case 'reddit': return 'shadow-[0_0_15px_rgba(255,69,0,0.4)]';
                   case 'pinterest': return 'shadow-[0_0_15px_rgba(230,0,35,0.4)]';
+                  case 'x': return 'shadow-[0_0_15px_rgba(255,255,255,0.3)]';
+                  case 'linkedin': return 'shadow-[0_0_15px_rgba(10,102,194,0.4)]';
                   default: return 'shadow-md';
                 }
               };
@@ -1935,6 +1958,25 @@ export default function App() {
         }
         .animate-scan {
           animation: scan 2.8s ease-in-out infinite;
+        }
+        .ultra-glass {
+          background: linear-gradient(145deg, rgba(20, 20, 24, 0.65) 0%, rgba(10, 10, 12, 0.85) 100%);
+          backdrop-filter: blur(40px);
+          -webkit-backdrop-filter: blur(40px);
+          box-shadow: 
+            -30px 0 60px rgba(0, 0, 0, 0.7), 
+            inset 1px 1px 0px rgba(255, 255, 255, 0.08),
+            inset -1px -1px 0px rgba(255, 255, 255, 0.02);
+          border-left: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .ambient-highlight {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 100%);
+          z-index: 10;
         }
       `}} />
     </div>

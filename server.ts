@@ -179,6 +179,7 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
       directUrl = thumbnail || "";
     }
     
+    if (!directUrl && !isProfile) { return { success: false, error: "Could not locate media URL in the page content." }; }
     const mediaType = directUrl && (directUrl.includes(".mp4") || directUrl.includes("m3u8") || $('meta[property="og:video"]').length > 0) ? "video" : "image";
 
     if (isProfile) {
@@ -254,6 +255,41 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
 }
 
 // Use Gemini-3.5-flash to extract high fidelity direct media URLs & Profile data
+
+import { exec } from 'child_process';
+import utilSync from 'util';
+const execAsync = utilSync.promisify(exec);
+
+async function extractWithYtDlp(url: string) {
+  try {
+    const { stdout } = await execAsync(`./yt-dlp --dump-json "${url}"`, { timeout: 15000 });
+    const data = JSON.parse(stdout);
+    
+    // Choose the best video URL
+    let mediaUrl = data.url;
+    if (!mediaUrl && data.formats) {
+       // get best format with video and audio
+       const best = data.formats.filter((f: any) => f.vcodec !== 'none' && f.acodec !== 'none').sort((a: any, b: any) => (b.height || 0) - (a.height || 0))[0];
+       if (best) mediaUrl = best.url;
+       else if (data.formats.length > 0) mediaUrl = data.formats[0].url;
+    }
+    
+    if (mediaUrl) {
+       return {
+         success: true,
+         url: mediaUrl,
+         title: data.title || "Video",
+         thumbnail: data.thumbnail || "",
+         mediaType: "video",
+         source: "yt-dlp"
+       };
+    }
+  } catch(e: any) {
+    console.error("yt-dlp extraction failed:", e.message);
+  }
+  return null;
+}
+
 async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
   const ai = getGemini();
 
@@ -424,7 +460,7 @@ function getFallbackQualities(url: string, mediaType: string = "video") {
 // Classify URL to decide the optimal parsing route
 function classifyUrl(urlStr: string) {
   const url = urlStr.toLowerCase().trim();
-  let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'unknown' = 'unknown';
+  let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'x' | 'linkedin' | 'unknown' = 'unknown';
   let type: 'profile' | 'community_post' | 'media' = 'media';
 
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
@@ -483,6 +519,10 @@ function classifyUrl(urlStr: string) {
         }
       }
     }
+  } else if (url.includes("x.com") || url.includes("twitter.com")) {
+    platform = 'x';
+  } else if (url.includes("linkedin.com")) {
+    platform = 'linkedin';
   }
 
   return { platform, type };
@@ -612,31 +652,37 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
   }
 }
 
-async function extractWithCobalt(url: string) {
+async function extractWithCobalt(url: string, platform?: string) {
   let instances = [
     'https://api.cobalt.tools',
-    'https://cobalt-api.pewpew.nyc',
-    'https://co.wuk.sh',
-    'https://cobalt.tu.fo',
-    'https://cobalt.qewertyy.dev'
+    'https://dog.kittycat.boo',
+    'https://cobaltapi.squair.xyz',
+    'https://nuko-c.meowing.de'
   ];
 
   try {
-    console.log("[Cobalt] Querying working instances directory...");
-    const res = await fetchWithTimeout("https://cobalt.directory/api/working", {}, 5000) as any;
+    console.log(`[Cobalt] Querying working instances directory for platform: ${platform || 'all'}...`);
+    const res = await fetchWithTimeout("https://cobalt.directory/api/working", {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    }, 5000) as any;
     if (res && res.ok) {
-      const data = await res.json();
-      if (data && data.data) {
-        const list: string[] = [];
-        for (const platform of Object.keys(data.data)) {
-          if (Array.isArray(data.data[platform])) {
-            list.push(...data.data[platform]);
+      const json = await res.json();
+      const workingData = json.data || json;
+      if (workingData) {
+        const platformKey = platform ? platform.toLowerCase() : "";
+        const platformSpecific = platformKey && workingData[platformKey] ? workingData[platformKey] : [];
+        const allWorking: string[] = [];
+        for (const k of Object.keys(workingData)) {
+          if (Array.isArray(workingData[k])) {
+            allWorking.push(...workingData[k]);
           }
         }
-        if (list.length > 0) {
-          const uniqueList = Array.from(new Set(list));
-          instances = [...uniqueList, ...instances];
-          uniqueList.sort(() => Math.random() - 0.5);
+        const uniqueAllWorking = Array.from(new Set([...platformSpecific, ...allWorking]));
+        if (uniqueAllWorking.length > 0) {
+          // Put platform specific ones first, then random shuffle of other ones, then fallback list
+          instances = [...platformSpecific, ...uniqueAllWorking.sort(() => Math.random() - 0.5), ...instances];
         }
       }
     }
@@ -644,7 +690,7 @@ async function extractWithCobalt(url: string) {
     console.log("[Cobalt] Failed to fetch dynamic cobalt instances list:", e.message);
   }
 
-  instances = Array.from(new Set(instances.filter(Boolean))).slice(0, 5);
+  instances = Array.from(new Set(instances.filter(u => u && u.startsWith('http') && !u.includes('liubquanti.click')))).slice(0, 8);
   console.log(`[Cobalt Debug] URLs to try: ${instances.length} endpoints for: ${url}`);
 
   for (const inst of instances) {
@@ -658,10 +704,17 @@ async function extractWithCobalt(url: string) {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },
         body: JSON.stringify({ url })
-      }, 4000) as any;
+      }, 5000) as any;
 
       if (!response.ok) {
-        // Silently continue to next instance if one fails (many public instances now require JWT)
+        // Parse error response to see if it's JWT missing, so we can log it
+        try {
+          const errData = await response.json();
+          if (errData && errData.error && errData.error.code === 'error.api.auth.jwt.missing') {
+             console.log(`[Cobalt Debug] Endpoint ${inst} requires JWT auth, skipping...`);
+             continue;
+          }
+        } catch(e) {}
         continue;
       }
 
@@ -678,6 +731,12 @@ async function extractWithCobalt(url: string) {
           if (match && match[1]) {
             thumbUrl = `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
           }
+        } else {
+          try {
+             const html = await fetchPageHtml(url);
+             const $ = cheerio.load(html);
+             thumbUrl = $('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content') || "";
+          } catch(e) {}
         }
         
         console.log(`[Cobalt Debug] SUCCESS EXTRACTION from ${inst} for ${url}! File URL is ready.`);
@@ -713,7 +772,7 @@ async function extractWithCobalt(url: string) {
           source: `cobalt-${inst}`
         };
       } else if (data && data.status === 'picker' && Array.isArray(data.picker)) {
-                const firstUrl = data.picker[0]?.url;
+        const firstUrl = data.picker[0]?.url;
         if (firstUrl) {
            try {
               console.log(`[Cobalt Debug] Verifying carousel tunnel URL is alive: ${firstUrl.substring(0, 50)}...`);
@@ -753,7 +812,7 @@ async function extractWithCobalt(url: string) {
         console.log(`[Cobalt Debug] Endpoint ${inst} returned internal application error:`, data.text);
       }
     } catch (e: any) {
-      console.log(`[Cobalt Debug] Connection failed with ${inst}:`, e.message);
+      console.log(`[Cobalt Debug] Endpoint ${inst} skipped (not responding):`, e.message);
     }
   }
 
@@ -776,11 +835,9 @@ async function startServer() {
       return res.status(400).send("URL query parameter is required");
     }
 
-    // Bypass proxy for Cobalt tunnel URLs to avoid Cloudflare bot blocking
-    // Cobalt tunnels have CORS and Content-Disposition headers natively.
+    // Proxied to bypass Cobalt IP-binding for tunnels
     if (fileUrl.includes("/tunnel?id=")) {
-      console.log(`Redirecting Cobalt tunnel URL to avoid proxy block: ${fileUrl}`);
-      return res.redirect(fileUrl);
+      console.log(`Proxying Cobalt tunnel URL: ${fileUrl}`);
     }
 
     console.log(`Initiating stream proxy download for: ${fileUrl} (inline=${inline})`);
@@ -845,7 +902,7 @@ async function startServer() {
       // ========================================================
       try {
         console.log(`[Universal Extractor] Attempting Cobalt extraction for: ${url}`);
-        const cobaltResult = await extractWithCobalt(url);
+        const cobaltResult = await extractWithCobalt(url, classification.platform);
         if (cobaltResult && cobaltResult.success) {
           console.log(`[Universal Extractor] Success extracting ${url} using Cobalt!`);
           // Ensure a thumbnail is always present
@@ -870,8 +927,58 @@ async function startServer() {
         });
       }
 
-      // PINTEREST PIN
-      // INSTAGRAM REEL/POST/STORY
+      // TIKTOK FALLBACK (using btch-downloader)
+      if (classification.platform === 'tiktok') {
+        try {
+          console.log("[TikTok] Attempting fallback using btch-downloader...");
+          const btchRes = await btch.ttdl(url);
+          if (btchRes && btchRes.status && btchRes.video && btchRes.video.length > 0) {
+             return res.json({
+                success: true,
+                url: btchRes.video[0],
+                title: btchRes.title || "TikTok Video",
+                thumbnail: btchRes.thumbnail || "",
+                mediaType: "video",
+                source: "btch-tiktok"
+             });
+          }
+        } catch(e: any) {
+          console.log("TikTok fallback failed:", e.message);
+        }
+      }
+
+      // PINTEREST FALLBACK (from FIPY_downloader)
+      if (classification.platform === 'pinterest') {
+        try {
+          console.log("[Pinterest] Scraping video-snippet from page...");
+          let fetchUrl = url;
+          if (url.includes("pin.it")) {
+             // Resolve redirect for pin.it
+             const redirectRes = await fetch(url, { redirect: 'manual' });
+             if (redirectRes.status >= 300 && redirectRes.status < 400) {
+                fetchUrl = redirectRes.headers.get('location') || url;
+             }
+          }
+          const pinRes = await fetch(fetchUrl);
+          const html = await pinRes.text();
+          const match = html.match(/<script[^>]*data-test-id="video-snippet"[^>]*>(.*?)<\/script>/s);
+          if (match && match[1]) {
+             const json = JSON.parse(match[1]);
+             if (json && json.contentUrl) {
+                return res.json({
+                   success: true,
+                   url: json.contentUrl,
+                   title: json.name || "Pinterest Video",
+                   thumbnail: json.thumbnailUrl || "",
+                   mediaType: "video",
+                   source: "fipy-pinterest-scraper"
+                });
+             }
+          }
+        } catch(e: any) {
+          console.log("Pinterest fallback failed:", e.message);
+        }
+      }
       if (classification.platform === 'reddit') {
         try {
           const rRes = await fetch(url);
@@ -903,6 +1010,41 @@ async function startServer() {
             });
           }
         } catch (e) {}
+      }
+
+      
+
+      // FACEBOOK FALLBACK (from FIPY_downloader)
+      if (classification.platform === 'facebook') {
+        try {
+          console.log("[Facebook] Attempting fallback using FIPY downloader API...");
+          const fbRes = await fetch("https://facebook-video-downloader.fly.dev/app/main.php", {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+            },
+            body: new URLSearchParams({ url })
+          });
+          const fbData = await fbRes.json() as any;
+          if (fbData && fbData.links) {
+             const hdUrl = fbData.links["Download High Quality"];
+             const sdUrl = fbData.links["Download Low Quality"];
+             const targetUrl = hdUrl || sdUrl;
+             if (targetUrl) {
+                return res.json({
+                  success: true,
+                  url: targetUrl,
+                  title: fbData.title || "Facebook Video",
+                  thumbnail: fbData.thumbnail || "",
+                  mediaType: "video",
+                  source: "fipy-facebook-api"
+                });
+             }
+          }
+        } catch(e: any) {
+          console.log("Facebook fallback failed:", e.message);
+        }
       }
 
       // YOUTUBE VIDEO/SHORTS
@@ -952,12 +1094,27 @@ async function startServer() {
       }
 
       // ========================================================
+      
+      // ========================================================
+      // 3.5 yt-dlp LOCAL EXTRACTION (from youwee repo logic)
+      // ========================================================
+      try {
+        console.log("[yt-dlp] Attempting local extraction...");
+        const ytdlpResult = await extractWithYtDlp(url);
+        if (ytdlpResult && ytdlpResult.success) {
+           console.log(`[yt-dlp] Success extracting ${url}!`);
+           return res.json(ytdlpResult);
+        }
+      } catch(e) {}
+
       // 4. ULTIMATE Fallback: AI Direct Parsing
       // ========================================================
       console.log("Engaging universal AI fallback for:", url);
       const aiResult = await extractWithAI(url, false);
       if (aiResult && aiResult.success && (aiResult.url || (aiResult.media && aiResult.media.length > 0))) {
-        return res.json(aiResult);
+        if (aiResult.url || (aiResult.media && aiResult.media[0] && aiResult.media[0].url)) {
+          return res.json(aiResult);
+        }
       }
       if (classification.platform === 'instagram') {
         return res.status(400).json({

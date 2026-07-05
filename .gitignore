@@ -7,5 +7,20 @@ node_modules/
 .cache/
 puppeteer-cache
 puppeteer-cache/
+.puppeteer-cache/
+.puppeteer-cache
 dist
 dist/
+
+# Compiler and tool caches
+node-compile-cache/
+tsx-0/
+.tsx/
+
+# Temp test and scratch files
+test-*.ts
+test-*.js
+fix-*.cjs
+fix-*.js
+fix.txt
+out.json
