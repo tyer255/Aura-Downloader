@@ -673,7 +673,7 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
 }
 
 
-async function startServer() {
+export async function startServer() {
   const app = express();
   const PORT = 3000;
 
@@ -684,6 +684,88 @@ async function startServer() {
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     next();
   });
+
+  
+async function extractWithCobalt(url: string) {
+  const instances = [
+    "https://co.wuk.sh/api/json",
+    "https://cobalt.q0.is/api/json",
+    "https://api.cobalt.bckc.rs/api/json",
+    "https://cobalt.kwiatekit.com/api/json",
+    "https://cobalt.shiron.dev/api/json",
+    "https://api.cobalt.tools/api/json",
+    "https://api.ryzendesu.vip/api/downloader/igdl" 
+  ];
+
+  for (const instance of instances) {
+    try {
+      console.log(`Trying Cobalt instance: ${instance}`);
+      const isRyzen = instance.includes('ryzendesu');
+      
+      let res;
+      if (isRyzen) {
+        res = await fetch(`${instance}?url=${encodeURIComponent(url)}`);
+      } else {
+        res = await fetch(instance, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            url: url,
+            aFormat: "best",
+            vQuality: "max"
+          })
+        });
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        
+        if (isRyzen && data.data && data.data.length > 0) {
+           return {
+             success: true,
+             title: "Instagram Video",
+             url: data.data[0].url,
+             mediaType: "video",
+             qualities: getFallbackQualities(data.data[0].url, "video"),
+             media: data.data.map((m: any) => ({ type: "video", url: m.url, thumbnail: m.thumbnail || "" }))
+           };
+        }
+
+        if (data.status === "redirect" || data.status === "stream" || data.status === "success") {
+          return {
+            success: true,
+            title: "Extracted Media",
+            url: data.url,
+            mediaType: "video",
+            qualities: getFallbackQualities(data.url, "video"),
+            media: [{ type: "video", url: data.url }]
+          };
+        }
+        if (data.status === "picker") {
+          // Multiple items
+          const media = data.picker.map((item: any) => ({
+            type: item.type === "video" ? "video" : "image",
+            url: item.url,
+            thumbnail: item.thumb || ""
+          }));
+          return {
+            success: true,
+            title: "Extracted Media",
+            url: media[0]?.url,
+            mediaType: media[0]?.type,
+            media: media
+          };
+        }
+      }
+    } catch (e) {
+      console.log(`Cobalt instance ${instance} failed.`);
+    }
+  }
+  return null;
+}
 
   app.post("/api/download", async (req, res) => {
     const { url } = req.body;
@@ -705,7 +787,15 @@ async function startServer() {
         return res.json(ytDlpResult);
       }
 
-      // 2. Fallbacks for specific platforms
+      // 2. Cobalt API instances (Best for Vercel/Bolt)
+      console.log("yt-dlp failed or not available, trying Cobalt API instances...");
+      const cobaltResult = await extractWithCobalt(trimmedUrl);
+      if (cobaltResult && cobaltResult.success) {
+        console.log("Extraction via Cobalt succeeded!");
+        return res.json(cobaltResult);
+      }
+
+      // 3. Fallbacks for specific platforms
       if (lowerUrl.includes("tiktok.com")) {
         try {
           const result = await btch.ttdl(trimmedUrl);
@@ -788,9 +878,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
+  return app;
 }
 
 startServer();

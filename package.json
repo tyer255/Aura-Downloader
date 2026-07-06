@@ -43,6 +43,7 @@
     "motion": "^12.42.0",
     "nayan-media-downloader": "^0.0.1-security",
     "nayan-media-downloaders": "^0.1.8",
+    "nayan-videos-downloader": "^0.0.1-security",
     "play-dl": "^1.9.7",
     "prem-downloader-2": "^3.0.0",
     "qrcode": "^1.5.4",
