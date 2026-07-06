@@ -611,7 +611,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       setDownloadProgress(0);
       setHistoryToast("Starting download...");
 
-      const fetchUrl = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      const fetchUrl = url.startsWith("/api/proxy-download") ? url : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
       
       const response = await fetch(fetchUrl);
       if (!response.ok) {
@@ -1728,15 +1728,6 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             </div>
                             {result.url && (
                               <div className={clsx("flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center mt-2 border-t pt-4 transition-colors w-full", isLight ? "border-neutral-200" : "border-white/5")}>
-                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + (result.mediaType === "image" ? ".jpg" : ".mp4")); }}
-                                  
-                                  className={clsx(
-                                    "w-full sm:w-auto inline-flex items-center justify-center gap-2 border px-6 py-3 rounded-full font-bold transition-all uppercase tracking-wider text-xs cursor-pointer",
-                                    isLight ? "bg-white border-neutral-200 text-neutral-800 hover:bg-neutral-900 hover:text-white" : "bg-white/10 hover:bg-white hover:text-black border-white/10 text-white"
-                                  )}
-                                >
-                                  <Download className="w-4 h-4" /> Download Default File
-                                </button>
                                 <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
                                 <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
                               </div>

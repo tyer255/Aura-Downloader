@@ -2,6 +2,8 @@ FROM node:22-slim
 
 # Install system dependencies for Puppeteer
 RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    python3 \
     ca-certificates \
     fonts-liberation \
     libasound2 \
