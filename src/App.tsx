@@ -679,7 +679,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     if (!result || !result.media) return;
     result.media.forEach((item, index) => {
       setTimeout(() => {
-        downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item_" + (index + 1) + ".mp4");
+        downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item_" + (index + 1) + (item.type === "video" ? ".mp4" : ".jpg"));
       }, index * 600); // delay to prevent overwhelming
     });
   };
@@ -1581,9 +1581,9 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             )}>
                               {item.type === 'video' ? (
                                 <div className="space-y-1.5">
-                                  <button type="button"                                     onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
-                                    className={clsx(
-                                      "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
+                                  <button type="button"                                     onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + (item.type === "video" ? "_item.mp4" : "_item.jpg")); }}
+                                  className={clsx(
+                                    "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
                                       isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10"
                                     )}
                                   >
@@ -1591,8 +1591,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                   </button>
                                 </div>
                               ) : (
-                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
-                                  
+                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + (item.type === "video" ? "_item.mp4" : "_item.jpg")); }}
                                   className={clsx(
                                     "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
                                     isLight ? "bg-white hover:bg-neutral-900 hover:text-white border-neutral-200 text-neutral-800" : "bg-white/5 hover:bg-white hover:text-black border border-white/10 text-white"
@@ -1698,8 +1697,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                                 {result.qualities.map((q, idx) => (
                                   <button type="button"                                     key={idx}
-                                    onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + ".mp4"); }}
-                                    
+                                    onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + "." + (q.ext || "mp4")); }}
                                     className={clsx(
                                       "flex items-center justify-between p-3 rounded-xl transition-all border group/quality",
                                       isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10"
@@ -1730,7 +1728,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             </div>
                             {result.url && (
                               <div className={clsx("flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center mt-2 border-t pt-4 transition-colors w-full", isLight ? "border-neutral-200" : "border-white/5")}>
-                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + ".mp4"); }}
+                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + (result.mediaType === "image" ? ".jpg" : ".mp4")); }}
                                   
                                   className={clsx(
                                     "w-full sm:w-auto inline-flex items-center justify-center gap-2 border px-6 py-3 rounded-full font-bold transition-all uppercase tracking-wider text-xs cursor-pointer",
@@ -1746,7 +1744,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           </div>
                         ) : result.url ? (
                           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center w-full">
-                            <button type="button"                               onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + ".mp4"); }}
+                            <button type="button"                               onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + (result.mediaType === "image" ? ".jpg" : ".mp4")); }}
                               
                               className={clsx(
                                 "w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-bold transition-all shadow-lg hover:shadow-xl uppercase tracking-wider text-sm cursor-pointer",
@@ -1805,13 +1803,13 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
       {/* Footer */}
       <footer className="mt-auto pt-24 pb-8 w-full max-w-7xl mx-auto px-4 relative z-10">
-        <div className={clsx("grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-12 py-8 border-y", isLight ? "border-neutral-200/60" : "border-white/10")}>
+        <div className={clsx("grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 mb-12 py-8 border-y", isLight ? "border-neutral-200/60" : "border-white/10")}>
           {TABS.map((tab) => (
             <Link 
               key={tab.id} 
               to={`/${tab.id}-downloader`}
               className={clsx(
-                "flex flex-col gap-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200",
+                "inline-flex flex-col gap-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200 sm:items-start items-center text-center sm:text-left",
                 isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"
               )}
             >
@@ -1819,8 +1817,8 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             </Link>
           ))}
         </div>
-        <div className="text-center flex flex-col items-center gap-4">
-          <div className="flex flex-wrap justify-center gap-4 text-sm font-medium">
+        <div className="text-center flex flex-col items-center gap-6">
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium leading-relaxed">
             <Link to="/about" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>About</Link>
             <Link to="/contact" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Contact</Link>
             <Link to="/faq" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>FAQ</Link>
@@ -1830,7 +1828,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             <Link to="/dmca" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>DMCA</Link>
           </div>
           <p className={clsx(
-            "text-sm font-medium transition-colors",
+            "text-sm font-medium transition-colors mb-2 text-center",
             isLight ? "text-neutral-500" : "text-neutral-500"
           )}>
             all right reserved by @Mridul-Downloader-app made by = Mridul ❤️
@@ -1881,7 +1879,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
                 <div className="flex items-center gap-3">
                   {/* Download Direct Link Button */}
-                  <button type="button"                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); downloadFileClientSide(activeItem.url, (activeItem.title || "download").slice(0, 30).trim() + "_preview.mp4"); }}
+                  <button type="button"                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); downloadFileClientSide(activeItem.url, (activeItem.title || "download").slice(0, 30).trim() + "_preview" + (activeItem.type === "video" ? ".mp4" : ".jpg")); }}
                     className="p-2 sm:p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/10 shadow-lg flex items-center justify-center"
                     title="Download Media File"
                   >
