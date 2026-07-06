@@ -1802,14 +1802,17 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       </div>
 
       {/* Footer */}
-      <footer className="mt-auto pt-24 pb-8 w-full max-w-7xl mx-auto px-4 relative z-10">
-        <div className={clsx("grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 mb-12 py-8 border-y", isLight ? "border-neutral-200/60" : "border-white/10")}>
+      <footer className="mt-auto pt-20 pb-10 w-full max-w-7xl mx-auto px-4 relative z-10">
+        <div className={clsx(
+          "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 sm:gap-x-8 sm:gap-y-10 mb-10 py-10 border-y", 
+          isLight ? "border-neutral-200/60" : "border-white/10"
+        )}>
           {TABS.map((tab) => (
             <Link 
               key={tab.id} 
               to={`/${tab.id}-downloader`}
               className={clsx(
-                "inline-flex flex-col gap-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200 sm:items-start items-center text-center sm:text-left",
+                "flex items-center justify-center sm:justify-start px-2 py-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200 text-center sm:text-left leading-relaxed",
                 isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"
               )}
             >
@@ -1817,8 +1820,8 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             </Link>
           ))}
         </div>
-        <div className="text-center flex flex-col items-center gap-6">
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium leading-relaxed">
+        <div className="flex flex-col items-center justify-center gap-6">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4 text-sm font-medium leading-loose text-center max-w-3xl mx-auto">
             <Link to="/about" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>About</Link>
             <Link to="/contact" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Contact</Link>
             <Link to="/faq" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>FAQ</Link>
@@ -1828,7 +1831,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             <Link to="/dmca" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>DMCA</Link>
           </div>
           <p className={clsx(
-            "text-sm font-medium transition-colors mb-2 text-center",
+            "text-sm font-medium transition-colors text-center mt-2 leading-relaxed px-4",
             isLight ? "text-neutral-500" : "text-neutral-500"
           )}>
             all right reserved by @Mridul-Downloader-app made by = Mridul ❤️

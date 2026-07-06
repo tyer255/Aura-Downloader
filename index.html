@@ -10,6 +10,12 @@
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#ef4444" />
 
+        <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta property="twitter:image" content="/icon-512.png" />
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Universal Social Media Downloader | Save Videos & Images" />
@@ -33,5 +39,25 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+      <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(reg => {
+            console.log('ServiceWorker registration successful');
+          }).catch(err => {
+            console.log('ServiceWorker registration failed: ', err);
+          });
+        });
+      }
+      
+      // Request notification permission if not already granted or denied
+      if ('Notification' in window) {
+        if (Notification.permission === 'default') {
+          setTimeout(() => {
+            Notification.requestPermission();
+          }, 3000);
+        }
+      }
+    </script>
   </body>
 </html>
