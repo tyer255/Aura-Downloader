@@ -13,6 +13,15 @@ import btch from "btch-downloader";
 import https from "https";
 import http from "http";
 import { URL } from "url";
+import axios from "axios";
+
+// Additional TikTok scrapers
+import { tiktok as mrnimaTiktok } from "@mrnima/tiktok-downloader";
+import tiktokApiDl from "@tobyg74/tiktok-api-dl";
+import { tiktokdl } from "@xct007/tiktok-scraper";
+
+// Additional Instagram scrapers
+import { instagram as mrnimaInstagram } from "@mrnima/instagram-downloader";
 
 // Initialize Gemini client lazily
 let aiClient: GoogleGenAI | null = null;
@@ -797,6 +806,7 @@ async function extractWithCobalt(url: string) {
 
       // 3. Fallbacks for specific platforms
       if (lowerUrl.includes("tiktok.com")) {
+        // Try btch-downloader
         try {
           const result = await btch.ttdl(trimmedUrl);
           if (result && result.status && result.video && result.video.length > 0) {
@@ -812,10 +822,88 @@ async function extractWithCobalt(url: string) {
             });
           }
         } catch (e) {
-          console.log("TikTok fallback scraper failed (falling back).");
+          console.log("btch TikTok failed, trying alternatives...");
+        }
+
+        // Try @mrnima/tiktok-downloader
+        try {
+          const result = await mrnimaTiktok(trimmedUrl);
+          if (result && result.status && result.server1?.url) {
+            return res.json({
+              success: true,
+              title: "TikTok Video",
+              thumbnail: result.thumbnail || "",
+              url: result.server1.url,
+              mediaType: "video",
+              qualities: getFallbackQualities(result.server1.url, "video"),
+              media: [{ type: "video", url: result.server1.url, thumbnail: result.thumbnail }]
+            });
+          }
+        } catch (e) {
+          console.log("mrnima TikTok failed, trying more...");
+        }
+
+        // Try @tobyg74/tiktok-api-dl
+        try {
+          const result = await tiktokApiDl(trimmedUrl);
+          if (result && result.status && result.result?.video?.play) {
+            return res.json({
+              success: true,
+              title: result.result.title || "TikTok Video",
+              thumbnail: result.result.thumbnail || "",
+              url: result.result.video.play,
+              mediaType: "video",
+              qualities: getFallbackQualities(result.result.video.play, "video"),
+              media: [{ type: "video", url: result.result.video.play, thumbnail: result.result.thumbnail }]
+            });
+          }
+        } catch (e) {
+          console.log("tobyg74 TikTok failed");
+        }
+
+        // Try @xct007/tiktok-scraper
+        try {
+          const result = await tiktokdl(trimmedUrl);
+          if (result && result.video) {
+            return res.json({
+              success: true,
+              title: "TikTok Video",
+              thumbnail: result.thumbnail || "",
+              url: result.video,
+              mediaType: "video",
+              qualities: getFallbackQualities(result.video, "video"),
+              media: [{ type: "video", url: result.video, thumbnail: result.thumbnail }]
+            });
+          }
+        } catch (e) {
+          console.log("xct007 TikTok failed");
         }
       }
-      
+
+      // Instagram fallbacks
+      if (lowerUrl.includes("instagram.com")) {
+        try {
+          const result = await mrnimaInstagram(trimmedUrl);
+          if (result && result.status && result.data && result.data.length > 0) {
+            const media = result.data.map((item: any) => ({
+              type: item.type || "image",
+              url: item.url,
+              thumbnail: item.thumb || item.url
+            }));
+            return res.json({
+              success: true,
+              title: "Instagram Media",
+              thumbnail: media[0]?.thumbnail || "",
+              url: media[0]?.url,
+              mediaType: media.length > 1 ? "carousel" : media[0]?.type,
+              media: media
+            });
+          }
+        } catch (e) {
+          console.log("mrnima Instagram failed");
+        }
+      }
+
       if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be")) {
         try {
           const result = await btch.youtube(trimmedUrl);
