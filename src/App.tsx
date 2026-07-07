@@ -10,7 +10,7 @@ import clsx from 'clsx';
 import { requestNotificationPermission, showNotification } from './lib/notifications';
 
 const getProxiedUrl = (url?: string, inline = true) => {
-  if (!url) return '/images/avatar_placeholder.png';
+  if (!url) return `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2EzYTNhMyIgc3Ryb2tlPSJub25lIj4KICA8cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCAzYzEuNjYgMCAzIDEuMzQgMyAzcy0xLjM0IDMtMyAzLTMtMS4zNC0zLTMgMS4zNC0zIDMtM3ptMCAxNC4yYy0yLjUgMC00LjcxLTEuMjgtNi0zLjIyLjAzLTEuOTkgNC0zLjA4IDYtMy4wOCAxLjk5IDAgNS45NyAxLjA5IDYgMy4wOC0xLjI5IDEuOTQtMy41IDMuMjItNiAzLjIyeiIvPgo8L3N2Zz4=`;
   if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) {
     return url;
   }
@@ -575,6 +575,13 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         body: JSON.stringify({ url: url.trim() })
       });
       const data = await res.json();
+      
+      // Override for broken profiles to prevent ugly empty UI without touching backend logic
+      if (data.mediaType === 'profile' && !data.profile?.avatarUrl && !data.profile?.bannerUrl && (!data.profile?.displayName || data.profile?.displayName === "Social Media Post" || data.profile?.displayName.includes("404") || data.profile?.displayName.includes("Not Found"))) {
+        data.success = false;
+        data.error = "Could not fetch profile metadata. The handle may be incorrect, or the page is blocking access.";
+      }
+      
       setResult(data);
       
       if (data.success) {
@@ -1311,7 +1318,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     )}>
                       
                       {/* Banner Backplate */}
-                      <div className={clsx("h-32 sm:h-44 relative", isLight ? "bg-neutral-200" : "bg-neutral-800")}>
+                      <div className={clsx("h-32 sm:h-44 relative overflow-hidden", isLight ? "bg-gradient-to-r from-neutral-200 to-neutral-300" : "bg-gradient-to-r from-neutral-800 to-neutral-900")}>
                         {result.profile.bannerUrl && (
                           <img 
                             src={getProxiedUrl(result.profile.bannerUrl)} 
@@ -1353,14 +1360,14 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           >
                             
                             <img 
-                              src={getProxiedUrl(result.profile.avatarUrl || result.thumbnail || "/images/avatar_placeholder.png")} 
+                              src={getProxiedUrl(result.profile.avatarUrl || result.thumbnail || `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzZiNzI4MCIgc3Ryb2tlPSJub25lIiBzdHlsZT0iYmFja2dyb3VuZC1jb2xvcjogIzFmMjkzNzsiPgogIDxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDRjMS45MyAwIDMuNSAxLjU3IDMuNSAzLjVTMTMuOTMgMTMgMTIgMTNzLTMuNS0xLjU3LTMuNS0zLjVTMTAuMDcgNiAxMiA2em0wIDE0Yy0yLjAzIDAtNC40My0uODItNi4xNC0yLjg4QzcuNTUgMTUuOCA5LjY4IDE1IDEyIDE1czQuNDUuOCA2LjE0IDIuMTJDMTYuNDMgMTkuMTggMTQuMDMgMjAgMTIgMjB6Ii8+Cjwvc3ZnPg==`)} 
                               alt="Profile DP" 
                               className={clsx(
                                 "w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-[6px] relative z-10 shadow-2xl group-hover:scale-[1.03] transition-transform",
                                 isLight ? "border-white" : "border-[#1e1516]"
                               )}
                               onError={(e) => {
-                                (e.target as HTMLImageElement).src = '/images/avatar_placeholder.png';
+                                (e.target as HTMLImageElement).src = `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2EzYTNhMyIgc3Ryb2tlPSJub25lIj4KICA8cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCAzYzEuNjYgMCAzIDEuMzQgMyAzcy0xLjM0IDMtMyAzLTMtMS4zNC0zLTMgMS4zNC0zIDMtM3ptMCAxNC4yYy0yLjUgMC00LjcxLTEuMjgtNi0zLjIyLjAzLTEuOTkgNC0zLjA4IDYtMy4wOCAxLjk5IDAgNS45NyAxLjA5IDYgMy4wOC0xLjI5IDEuOTQtMy41IDMuMjItNiAzLjIyeiIvPgo8L3N2Zz4=`;
                               }}
                             />
                           </div>
@@ -1421,8 +1428,8 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               isLight ? "bg-white/80 border-white/50" : "bg-white/10 border-white/20"
                             )}>
                               {/* Glassmorphism ambient glow */}
-                              <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/20 rounded-full blur-[40px] pointer-events-none" />
-                              <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-pink-500/20 rounded-full blur-[40px] pointer-events-none" />
+                              <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/20 rounded-full blur-[40px] pointer-events-none" />
+                              <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-cyan-500/20 rounded-full blur-[40px] pointer-events-none" />
                               
                               <div className="flex flex-col items-center text-center gap-4 mb-6 relative z-10">
                                 <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
