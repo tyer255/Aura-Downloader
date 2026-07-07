@@ -26,7 +26,13 @@ const getProxiedUrl = (url?: string, inline = true) => {
     url.includes('twimg.com') ||
     url.includes('twitter.com') ||
     url.includes('licdn.com') ||
-    url.includes('linkedin.com')
+    url.includes('linkedin.com') ||
+    url.includes('youtube.com') ||
+    url.includes('ytimg.com') ||
+    url.includes('ggpht.com') ||
+    url.includes('googleusercontent.com') ||
+    url.includes('pinterest.com') ||
+    url.includes('pinimg.com')
   ) {
     return `/api/proxy-download?url=${encodeURIComponent(url)}&inline=true`;
   }
@@ -1305,12 +1311,12 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     )}>
                       
                       {/* Banner Backplate */}
-                      <div className="h-32 sm:h-44 bg-gradient-to-r from-red-600 via-pink-600 to-indigo-600 relative">
+                      <div className={clsx("h-32 sm:h-44 relative", isLight ? "bg-neutral-200" : "bg-neutral-800")}>
                         {result.profile.bannerUrl && (
                           <img 
                             src={getProxiedUrl(result.profile.bannerUrl)} 
                             alt="Cover Banner" 
-                            className="w-full h-full object-cover opacity-50 cursor-zoom-in hover:opacity-70 transition-opacity" 
+                            className="w-full h-full object-cover cursor-zoom-in transition-opacity" 
                             onClick={() => {
                               if (result.profile?.bannerUrl) {
                                 setLightboxMediaList([{
@@ -1345,16 +1351,16 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               }
                             }}
                           >
-                            <div className="absolute inset-0 bg-gradient-to-tr from-pink-500 via-red-500 to-yellow-500 rounded-full blur-md opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all"></div>
+                            
                             <img 
                               src={getProxiedUrl(result.profile.avatarUrl || result.thumbnail || "/images/avatar_placeholder.png")} 
                               alt="Profile DP" 
                               className={clsx(
-                                "w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-4 relative z-10 bg-neutral-900 group-hover:scale-[1.03] transition-transform",
+                                "w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-[6px] relative z-10 shadow-2xl group-hover:scale-[1.03] transition-transform",
                                 isLight ? "border-white" : "border-[#1e1516]"
                               )}
                               onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'https://picsum.photos/200';
+                                (e.target as HTMLImageElement).src = '/images/avatar_placeholder.png';
                               }}
                             />
                           </div>
@@ -1454,8 +1460,8 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-cyan-500/20 rounded-full blur-[40px] pointer-events-none" />
 
                               <div className="flex flex-col items-center text-center gap-4 mb-6 relative z-10">
-                                <div className="w-full h-36 sm:h-44 rounded-2xl overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
-                                  <img src={getProxiedUrl(result.profile.bannerUrl)} alt="Banner" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" width="400" height="400" />
+                                <div className="w-full rounded-2xl overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
+                                  <img src={getProxiedUrl(result.profile.bannerUrl)} alt="Banner" className="w-full h-auto object-contain transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" />
                                 </div>
                                 <div className="mt-2">
                                   <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Cover Banner</h4>

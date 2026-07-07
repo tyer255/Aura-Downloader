@@ -451,6 +451,33 @@ CRITICAL DIRECTIVES:
 
       if (response && response.text) {
         const data = JSON.parse(response.text.trim());
+        
+        // Merge with Cheerio fallback to correct any hallucinated hashes by AI
+        try {
+            const localData = localCheerioFallback(htmlContent || "<html><body></body></html>", url, isProfile);
+            if (isProfile && localData && localData.success && localData.profile) {
+                if (!data.profile) data.profile = { username: localData.profile.username };
+                if (localData.profile.avatarUrl) {
+                     data.profile.avatarUrl = localData.profile.avatarUrl;
+                     data.thumbnail = localData.profile.avatarUrl;
+                }
+                if (localData.profile.bannerUrl) {
+                     data.profile.bannerUrl = localData.profile.bannerUrl;
+                }
+                if (localData.profile.followers && localData.profile.followers !== "Unknown") {
+                     data.profile.followers = localData.profile.followers;
+                }
+                if (localData.profile.displayName) {
+                     data.profile.displayName = localData.profile.displayName;
+                }
+            } else if (!isProfile && localData && localData.success) {
+                if (localData.thumbnail) data.thumbnail = localData.thumbnail;
+                if (localData.url && (!data.url || !data.url.startsWith("http"))) data.url = localData.url;
+            }
+        } catch (mergeErr) {
+            console.log("Merge err: ", mergeErr);
+        }
+
         if (data && data.success) {
           console.log(`Successfully completed metadata extraction using ${modelName}`);
           return data;
