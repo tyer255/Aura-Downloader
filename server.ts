@@ -263,6 +263,52 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
 const execAsync = utilSync.promisify(exec);
 
 
+async function extractWithVreden(url: string) {
+  try {
+    console.log(`Extracting YouTube video with @vreden/youtube_scraper: ${url}`);
+    const result = await vredenYtmp4(url);
+    if (result && result.status && result.download && result.download.status) {
+      const downloadInfo = result.download;
+      const title = downloadInfo.filename || "YouTube Video";
+      const availableQualities = downloadInfo.availableQuality || [360, 720];
+      
+      const qualities = availableQualities.map((q: any) => {
+        const qStr = String(q);
+        const qLabel = qStr.endsWith('p') ? qStr : `${qStr}p`;
+        return {
+          label: `${qLabel} (MP4)`,
+          url: `/api/youtube-stream?url=${encodeURIComponent(url)}&quality=${qStr}&filename=${encodeURIComponent(title)}`,
+          ext: "mp4",
+          size: q >= 720 ? "High Definition" : "Standard Quality"
+        };
+      });
+
+      const primaryUrl = `/api/youtube-stream?url=${encodeURIComponent(url)}&quality=${downloadInfo.quality || '360'}&filename=${encodeURIComponent(title)}`;
+
+      let videoId = "";
+      const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+      if (match) {
+        videoId = match[1];
+      }
+      const thumbnail = result.metadata?.thumbnail || result.metadata?.image || (videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : "");
+
+      return {
+        success: true,
+        title: (result.metadata?.title || title).replace(/\s*\(\d+p\)\.mp4$/i, ""),
+        url: primaryUrl,
+        thumbnail: thumbnail,
+        mediaType: "video",
+        source: "vreden",
+        qualities: qualities
+      };
+    }
+  } catch (err: any) {
+    console.error("Vreden extraction failed:", err.message);
+  }
+  return null;
+}
+
+
 async function extractWithYtDlp(url: string) {
   try {
     const { stdout } = await execAsync(`./yt-dlp_linux --js-runtimes node --no-playlist --dump-json "${url}"`, { timeout: 25000 });
@@ -435,7 +481,7 @@ CRITICAL DIRECTIVES:
     required: ["success"]
   };
 
-  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash"];
+  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
   for (const modelName of modelsToTry) {
     try {
       console.log(`Attempting AI extraction using model: ${modelName}`);
@@ -516,11 +562,14 @@ function getInstagramShortcode(url: string): string | null {
 function getFallbackQualities(url: string, mediaType: string = "video") {
   if (mediaType === "video") {
     return [
-      { label: "Default Quality", url: url, ext: "mp4", size: "Video" }
+      { label: "1080p (Full HD)", url: url, ext: "mp4", size: "High Definition" },
+      { label: "720p (HD Video)", url: url, ext: "mp4", size: "Standard HD" },
+      { label: "480p (SD Video)", url: url, ext: "mp4", size: "Standard Definition" },
+      { label: "360p (Mobile Video)", url: url, ext: "mp4", size: "Low Bandwidth" }
     ];
   }
   return [
-    { label: "Original Resolution", url: url, ext: "jpg", size: "Image" }
+    { label: "Original Resolution (Image)", url: url, ext: "jpg", size: "Original" }
   ];
 }
 // Classify URL to decide the optimal parsing route
@@ -853,6 +902,36 @@ async function extractWithCobalt(url: string) {
         }
       }
 
+      // 1. Primary for Facebook: btch.fbdown
+      if (lowerUrl.includes("facebook.com") || lowerUrl.includes("fb.watch") || lowerUrl.includes("fb.com")) {
+        try {
+          const result = await btch.fbdown(trimmedUrl);
+          if (result && result.status && (result.Normal_video || result.HD)) {
+            const videoUrl = result.HD || result.Normal_video;
+            console.log("Extraction via btch.fbdown succeeded!");
+            return res.json({
+              success: true,
+              title: "Facebook Video",
+              url: videoUrl,
+              mediaType: "video",
+              qualities: getFallbackQualities(videoUrl, "video"),
+              media: [{ type: "video", url: videoUrl }]
+            });
+          }
+        } catch (e) {
+          console.log("Facebook btch scraper failed (falling back to yt-dlp).");
+        }
+      }
+
+      // 1. Primary for YouTube: @vreden/youtube_scraper
+      if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be")) {
+        const vredenResult = await extractWithVreden(trimmedUrl);
+        if (vredenResult && vredenResult.success) {
+          console.log("Extraction via @vreden/youtube_scraper succeeded!");
+          return res.json(vredenResult);
+        }
+      }
+
       // 1. Primary: yt-dlp_linux
       const ytDlpResult = await extractWithYtDlp(trimmedUrl);
       if (ytDlpResult && ytDlpResult.success) {
@@ -869,6 +948,25 @@ async function extractWithCobalt(url: string) {
       }
 
       // 3. Fallbacks for specific platforms
+      if (lowerUrl.includes("facebook.com") || lowerUrl.includes("fb.watch") || lowerUrl.includes("fb.com")) {
+        try {
+          const result = await btch.fbdown(trimmedUrl);
+          if (result && result.status && (result.Normal_video || result.HD)) {
+            const videoUrl = result.HD || result.Normal_video;
+            return res.json({
+              success: true,
+              title: "Facebook Video",
+              url: videoUrl,
+              mediaType: "video",
+              qualities: getFallbackQualities(videoUrl, "video"),
+              media: [{ type: "video", url: videoUrl }]
+            });
+          }
+        } catch (e) {
+          console.log("Facebook fallback scraper failed (falling back).");
+        }
+      }
+
       if (lowerUrl.includes("tiktok.com")) {
         try {
           const result = await btch.ttdl(trimmedUrl);
@@ -924,6 +1022,32 @@ async function extractWithCobalt(url: string) {
     } catch (error) {
       console.error("API Download Exception:", error.message);
       return res.status(500).json({ success: false, message: error.message || "An unexpected error occurred while processing the URL." });
+    }
+  });
+
+  app.get("/api/youtube-stream", async (req, res) => {
+    const videoUrl = req.query.url as string;
+    const quality = (req.query.quality as string) || "360";
+    const filename = (req.query.filename as string) || "youtube_video.mp4";
+
+    if (!videoUrl) {
+      return res.status(400).send("Missing url parameter");
+    }
+
+    try {
+      console.log(`Dynamic YouTube streaming requested for: ${videoUrl} at quality: ${quality}`);
+      const result = await vredenYtmp4(videoUrl, quality);
+      if (result && result.status && result.download && result.download.url) {
+        const directUrl = result.download.url;
+        console.log(`Successfully fetched direct URL for streaming: ${directUrl}`);
+        pipeUrlStream(directUrl, res, filename, false);
+      } else {
+        console.error("Vreden dynamic fetch failed to find direct URL");
+        res.status(500).send("Failed to retrieve direct download stream from YouTube provider.");
+      }
+    } catch (err: any) {
+      console.error("Error in /api/youtube-stream:", err.message);
+      res.status(500).send("Error streaming YouTube video: " + err.message);
     }
   });
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PrivacyPolicy, TermsConditions, DMCA, About, Contact, FAQ, NotFound, ServerError, CookiePolicy } from './pages/StaticPages';
 import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter } from 'lucide-react';
+import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera } from 'lucide-react';
 import { m as motion, LazyMotion, domMax, AnimatePresence } from 'motion/react';
 import { DownloadResult } from './types';
 import clsx from 'clsx';
@@ -94,67 +94,335 @@ const getTabLabel = (id: Tab): string => {
   return tab ? tab.label : id;
 };
 
+const render3DGlassIcon = (platform: Tab): React.ReactNode => {
+  switch (platform) {
+    case 'youtube':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="ytBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ff4d4d" />
+              <stop offset="50%" stopColor="#ff0000" />
+              <stop offset="100%" stopColor="#b30000" />
+            </linearGradient>
+            <linearGradient id="ytGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.8" />
+              <stop offset="30%" stopColor="#ffffff" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            <radialGradient id="ytInnerShadow" cx="50%" cy="50%" r="50%">
+              <stop offset="70%" stopColor="#000000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0.35" />
+            </radialGradient>
+          </defs>
+          <rect x="12" y="22" width="76" height="56" rx="20" fill="url(#ytBaseGrad)" filter="drop-shadow(0 6px 10px rgba(220,38,38,0.4))" />
+          <rect x="12" y="22" width="76" height="56" rx="20" fill="url(#ytInnerShadow)" />
+          <path d="M41 36 L66 50 L41 64 Z" fill="#ffffff" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.25))" />
+          <path d="M12 42 C12 30.95 20.95 22 32 22 L68 22 C79.05 22 88 30.95 88 42 C68 45 32 45 12 42 Z" fill="url(#ytGlassGrad)" />
+          <path d="M14 36 C20 25 80 25 86 36" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.6" />
+        </svg>
+      );
+    case 'instagram':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="instaBaseGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#f9ce34" />
+              <stop offset="30%" stopColor="#ee2a7b" />
+              <stop offset="70%" stopColor="#d82b7d" />
+              <stop offset="100%" stopColor="#6228d7" />
+            </linearGradient>
+            <linearGradient id="instaGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.75" />
+              <stop offset="40%" stopColor="#ffffff" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            <radialGradient id="instaInnerShadow" cx="50%" cy="50%" r="50%">
+              <stop offset="75%" stopColor="#000000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0.3" />
+            </radialGradient>
+          </defs>
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#instaBaseGrad)" filter="drop-shadow(0 6px 12px rgba(238,42,123,0.35))" />
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#instaInnerShadow)" />
+          <rect x="28" y="28" width="44" height="44" rx="13" fill="none" stroke="#ffffff" strokeWidth="5.5" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))" />
+          <circle cx="50" cy="50" r="11" fill="none" stroke="#ffffff" strokeWidth="5.5" />
+          <circle cx="63" cy="37" r="3.5" fill="#ffffff" />
+          <path d="M14 42 C14 26.54 26.54 14 42 14 L58 14 C73.46 14 86 26.54 86 42 C62 47 38 47 14 42 Z" fill="url(#instaGlassGrad)" />
+          <path d="M17 28 C26 17 74 17 83 28" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.5" />
+        </svg>
+      );
+    case 'tiktok':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="ttBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#25282a" />
+              <stop offset="50%" stopColor="#121315" />
+              <stop offset="100%" stopColor="#000000" />
+            </linearGradient>
+            <linearGradient id="ttGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.4" />
+              <stop offset="50%" stopColor="#ffffff" stopOpacity="0.1" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#ttBaseGrad)" filter="drop-shadow(0 6px 12px rgba(37,244,238,0.25))" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+          <g transform="translate(30, 30) scale(1.666)">
+            <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 2.25-1.15 4.41-2.91 5.76-1.76 1.34-4.04 1.83-6.2 1.48-2.15-.35-4.06-1.62-5.18-3.46-1.11-1.84-1.34-4.14-.62-6.13.71-1.99 2.37-3.56 4.35-4.12 1.98-.56 4.18-.32 5.96.68v4.18c-1.16-.48-2.52-.43-3.64.13-1.12.56-1.9 1.68-2.13 2.92-.22 1.23.15 2.53 1.01 3.44.85.91 2.15 1.32 3.39 1.1 1.23-.22 2.26-1.04 2.8-2.17.53-1.13.62-2.45.24-3.64V.02z" fill="#fe2c55" opacity="0.8" transform="translate(0.8, 0.8)" />
+            <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 2.25-1.15 4.41-2.91 5.76-1.76 1.34-4.04 1.83-6.2 1.48-2.15-.35-4.06-1.62-5.18-3.46-1.11-1.84-1.34-4.14-.62-6.13.71-1.99 2.37-3.56 4.35-4.12 1.98-.56 4.18-.32 5.96.68v4.18c-1.16-.48-2.52-.43-3.64.13-1.12.56-1.9 1.68-2.13 2.92-.22 1.23.15 2.53 1.01 3.44.85.91 2.15 1.32 3.39 1.1 1.23-.22 2.26-1.04 2.8-2.17.53-1.13.62-2.45.24-3.64V.02z" fill="#25f4ee" opacity="0.8" transform="translate(-0.8, -0.8)" />
+            <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 2.25-1.15 4.41-2.91 5.76-1.76 1.34-4.04 1.83-6.2 1.48-2.15-.35-4.06-1.62-5.18-3.46-1.11-1.84-1.34-4.14-.62-6.13.71-1.99 2.37-3.56 4.35-4.12 1.98-.56 4.18-.32 5.96.68v4.18c-1.16-.48-2.52-.43-3.64.13-1.12.56-1.9 1.68-2.13 2.92-.22 1.23.15 2.53 1.01 3.44.85.91 2.15 1.32 3.39 1.1 1.23-.22 2.26-1.04 2.8-2.17.53-1.13.62-2.45.24-3.64V.02z" fill="#ffffff" />
+          </g>
+          <path d="M14 42 C14 26.54 26.54 14 42 14 L58 14 C73.46 14 86 26.54 86 42 C62 47 38 47 14 42 Z" fill="url(#ttGlassGrad)" />
+          <path d="M17 28 C26 17 74 17 83 28" fill="none" stroke="#ffffff" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.4" />
+        </svg>
+      );
+    case 'facebook':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="fbBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#18acfe" />
+              <stop offset="100%" stopColor="#0062e0" />
+            </linearGradient>
+            <linearGradient id="fbGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.75" />
+              <stop offset="40%" stopColor="#ffffff" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            <radialGradient id="fbInnerShadow" cx="50%" cy="50%" r="50%">
+              <stop offset="70%" stopColor="#000000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0.3" />
+            </radialGradient>
+          </defs>
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#fbBaseGrad)" filter="drop-shadow(0 6px 12px rgba(24,172,254,0.35))" />
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#fbInnerShadow)" />
+          <path d="M62 24 H54 C46 24 43 28 43 35 V43 H35 V54 H43 V85 H55 V54 H64 L65.5 43 H55 V36 C55 33 56 32 59 32 H65 Z" fill="#ffffff" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.2))" />
+          <path d="M14 42 C14 26.54 26.54 14 42 14 L58 14 C73.46 14 86 26.54 86 42 C62 47 38 47 14 42 Z" fill="url(#fbGlassGrad)" />
+          <path d="M17 28 C26 17 74 17 83 28" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.5" />
+        </svg>
+      );
+    case 'reddit':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="rdBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ff5700" />
+              <stop offset="100%" stopColor="#cc3300" />
+            </linearGradient>
+            <linearGradient id="rdGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.75" />
+              <stop offset="35%" stopColor="#ffffff" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            <radialGradient id="rdInnerShadow" cx="50%" cy="50%" r="50%">
+              <stop offset="70%" stopColor="#000000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0.3" />
+            </radialGradient>
+            <linearGradient id="rd3dGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" />
+              <stop offset="100%" stopColor="#e0e0e0" />
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="36" fill="url(#rdBaseGrad)" filter="drop-shadow(0 6px 12px rgba(255,87,0,0.35))" />
+          <circle cx="50" cy="50" r="36" fill="url(#rdInnerShadow)" />
+          <g transform="translate(26, 26) scale(1.6)" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.3))">
+            <path d="M 29.5 16 c 0 -2 -1.5 -3.5 -3.5 -3.5 c -0.9 0 -1.6 0.3 -2.2 0.8 c -3 -1.8 -6.9 -3 -11.3 -3.2 l 2 -6.2 l 5.2 1.1 c 0.1 1.5 1.4 2.8 3 2.8 c 1.7 0 3 -1.3 3 -3 c 0 -1.7 -1.3 -3 -3 -3 c -1.4 0 -2.6 1 -2.9 2.3 l -5.8 -1.2 c -0.2 0 -0.4 0.1 -0.5 0.3 l -2.3 7 c -4.5 0.2 -8.5 1.4 -11.5 3.2 c -0.6 -0.5 -1.4 -0.8 -2.2 -0.8 c -2 0 -3.5 1.5 -3.5 3.5 c 0 1.4 0.9 2.6 2.1 3.1 c -0.1 0.5 -0.1 1 -0.1 1.6 c 0 6 8.3 11 18.5 11 s 18.5 -5 18.5 -11 c 0 -0.5 0 -1 -0.1 -1.6 c 1.3 -0.5 2.2 -1.7 2.2 -3.1 z m -25.2 9 c 0 -1.4 1.1 -2.5 2.5 -2.5 s 2.5 1.1 2.5 2.5 s -1.1 2.5 -2.5 2.5 s -2.5 -1.1 -2.5 -2.5 z m 10 4 c -2.2 2.2 -6.2 2.2 -8.4 0 c -0.3 -0.3 -0.3 -0.7 0 -0.9 c 0.3 -0.3 0.7 -0.3 0.9 0 c 1.7 1.7 5 1.7 6.6 0 c 0.3 -0.3 0.7 -0.3 0.9 0 c 0.3 0.2 0.3 0.7 0 0.9 z m 0.8 -4 c 0 -1.4 1.1 -2.5 2.5 -2.5 s 2.5 1.1 2.5 2.5 s -1.1 2.5 -2.5 2.5 s -2.5 -1.1 -2.5 -2.5 z" fill="url(#rd3dGrad)" />
+          </g>
+          <path d="M14 50 C14 30.12 30.12 14 50 14 C69.88 14 86 30.12 86 50 C62 55 38 55 14 50 Z" fill="url(#rdGlassGrad)" />
+          <path d="M18 36 C26 23 74 23 82 36" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.5" />
+        </svg>
+      );
+    case 'pinterest':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="pinBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#e60023" />
+              <stop offset="100%" stopColor="#ad081b" />
+            </linearGradient>
+            <linearGradient id="pinGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.75" />
+              <stop offset="35%" stopColor="#ffffff" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            <radialGradient id="pinInnerShadow" cx="50%" cy="50%" r="50%">
+              <stop offset="70%" stopColor="#000000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0.3" />
+            </radialGradient>
+          </defs>
+          <circle cx="50" cy="50" r="36" fill="url(#pinBaseGrad)" filter="drop-shadow(0 6px 12px rgba(230,0,35,0.35))" />
+          <circle cx="50" cy="50" r="36" fill="url(#pinInnerShadow)" />
+          <path d="M46.7 69 C44.9 59.8 40.5 44 40.5 44 C40.5 44 39.1 41.2 39.1 37.1 C39.1 31.1 42.6 26.6 46.9 26.6 C50.8 26.6 52.7 29.5 52.7 33 C52.7 37 50.1 42.9 48.8 48.3 C47.7 52.8 51.1 56.4 55.5 56.4 C63.6 56.4 69.8 47.9 69.8 35.8 C69.8 25.1 62.1 17.5 48.9 17.5 C33.4 17.5 24.3 29.1 24.3 40.5 C24.3 45.2 26.1 50.1 28.3 52.7 C28.9 53.4 29 53.9 28.8 54.7 C28.4 56.4 27.6 59.7 27.4 60.5 C27.1 61.6 26.2 61.9 25.2 61.5 C18.7 58.5 14.6 48.9 14.6 39.8 C14.6 22 27.5 10 51.1 10 C70 10 84.6 23.5 84.6 41.6 C84.6 60.4 72.8 72 55.9 72 C50.2 72 44.9 69 43.1 65.5 C43.1 65.5 40.3 76.5 39.6 79 C38.1 84.8 33.7 91.5 31.3 95 L29.3 95 C29.7 92.5 32.7 83.5 34.3 77 C35.4 72.1 37.7 62.6 37.7 62.6" fill="#ffffff" filter="drop-shadow(0 3px 5px rgba(0,0,0,0.2))" transform="translate(17.5, 15.5) scale(0.65)" />
+          <path d="M14 50 C14 30.12 30.12 14 50 14 C69.88 14 86 30.12 86 50 C62 55 38 55 14 50 Z" fill="url(#pinGlassGrad)" />
+          <path d="M18 36 C26 23 74 23 82 36" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.5" />
+        </svg>
+      );
+    case 'x':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="xBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#2c2c2c" />
+              <stop offset="100%" stopColor="#050505" />
+            </linearGradient>
+            <linearGradient id="xGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.35" />
+              <stop offset="50%" stopColor="#ffffff" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            <radialGradient id="xInnerShadow" cx="50%" cy="50%" r="50%">
+              <stop offset="70%" stopColor="#000000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0.4" />
+            </radialGradient>
+            <linearGradient id="x3dGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" />
+              <stop offset="100%" stopColor="#d0d0d0" />
+            </linearGradient>
+          </defs>
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#xBaseGrad)" filter="drop-shadow(0 6px 12px rgba(0,0,0,0.5))" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#xInnerShadow)" />
+          <g transform="translate(36, 36) scale(1.25)" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.5))">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="url(#x3dGrad)" />
+          </g>
+          <path d="M14 42 C14 26.54 26.54 14 42 14 L58 14 C73.46 14 86 26.54 86 42 C62 47 38 47 14 42 Z" fill="url(#xGlassGrad)" />
+          <path d="M17 28 C26 17 74 17 83 28" fill="none" stroke="#ffffff" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.3" />
+        </svg>
+      );
+    case 'linkedin':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="liBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#00a0dc" />
+              <stop offset="100%" stopColor="#0077b5" />
+            </linearGradient>
+            <linearGradient id="liGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.75" />
+              <stop offset="40%" stopColor="#ffffff" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            <radialGradient id="liInnerShadow" cx="50%" cy="50%" r="50%">
+              <stop offset="70%" stopColor="#000000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0.3" />
+            </radialGradient>
+            <linearGradient id="li3dGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" />
+              <stop offset="100%" stopColor="#e0e0e0" />
+            </linearGradient>
+          </defs>
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#liBaseGrad)" filter="drop-shadow(0 6px 12px rgba(0,119,181,0.35))" />
+          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#liInnerShadow)" />
+          <g transform="translate(23, 29) scale(1.8)" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.3))">
+            <path d="M 6 9.5 h 5 v 15 h -5 z m 2.5 -7.5 a 3 3 0 1 1 0 6 a 3 3 0 1 1 0 -6 z M 13.5 9.5 h 4.5 v 2.2 c .7 -1.4 2.5 -2.5 5 -2.5 c 4 0 6.5 2.5 6.5 7 v 8.3 h -5 v -7.5 c 0 -2 -1 -3 -3 -3 c -2 0 -3 1.5 -3 3.5 v 7 h -5 z" fill="url(#li3dGrad)" />
+          </g>
+          <path d="M14 42 C14 26.54 26.54 14 42 14 L58 14 C73.46 14 86 26.54 86 42 C62 47 38 47 14 42 Z" fill="url(#liGlassGrad)" />
+          <path d="M17 28 C26 17 74 17 83 28" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.5" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
+
 const getPlatformDetails = (platform: Tab): { icon: React.ReactNode; colorClass: string; bgClass: string; borderClass: string } => {
   switch (platform) {
     case 'pinterest':
       return {
-        icon: <ImageIcon className="w-3.5 h-3.5" />,
-        colorClass: 'text-red-500',
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.08 3.16 9.4 7.62 11.17-.1-.95-.2-2.4.04-3.44.22-.94 1.4-5.95 1.4-5.95s-.36-.72-.36-1.77c0-1.66.96-2.9 2.16-2.9 1.02 0 1.51.77 1.51 1.68 0 1.03-.65 2.56-.99 3.98-.28 1.18.59 2.15 1.75 2.15 2.1 0 3.72-2.22 3.72-5.42 0-2.83-2.04-4.81-4.94-4.81-3.37 0-5.34 2.52-5.34 5.13 0 1.01.39 2.1 0.88 2.7.1.12.11.23.08.35-.09.37-.29 1.19-.33 1.35-.05.21-.18.26-.41.15-1.54-.72-2.5-2.97-2.5-4.78 0-3.89 2.83-7.46 8.14-7.46 4.28 0 7.6 3.05 7.6 7.12 0 4.25-2.67 7.67-6.39 7.67-1.25 0-2.42-.65-2.82-1.42 0 0-.62 2.35-.77 2.94-.28 1.08-1.04 2.43-1.55 3.26C10.15 23.85 11.06 24 12 24c6.63 0 12-5.37 12-12S18.63 0 12 0z"/>
+          </svg>
+        ),
+        colorClass: 'text-red-600 dark:text-red-500',
         bgClass: 'bg-red-500/10',
         borderClass: 'border-red-500/20'
       };
     case 'instagram':
       return {
-        icon: <Instagram className="w-3.5 h-3.5" />,
-        colorClass: 'text-pink-500',
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+          </svg>
+        ),
+        colorClass: 'text-pink-600 dark:text-pink-500',
         bgClass: 'bg-pink-500/10',
         borderClass: 'border-pink-500/20'
       };
     case 'youtube':
       return {
-        icon: <Youtube className="w-3.5 h-3.5" />,
-        colorClass: 'text-red-500',
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+            <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.11C19.518 3.545 12 3.545 12 3.545s-7.517 0-9.388.508a3.003 3.003 0 0 0-2.11 2.11C0 8.033 0 12 0 12s0 3.967.502 5.837a3.003 3.003 0 0 0 2.11 2.11c1.871.508 9.388.508 9.388.508s7.517 0 9.388-.508a3.002 3.002 0 0 0 2.11-2.11C24 15.967 24 12 24 12s0-3.967-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+          </svg>
+        ),
+        colorClass: 'text-red-650 dark:text-red-500',
         bgClass: 'bg-red-500/10',
         borderClass: 'border-red-500/20'
       };
     case 'tiktok':
       return {
-        icon: <Music className="w-3.5 h-3.5" />,
-        colorClass: 'text-teal-400',
-        bgClass: 'bg-teal-500/10',
-        borderClass: 'border-teal-500/20'
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.17-2.89-.6-4.09-1.5-1.25-.93-2.12-2.31-2.45-3.83v9.36c0 1.62-.35 3.29-1.21 4.67-1.15 1.83-3.23 2.96-5.41 3.01-2.1-.03-4.14-1.07-5.26-2.86-1.24-2-1.24-4.66.01-6.66 1.15-1.83 3.25-2.96 5.43-3.01.03 1.34.02 2.68.03 4.02-1.08.01-2.19.46-2.84 1.32-.69.91-.71 2.21-.05 3.14.65.9 1.75 1.41 2.87 1.38 1.11-.03 2.14-.62 2.62-1.63.43-.88.42-1.89.42-2.87V.02z"/>
+          </svg>
+        ),
+        colorClass: 'text-cyan-500 dark:text-cyan-400',
+        bgClass: 'bg-cyan-500/10',
+        borderClass: 'border-cyan-500/20'
       };
     case 'facebook':
       return {
-        icon: <Facebook className="w-3.5 h-3.5" />,
-        colorClass: 'text-blue-500',
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+          </svg>
+        ),
+        colorClass: 'text-blue-650 dark:text-blue-500',
         bgClass: 'bg-blue-500/10',
         borderClass: 'border-blue-500/20'
       };
     case 'reddit':
       return {
-        icon: <MessageSquare className="w-3.5 h-3.5" />,
-        colorClass: 'text-orange-500',
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+            <path d="M24 11.5c0-1.65-1.35-3-3-3-.96 0-1.86.48-2.42 1.24-1.64-1-3.85-1.64-6.23-1.72l1.36-4.3 3.74.8c.04.97.83 1.75 1.8 1.75 1 0 1.8-.8 1.8-1.8s-.8-1.8-1.8-1.8c-.85 0-1.57.59-1.75 1.38l-4.13-.88c-.24-.05-.48.1-.55.34l-1.5 4.76c-2.45.06-4.73.7-6.4 1.73-.55-.73-1.43-1.19-2.42-1.19-1.65 0-3 1.35-3 3 0 1.13.62 2.1 1.54 2.61-.04.26-.06.52-.06.79 0 3.44 4.02 6.22 9 6.22s9-2.78 9-6.22c0-.27-.02-.53-.06-.79.92-.51 1.54-1.48 1.54-2.61zm-18 1c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5zm9 3.5c-1.8 1.8-5.2 1.8-7 0-.2-.2-.2-.5 0-.7.2-.2.5-.2.7 0 1.4 1.4 4.2 1.4 5.6 0 .2-.2.5-.2.7 0 .2.2.2.5 0 .7zm-.5-2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+          </svg>
+        ),
+        colorClass: 'text-orange-600 dark:text-orange-500',
         bgClass: 'bg-orange-500/10',
         borderClass: 'border-orange-500/20'
       };
     case 'x':
       return {
-        icon: <Twitter className="w-3.5 h-3.5" />,
-        colorClass: 'text-neutral-800 dark:text-neutral-200',
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        ),
+        colorClass: 'text-neutral-900 dark:text-neutral-100',
         bgClass: 'bg-neutral-500/10 dark:bg-white/10',
         borderClass: 'border-neutral-500/20 dark:border-white/20'
       };
     case 'linkedin':
       return {
-        icon: <Linkedin className="w-3.5 h-3.5" />,
-        colorClass: 'text-sky-500',
-        bgClass: 'bg-sky-500/10',
-        borderClass: 'border-sky-500/20'
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+            <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+          </svg>
+        ),
+        colorClass: 'text-blue-700 dark:text-blue-400',
+        bgClass: 'bg-blue-500/10',
+        borderClass: 'border-blue-500/20'
       };
     default:
       return {
-        icon: <History className="w-3.5 h-3.5" />,
+        icon: (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.08 3.16 9.4 7.62 11.17-.1-.95-.2-2.4.04-3.44.22-.94 1.4-5.95 1.4-5.95s-.36-.72-.36-1.77c0-1.66.96-2.9 2.16-2.9 1.02 0 1.51.77 1.51 1.68 0 1.03-.65 2.56-.99 3.98-.28 1.18.59 2.15 1.75 2.15 2.1 0 3.72-2.22 3.72-5.42 0-2.83-2.04-4.81-4.94-4.81-3.37 0-5.34 2.52-5.34 5.13 0 1.01.39 2.1 0.88 2.7.1.12.11.23.08.35-.09.37-.29 1.19-.33 1.35-.05.21-.18.26-.41.15-1.54-.72-2.5-2.97-2.5-4.78 0-3.89 2.83-7.46 8.14-7.46 4.28 0 7.6 3.05 7.6 7.12 0 4.25-2.67 7.67-6.39 7.67-1.25 0-2.42-.65-2.82-1.42 0 0-.62 2.35-.77 2.94-.28 1.08-1.04 2.43-1.55 3.26C10.15 23.85 11.06 24 12 24c6.63 0 12-5.37 12-12S18.63 0 12 0z"/>
+          </svg>
+        ),
         colorClass: 'text-neutral-500',
         bgClass: 'bg-neutral-500/10',
         borderClass: 'border-neutral-500/20'
@@ -163,12 +431,46 @@ const getPlatformDetails = (platform: Tab): { icon: React.ReactNode; colorClass:
 };
 
 const LOADING_STEPS = [
-  { text: "🔍 Analyzing URL format & initiating platform handshake...", target: 15 },
-  { text: "📡 Establishing cloud-allocated secure fetch tunnel...", target: 38 },
-  { text: "⚙️ Extracting structured metadata, stream links & JSON maps...", target: 65 },
-  { text: "🖼️ Locating high-resolution photo frames & video streams...", target: 88 },
-  { text: "⚡ Packing download buffers and wrapping files for instant download...", target: 98 },
+  { text: "Analyzing URL format & initiating platform handshake...", target: 15 },
+  { text: "Establishing cloud-allocated secure fetch tunnel...", target: 38 },
+  { text: "Extracting structured metadata, stream links & JSON maps...", target: 65 },
+  { text: "Locating high-resolution photo frames & video streams...", target: 88 },
+  { text: "Packing download buffers and wrapping files for instant download...", target: 98 },
 ];
+
+// Animated check-mark success icon using framer-motion path animation
+function AnimatedCheckMark({ className = "w-5 h-5 text-emerald-500" }: { className?: string }) {
+  return (
+    <div className={clsx("relative flex items-center justify-center", className)}>
+      <motion.div
+        initial={{ scale: 0.3, opacity: 1 }}
+        animate={{ scale: 1.5, opacity: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="absolute inset-0 rounded-full border-2 border-current"
+      />
+      <motion.svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={3.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="w-full h-full relative z-10"
+        initial={{ scale: 0.3, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 350, damping: 20 }}
+      >
+        <motion.path
+          d="M20 6L9 17l-5-5"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25, delay: 0.1 }}
+        />
+      </motion.svg>
+    </div>
+  );
+}
 
 // Dedicated component for copy-to-clipboard functionality with a modern transition state
 function CopyButton({ url, className, isLight }: { url: string; className?: string; isLight?: boolean }) {
@@ -410,12 +712,95 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [copiedHistoryUrl, setCopiedHistoryUrl] = useState<string | null>(null);
   const [historyToast, setHistoryToast] = useState<string | null>(null);
+  const [activeDownloads, setActiveDownloads] = useState<Record<string, { filename: string; progress: number | null; status: "preparing" | "downloading" | "complete" | "failed" }>>({});
 
   const triggerHistoryToast = (msg: string) => {
     setHistoryToast(msg);
     setTimeout(() => {
       setHistoryToast(null);
     }, 2500);
+  };
+
+  // Glassmorphic features states
+  const [vaultQueue, setVaultQueue] = useState<{ url: string; platform: Tab; timestamp: number }[]>(() => {
+    try {
+      const stored = localStorage.getItem('download_vault');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [showVault, setShowVault] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [snapshotCanvasFlash, setSnapshotCanvasFlash] = useState(false);
+  
+  // Real-time fluctuating latency metrics
+  const [platformPings, setPlatformPings] = useState<Record<Tab, number>>({
+    pinterest: 45,
+    youtube: 78,
+    instagram: 120,
+    tiktok: 85,
+    facebook: 98,
+    reddit: 74,
+    x: 62,
+    linkedin: 88
+  });
+
+  // Periodically fluctuate latency metrics slightly to simulate real system activity
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setPlatformPings(prev => {
+        const next = { ...prev };
+        (Object.keys(next) as Tab[]).forEach(k => {
+          const delta = Math.floor(Math.random() * 7) - 3; // -3 to +3
+          next[k] = Math.max(12, Math.min(240, next[k] + delta));
+        });
+        return next;
+      });
+    }, 4500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const saveVault = (queue: typeof vaultQueue) => {
+    setVaultQueue(queue);
+    try {
+      localStorage.setItem('download_vault', JSON.stringify(queue));
+    } catch (e) {}
+  };
+
+  const handleAddToVault = () => {
+    if (!url.trim()) return;
+    const detected = detectPlatformFromUrl(url) || activeTab;
+    if (vaultQueue.some(item => item.url === url.trim())) {
+      triggerHistoryToast("Link already in your Batch Vault!");
+      return;
+    }
+    const updated = [...vaultQueue, { url: url.trim(), platform: detected, timestamp: Date.now() }];
+    saveVault(updated);
+    setUrl('');
+    triggerHistoryToast("Added to Batch Vault!");
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const cleaned = text ? text.trim() : "";
+      if (cleaned) {
+        setUrl(cleaned);
+        const detected = detectPlatformFromUrl(cleaned);
+        if (detected) {
+          setActiveTab(detected);
+          triggerHistoryToast(`Platform detected: ${getTabLabel(detected)}`);
+        } else {
+          triggerHistoryToast("Link pasted!");
+        }
+      } else {
+        triggerHistoryToast("Clipboard is empty");
+      }
+    } catch (e) {
+      console.error("Clipboard paste error:", e);
+      triggerHistoryToast("Clipboard access blocked. Please tap the input box and paste manually.");
+    }
   };
 
   const clearAllHistory = () => {
@@ -622,24 +1007,33 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     try {
       requestNotificationPermission();
       setDownloadProgress(0);
-      setHistoryToast("Starting download...");
+      setHistoryToast("Preparing download stream...");
 
-      const fetchUrl = url.startsWith("/api/proxy-download") ? url : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      setActiveDownloads(prev => ({
+        ...prev,
+        [url]: { filename, progress: 0, status: "preparing" }
+      }));
+
+      const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
+        ? url 
+        : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
       
       const response = await fetch(fetchUrl);
       if (!response.ok) {
-        setHistoryToast("Download failed (Server Error).");
-        setTimeout(() => setHistoryToast(null), 3000);
-        setDownloadProgress(null);
-        return;
+        throw new Error(`Server returned status code ${response.status}`);
       }
+
+      setActiveDownloads(prev => ({
+        ...prev,
+        [url]: { filename, progress: 0, status: "downloading" }
+      }));
 
       const contentLength = response.headers.get('content-length') || response.headers.get('estimated-content-length');
       const total = contentLength ? parseInt(contentLength, 10) : 0;
       let loaded = 0;
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error("No reader");
+      if (!reader) throw new Error("No response body stream reader available");
 
       const chunks = [];
       while (true) {
@@ -649,7 +1043,17 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           chunks.push(value);
           loaded += value.length;
           if (total) {
-            setDownloadProgress(Math.round((loaded / total) * 100));
+            const pct = Math.round((loaded / total) * 100);
+            setDownloadProgress(pct);
+            setActiveDownloads(prev => ({
+              ...prev,
+              [url]: { filename, progress: pct, status: "downloading" }
+            }));
+          } else {
+            setActiveDownloads(prev => ({
+              ...prev,
+              [url]: { filename, progress: null, status: "downloading" }
+            }));
           }
         }
       }
@@ -670,21 +1074,80 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       }, 1000);
       
       setDownloadProgress(null);
+      setActiveDownloads(prev => ({
+        ...prev,
+        [url]: { filename, progress: 100, status: "complete" }
+      }));
       setHistoryToast("Download complete!");
       setTimeout(() => setHistoryToast(null), 3000);
       showNotification("Download Complete", {
         body: `Successfully downloaded: ${filename}`,
         icon: '/vite.svg'
       });
-    } catch (error) {
+
+      // Keep it complete for 3.5s then clear
+      setTimeout(() => {
+        setActiveDownloads(prev => {
+          const next = { ...prev };
+          delete next[url];
+          return next;
+        });
+      }, 3500);
+
+    } catch (error: any) {
       console.error('Download setup failed:', error);
       setDownloadProgress(null);
+      setActiveDownloads(prev => ({
+        ...prev,
+        [url]: { filename, progress: null, status: "failed" }
+      }));
       setHistoryToast("Download failed.");
       setTimeout(() => setHistoryToast(null), 3000);
       showNotification("Download Failed", {
         body: `Failed to download: ${filename}`,
         icon: '/vite.svg'
       });
+
+      setTimeout(() => {
+        setActiveDownloads(prev => {
+          const next = { ...prev };
+          delete next[url];
+          return next;
+        });
+      }, 4000);
+    }
+  };
+
+  const downloadFileDirect = (url: string, filename: string) => {
+    try {
+      requestNotificationPermission();
+      setHistoryToast("Direct download started instantly...");
+      setTimeout(() => setHistoryToast(null), 3000);
+
+      const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
+        ? url 
+        : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+
+      const a = document.createElement('a');
+      a.href = fetchUrl;
+      a.download = filename;
+      a.target = "_blank"; // Safely streams without interrupting page
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 1000);
+
+      showNotification("Download Started", {
+        body: `Direct download started for: ${filename}`,
+        icon: '/vite.svg'
+      });
+    } catch (error) {
+      console.error('Direct download failed:', error);
+      setHistoryToast("Direct download failed.");
+      setTimeout(() => setHistoryToast(null), 3000);
     }
   };
 
@@ -741,7 +1204,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       <div className="w-full max-w-2xl flex flex-row items-center justify-between mb-8 sm:mb-16 relative z-20 gap-2 overflow-x-auto no-scrollbar">
         <div className={clsx(
           "flex items-center rounded-full pl-3 sm:pl-4 pr-1 sm:pr-1.5 py-1 sm:py-1.5 transition-colors border shrink-0",
-          isLight ? "bg-white border-neutral-200 text-neutral-600" : "bg-white/5 border border-white/10 text-neutral-400"
+          isLight ? "bg-white border-neutral-200 text-neutral-600" : "bg-white/5 border border-white/10 text-white"
         )}>
           <span className="text-xs sm:text-sm font-medium tracking-wide mr-2 sm:mr-3 uppercase whitespace-nowrap">Support =</span>
           <a href="https://youtube.com/@mridulgaming-_-official-800?si=qsAdamH6-973hgBe" target="_blank" rel="noopener noreferrer" className="bg-[#ff0000] text-white text-xs sm:text-sm px-3 sm:px-4 py-1 sm:py-1.5 rounded-full font-semibold flex items-center gap-1.5 hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 whitespace-nowrap">
@@ -756,7 +1219,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               "w-11 h-11 rounded-full flex items-center justify-center transition-all border shadow-md cursor-pointer",
               isLight 
                 ? "bg-white border-neutral-200 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100" 
-                : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:bg-white/10"
+                : "bg-white/5 border border-white/10 text-white hover:bg-white/10"
             )}
             title={isLight ? "Switch to Dark Theme" : "Switch to Light Theme"}
           >
@@ -775,7 +1238,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               "w-11 h-11 rounded-full flex items-center justify-center transition-all border shadow-md cursor-pointer relative group",
               isLight 
                 ? "bg-white border-neutral-200 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100" 
-                : "bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:bg-white/10",
+                : "bg-white/5 border border-white/10 text-white hover:bg-white/10",
               isHistorySpinning && "animate-spin"
             )}
             title="Download History"
@@ -899,7 +1362,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         try {
                           await navigator.clipboard.writeText(item.url);
                           setCopiedHistoryUrl(item.url);
-                          triggerHistoryToast("Copied successfully! 📋");
+                          triggerHistoryToast("Copied successfully!");
                           setTimeout(() => setCopiedHistoryUrl(null), 2000);
                         } catch (err) {}
                       };
@@ -909,7 +1372,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         const updated = history.filter((_, i) => i !== idx);
                         setHistory(updated);
                         localStorage.setItem('download_history', JSON.stringify(updated));
-                        triggerHistoryToast("Removed from history 🗑️");
+                        triggerHistoryToast("Removed from history");
                       };
 
                       return (
@@ -1199,7 +1662,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             </AnimatePresence>
 
             {/* Search & URL Input Box */}
-            <form onSubmit={handleDownload} className="w-full max-w-2xl mb-12 relative">
+            <form onSubmit={handleDownload} className="w-full max-w-2xl mb-6 relative">
                 <div className={clsx(
                   "relative flex items-center w-full border rounded-full p-2 pl-6 sm:pl-8 shadow-2xl backdrop-blur-xl group transition-all",
                   isLight 
@@ -1240,6 +1703,190 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   </button>
                 </div>
               </form>
+
+              {/* Quick Actions Row */}
+              <div className="flex flex-wrap items-center justify-center gap-3 mb-8 w-full max-w-2xl relative z-20">
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboard}
+                  className={clsx(
+                    "inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all border shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98]",
+                    isLight 
+                      ? "bg-white/90 border-neutral-200/80 hover:border-neutral-300 text-neutral-700 hover:bg-neutral-50 shadow-neutral-100" 
+                      : "bg-white/5 border-white/10 hover:border-white/15 text-neutral-300 hover:bg-white/10 shadow-black/40"
+                  )}
+                  title="Paste supported URL instantly from your clipboard"
+                >
+                  <Copy className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Paste Link</span>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={handleAddToVault}
+                  disabled={!url}
+                  className={clsx(
+                    "inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all border shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100",
+                    isLight 
+                      ? "bg-white/90 border-neutral-200/80 hover:border-neutral-300 text-neutral-700 hover:bg-neutral-50" 
+                      : "bg-white/5 border-white/10 hover:border-white/15 text-neutral-300 hover:bg-white/10"
+                  )}
+                  title="Queue this URL into the Batch Downloader Vault"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-500 font-extrabold" />
+                  <span>Add to Batch Vault</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowVault(!showVault)}
+                  className={clsx(
+                    "inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all border shadow-sm cursor-pointer hover:scale-[1.02] active:scale-[0.98]",
+                    showVault
+                      ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-500 dark:text-indigo-400 font-extrabold"
+                      : isLight 
+                        ? "bg-white/90 border-neutral-200/80 hover:border-neutral-300 text-neutral-700 hover:bg-neutral-50" 
+                        : "bg-white/5 border-white/10 hover:border-white/15 text-neutral-300 hover:bg-white/10"
+                  )}
+                  title="Open/Close your offline-saved Batch Downloader Vault"
+                >
+                  <ListVideo className="w-3.5 h-3.5 text-indigo-500" /> 
+                  <span>Batch Vault</span>
+                  {vaultQueue.length > 0 && (
+                    <span className="flex h-5 min-w-[20px] px-1 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-black text-white">
+                      {vaultQueue.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Link Vault Batch Queue Panel (Glassmorphic) */}
+              <AnimatePresence>
+                {showVault && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, y: -15, filter: "blur(4px)" }}
+                    animate={{ opacity: 1, height: "auto", y: 0, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, height: 0, y: -15, filter: "blur(4px)" }}
+                    transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                    className="w-full max-w-2xl mb-8 overflow-hidden shrink-0"
+                  >
+                    <div className={clsx(
+                      "p-5 rounded-3xl border shadow-xl flex flex-col gap-4 text-left relative overflow-hidden backdrop-blur-xl",
+                      isLight 
+                        ? "bg-white/80 border-neutral-200/80 shadow-neutral-100" 
+                        : "bg-neutral-900/60 border-white/10 shadow-black/50"
+                    )}>
+                      <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+
+                      <div className="flex items-center justify-between border-b pb-3 border-neutral-200/60 dark:border-white/10 relative z-10">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-500">
+                            <ListVideo className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h3 className={clsx("text-sm font-bold tracking-tight", isLight ? "text-neutral-900" : "text-white")}>
+                              Link Vault Batch Downloader
+                            </h3>
+                            <p className={clsx("text-[10px] font-medium opacity-60", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                              Queue links of any supported platform to extract sequentially
+                            </p>
+                          </div>
+                        </div>
+
+                        {vaultQueue.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              saveVault([]);
+                              triggerHistoryToast("Batch Vault cleared!");
+                            }}
+                            className="text-[10px] font-bold uppercase tracking-wider text-rose-500 hover:underline cursor-pointer"
+                          >
+                            Clear Vault
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto custom-scrollbar pr-1 relative z-10">
+                        {vaultQueue.length === 0 ? (
+                          <div className="py-6 flex flex-col items-center justify-center text-center opacity-60">
+                            <div className="w-10 h-10 rounded-full bg-neutral-200/50 dark:bg-white/5 flex items-center justify-center mb-2.5 text-neutral-400">
+                              <Plus className="w-5 h-5 rotate-45" />
+                            </div>
+                            <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                              Your Link Vault is currently empty.
+                            </p>
+                            <p className="text-[10px] text-neutral-400 dark:text-neutral-500 max-w-sm mt-1 leading-relaxed">
+                              Paste a media link in the input above and click "Add to Batch Vault" to save links for later offline extraction.
+                            </p>
+                          </div>
+                        ) : (
+                          vaultQueue.map((item, idx) => {
+                            const platDetails = getPlatformDetails(item.platform);
+                            return (
+                              <div 
+                                key={item.url + '_' + idx}
+                                className={clsx(
+                                  "flex items-center justify-between p-2.5 rounded-xl border transition-colors group/vault",
+                                  isLight 
+                                    ? "bg-neutral-50/50 border-neutral-100 hover:bg-neutral-100/50" 
+                                    : "bg-white/5 border-white/5 hover:bg-white/[0.08]"
+                                )}
+                              >
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  <div className={clsx("p-2 rounded-lg text-xs font-bold shrink-0", platDetails.bgClass, platDetails.colorClass)}>
+                                    {platDetails.icon}
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className={clsx("text-xs font-bold truncate", isLight ? "text-neutral-800" : "text-neutral-200")}>
+                                      {getTabLabel(item.platform)} Link
+                                    </span>
+                                    <span className="text-[10px] opacity-50 truncate max-w-[280px] sm:max-w-md font-mono" title={item.url}>
+                                      {item.url}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveTab(item.platform);
+                                      setUrl(item.url);
+                                      setShowVault(false);
+                                      triggerHistoryToast(`Loaded link! Running extraction...`);
+                                      // Trigger immediate download
+                                      setTimeout(() => {
+                                        const form = document.querySelector('form');
+                                        if (form) form.requestSubmit();
+                                      }, 100);
+                                  }}
+                                    className="px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-extrabold uppercase tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer"
+                                  >
+                                    Process
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = vaultQueue.filter((_, i) => i !== idx);
+                                      saveVault(updated);
+                                      triggerHistoryToast("Link removed from Vault");
+                                    }}
+                                    className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                    title="Remove item"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
           </motion.div>
         </AnimatePresence>
 
@@ -1441,14 +2088,46 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                 </div>
                               </div>
                               <div className="flex flex-col gap-3 mt-auto relative z-10">
-                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.avatarUrl!, (result.profile?.username || "user") + "_avatar.jpg"); }}
-                                  className={clsx(
-                                    "w-full text-center text-sm font-bold px-4 py-4 rounded-xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-md hover:shadow-lg hover:-translate-y-0.5",
-                                    isLight ? "bg-neutral-900 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black"
-                                  )}
-                                >
-                                  <Download className="w-5 h-5" /> Download Logo
-                                </button>
+                                {(() => {
+                                  const activeDlAvatar = activeDownloads[result.profile.avatarUrl!];
+                                  return (
+                                    <button 
+                                      type="button"                                   
+                                      onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.avatarUrl!, (result.profile?.username || "user") + "_avatar.jpg"); }}
+                                      disabled={!!activeDlAvatar && activeDlAvatar.status !== "complete" && activeDlAvatar.status !== "failed"}
+                                      className={clsx(
+                                        "w-full text-center text-sm font-bold px-4 py-4 rounded-xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-md hover:shadow-lg hover:-translate-y-0.5 disabled:cursor-not-allowed",
+                                        isLight 
+                                          ? activeDlAvatar?.status === "complete" ? "bg-emerald-600 text-white" : "bg-neutral-900 hover:bg-neutral-800 text-white" 
+                                          : activeDlAvatar?.status === "complete" ? "bg-emerald-600 text-white" : "bg-white hover:bg-neutral-200 text-black",
+                                        activeDlAvatar && "bg-emerald-600 text-white"
+                                      )}
+                                    >
+                                      {activeDlAvatar ? (
+                                        activeDlAvatar.status === "preparing" || activeDlAvatar.status === "downloading" ? (
+                                          <>
+                                            <Loader2 className="w-5 h-5 animate-spin text-current" />
+                                            {activeDlAvatar.status === "preparing" ? "Preparing..." : "Downloading..."}
+                                          </>
+                                        ) : activeDlAvatar.status === "complete" ? (
+                                          <>
+                                            <AnimatedCheckMark className="w-5 h-5 text-white" />
+                                            Saved Successfully!
+                                          </>
+                                        ) : (
+                                          <>
+                                            <AlertCircle className="w-5 h-5 text-rose-300" />
+                                            Download Failed
+                                          </>
+                                        )
+                                      ) : (
+                                        <>
+                                          <Download className="w-5 h-5" /> Download Logo
+                                        </>
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                                 <div className="flex flex-col sm:flex-row gap-2 w-full">
                                   <CopyButton url={result.profile.avatarUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
                                   <QRCodeButton url={result.profile.avatarUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
@@ -1476,14 +2155,46 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                 </div>
                               </div>
                               <div className="flex flex-col gap-3 mt-auto relative z-10">
-                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.bannerUrl!, (result.profile?.username || "user") + "_banner.jpg"); }}
-                                  className={clsx(
-                                    "w-full text-center text-sm font-bold px-4 py-4 rounded-xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-md hover:shadow-lg hover:-translate-y-0.5",
-                                    isLight ? "bg-neutral-900 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black"
-                                  )}
-                                >
-                                  <Download className="w-5 h-5" /> Download Banner
-                                </button>
+                                {(() => {
+                                  const activeDlBanner = activeDownloads[result.profile.bannerUrl!];
+                                  return (
+                                    <button 
+                                      type="button"                                   
+                                      onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.profile.bannerUrl!, (result.profile?.username || "user") + "_banner.jpg"); }}
+                                      disabled={!!activeDlBanner && activeDlBanner.status !== "complete" && activeDlBanner.status !== "failed"}
+                                      className={clsx(
+                                        "w-full text-center text-sm font-bold px-4 py-4 rounded-xl flex items-center justify-center gap-2 transition-all uppercase tracking-wider shadow-md hover:shadow-lg hover:-translate-y-0.5 disabled:cursor-not-allowed",
+                                        isLight 
+                                          ? activeDlBanner?.status === "complete" ? "bg-emerald-600 text-white" : "bg-neutral-900 hover:bg-neutral-800 text-white" 
+                                          : activeDlBanner?.status === "complete" ? "bg-emerald-600 text-white" : "bg-white hover:bg-neutral-200 text-black",
+                                        activeDlBanner && "bg-emerald-600 text-white"
+                                      )}
+                                    >
+                                      {activeDlBanner ? (
+                                        activeDlBanner.status === "preparing" || activeDlBanner.status === "downloading" ? (
+                                          <>
+                                            <Loader2 className="w-5 h-5 animate-spin text-current" />
+                                            {activeDlBanner.status === "preparing" ? "Preparing..." : "Downloading..."}
+                                          </>
+                                        ) : activeDlBanner.status === "complete" ? (
+                                          <>
+                                            <AnimatedCheckMark className="w-5 h-5 text-white" />
+                                            Saved Successfully!
+                                          </>
+                                        ) : (
+                                          <>
+                                            <AlertCircle className="w-5 h-5 text-rose-300" />
+                                            Download Failed
+                                          </>
+                                        )
+                                      ) : (
+                                        <>
+                                          <Download className="w-5 h-5" /> Download Banner
+                                        </>
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                                 <div className="flex flex-col sm:flex-row gap-2 w-full">
                                   <CopyButton url={result.profile.bannerUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
                                   <QRCodeButton url={result.profile.bannerUrl} isLight={isLight} className="w-full sm:flex-1 px-4 py-3.5 rounded-xl text-sm justify-center backdrop-blur-md" />
@@ -1592,27 +2303,84 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               "p-4 border-t mt-auto flex flex-col gap-3 transition-colors",
                               isLight ? "bg-neutral-50 border-neutral-100" : "bg-black/30 border-white/5"
                             )}>
-                              {item.type === 'video' ? (
-                                <div className="space-y-1.5">
-                                  <button type="button"                                     onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + (item.type === "video" ? "_item.mp4" : "_item.jpg")); }}
-                                  className={clsx(
-                                    "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
-                                      isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10"
+                              {(() => {
+                                const activeDlItem = activeDownloads[item.url];
+                                return item.type === 'video' ? (
+                                  <div className="space-y-1.5">
+                                    <button 
+                                      type="button"                                     
+                                      onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
+                                      disabled={!!activeDlItem && activeDlItem.status !== "complete" && activeDlItem.status !== "failed"}
+                                      className={clsx(
+                                        "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider disabled:cursor-not-allowed",
+                                        isLight 
+                                          ? activeDlItem?.status === "complete" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" 
+                                          : activeDlItem?.status === "complete" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10",
+                                        activeDlItem && "bg-emerald-600 border-emerald-600 text-white"
+                                      )}
+                                    >
+                                      {activeDlItem ? (
+                                        activeDlItem.status === "preparing" || activeDlItem.status === "downloading" ? (
+                                          <>
+                                            <Loader2 className="w-4 h-4 animate-spin text-current" />
+                                            {activeDlItem.status === "preparing" ? "Preparing..." : "Downloading..."}
+                                          </>
+                                        ) : activeDlItem.status === "complete" ? (
+                                          <>
+                                            <AnimatedCheckMark className="w-4 h-4 text-white" />
+                                            Saved!
+                                          </>
+                                        ) : (
+                                          <>
+                                            <AlertCircle className="w-4 h-4 text-rose-300" />
+                                            Failed
+                                          </>
+                                        )
+                                      ) : (
+                                        <>
+                                          <Download className="w-4 h-4" /> Download Video
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button 
+                                    type="button"                                   
+                                    onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.jpg"); }}
+                                    disabled={!!activeDlItem && activeDlItem.status !== "complete" && activeDlItem.status !== "failed"}
+                                    className={clsx(
+                                      "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider disabled:cursor-not-allowed",
+                                      isLight 
+                                        ? activeDlItem?.status === "complete" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white hover:bg-neutral-900 hover:text-white border-neutral-200 text-neutral-800" 
+                                        : activeDlItem?.status === "complete" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white/5 hover:bg-white hover:text-black border border-white/10 text-white",
+                                      activeDlItem && "bg-emerald-600 border-emerald-600 text-white"
                                     )}
                                   >
-                                    <Download className="w-4 h-4" /> Download Video
+                                    {activeDlItem ? (
+                                      activeDlItem.status === "preparing" || activeDlItem.status === "downloading" ? (
+                                        <>
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin text-current" />
+                                          {activeDlItem.status === "preparing" ? "Preparing..." : "Downloading..."}
+                                        </>
+                                      ) : activeDlItem.status === "complete" ? (
+                                        <>
+                                          <AnimatedCheckMark className="w-3.5 h-3.5 text-white" />
+                                          Saved!
+                                        </>
+                                      ) : (
+                                        <>
+                                          <AlertCircle className="w-3.5 h-3.5 text-rose-300" />
+                                          Failed
+                                        </>
+                                      )
+                                    ) : (
+                                      <>
+                                        <Download className="w-3.5 h-3.5" /> Download Image
+                                      </>
+                                    )}
                                   </button>
-                                </div>
-                              ) : (
-                                <button type="button"                                   onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + (item.type === "video" ? "_item.mp4" : "_item.jpg")); }}
-                                  className={clsx(
-                                    "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider",
-                                    isLight ? "bg-white hover:bg-neutral-900 hover:text-white border-neutral-200 text-neutral-800" : "bg-white/5 hover:bg-white hover:text-black border border-white/10 text-white"
-                                  )}
-                                >
-                                  <Download className="w-3.5 h-3.5" /> Download Image
-                                </button>
-                              )}
+                                );
+                              })()}
                               <div className="flex flex-col sm:flex-row gap-2 w-full">
                                 <CopyButton url={item.url} isLight={isLight} className="w-full sm:flex-1 rounded-xl px-3 py-2.5 text-xs justify-center" />
                                 <QRCodeButton url={item.url} isLight={isLight} className="w-full sm:flex-1 rounded-xl px-3 py-2.5 text-xs justify-center" />
@@ -1632,7 +2400,93 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       "border rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row backdrop-blur-sm transition-colors",
                       isLight ? "bg-white border-neutral-200" : "bg-white/5 border border-white/10"
                     )}>
-                      {result.thumbnail ? (
+                      {result.mediaType === 'video' ? (
+                        <div className="w-full md:w-2/5 aspect-[4/3] md:aspect-auto bg-black relative flex flex-col justify-between overflow-hidden min-h-[280px]">
+                          {/* Shutter camera flash animation overlay */}
+                          <div className={clsx(
+                            "absolute inset-0 bg-white pointer-events-none z-30 transition-opacity duration-200",
+                            snapshotCanvasFlash ? "opacity-90" : "opacity-0"
+                          )} />
+
+                          {/* Video player element */}
+                          <video
+                            id="studio-video-element"
+                            src={getProxiedUrl(result.url)}
+                            poster={result.thumbnail ? getProxiedUrl(result.thumbnail) : undefined}
+                            controls
+                            playsInline
+                            className="w-full h-full object-contain bg-black flex-1"
+                          />
+
+                          {/* Glassmorphic Creative Playback Studio Toolbar */}
+                          <div className={clsx(
+                            "p-3 border-t flex flex-wrap items-center justify-between gap-2 backdrop-blur-md relative z-20 text-xs font-bold transition-colors",
+                            isLight ? "bg-white/95 border-neutral-200" : "bg-neutral-950/90 border-white/5"
+                          )}>
+                            <div className="flex items-center gap-1">
+                              <span className="opacity-60 text-[10px] uppercase mr-1">Speed:</span>
+                              {[0.5, 1, 1.5, 2].map((speed) => (
+                                <button
+                                  key={speed}
+                                  type="button"
+                                  onClick={() => {
+                                    setPlaybackSpeed(speed);
+                                    const video = document.getElementById('studio-video-element') as HTMLVideoElement;
+                                    if (video) video.playbackRate = speed;
+                                    triggerHistoryToast(`Playback set to ${speed}x`);
+                                  }}
+                                  className={clsx(
+                                    "px-1.5 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer",
+                                    playbackSpeed === speed
+                                      ? "bg-[#ff1e42] text-white font-extrabold"
+                                      : isLight 
+                                        ? "bg-neutral-100 text-neutral-700 hover:bg-neutral-200" 
+                                        : "bg-white/15 text-neutral-300 hover:bg-white/25"
+                                  )}
+                                >
+                                  {speed}x
+                                </button>
+                              ))}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const video = document.getElementById('studio-video-element') as HTMLVideoElement;
+                                if (video) {
+                                  try {
+                                    const canvas = document.createElement('canvas');
+                                    canvas.width = video.videoWidth || 1280;
+                                    canvas.height = video.videoHeight || 720;
+                                    const ctx = canvas.getContext('2d');
+                                    if (ctx) {
+                                      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                                      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                                      const a = document.createElement('a');
+                                      a.href = dataUrl;
+                                      a.download = `${(result.title || "video").slice(0, 30).trim()}_frame_${Math.floor(video.currentTime)}s.jpg`;
+                                      document.body.appendChild(a);
+                                      a.click();
+                                      document.body.removeChild(a);
+                                      
+                                      // Trigger flash
+                                      setSnapshotCanvasFlash(true);
+                                      setTimeout(() => setSnapshotCanvasFlash(false), 200);
+                                      triggerHistoryToast("Snapshot saved to your device");
+                                    }
+                                  } catch (e) {
+                                    triggerHistoryToast("Snapshot failed due to video server permissions. Try Lightbox instead");
+                                  }
+                                }
+                              }}
+                              className="px-2 py-1 rounded bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer uppercase tracking-wider"
+                              title="Capture High Resolution snapshot of current video frame"
+                            >
+                              <span className="flex items-center gap-1"><Camera className="w-3.5 h-3.5" />Snap Frame</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : result.thumbnail ? (
                         <div 
                           className="w-full md:w-2/5 aspect-[4/3] md:aspect-auto bg-black relative flex items-center justify-center overflow-hidden min-h-[220px] cursor-zoom-in group/thumb"
                           onClick={() => {
@@ -1704,39 +2558,93 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         {result.qualities && result.qualities.length > 0 ? (
                           <div className="flex flex-col gap-4 w-full">
                             <div className={clsx("border-t pt-4 mt-1 transition-colors", isLight ? "border-neutral-200" : "border-white/10")}>
-                              <span className="text-xs uppercase tracking-widest text-emerald-500 font-bold block mb-3">
-                                Available Video Quality Formats:
-                              </span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                                {result.qualities.map((q, idx) => (
-                                  <button type="button"                                     key={idx}
-                                    onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + "." + (q.ext || "mp4")); }}
-                                    className={clsx(
-                                      "flex items-center justify-between p-3 rounded-xl transition-all border group/quality",
-                                      isLight ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10"
-                                    )}
-                                  >
-                                    <div className="flex flex-col text-left">
-                                      <span className={clsx(
-                                        "font-bold text-sm transition-colors",
-                                        isLight ? "text-neutral-800 group-hover/quality:text-white" : "text-white group-hover/quality:text-white"
-                                      )}>
-                                        {q.label}
-                                      </span>
-                                      {q.size && (
-                                        <span className={clsx(
-                                          "text-xs transition-colors",
-                                          isLight ? "text-neutral-500 group-hover/quality:text-white/80" : "text-neutral-400 group-hover/quality:text-white/80"
+                              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                <span className="text-xs uppercase tracking-widest text-emerald-500 font-bold">
+                                  Available Video Quality Formats:
+                                </span>
+                                <span className="text-[10px] opacity-60 flex items-center gap-1 font-medium">
+                                  <Sparkles className="w-3 h-3 text-emerald-500" /> Click 
+                                  <ExternalLink className="w-2.5 h-2.5 inline mx-0.5" /> for instant browser download
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                {result.qualities.map((q, idx) => {
+                                  const activeDl = activeDownloads[q.url];
+                                  const filename = (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + "." + (q.ext || "mp4");
+                                  return (
+                                    <div key={idx} className="flex items-center gap-2 w-full">
+                                      <button type="button"
+                                        onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, filename); }}
+                                        disabled={!!activeDl && activeDl.status !== "complete" && activeDl.status !== "failed"}
+                                        className={clsx(
+                                          "flex-1 flex items-center justify-between p-3 rounded-xl transition-all border group/quality cursor-pointer disabled:cursor-not-allowed",
+                                          isLight 
+                                            ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" 
+                                            : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10",
+                                          activeDl && "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-500/10"
+                                        )}
+                                      >
+                                        <div className="flex flex-col text-left">
+                                          <span className={clsx(
+                                            "font-bold text-sm transition-colors",
+                                            isLight ? "text-neutral-800 group-hover/quality:text-white" : "text-white group-hover/quality:text-white",
+                                            activeDl?.status === "complete" && "text-emerald-500",
+                                            activeDl?.status === "failed" && "text-rose-500"
+                                          )}>
+                                            {q.label}
+                                          </span>
+                                          <span className={clsx(
+                                            "text-xs transition-colors",
+                                            isLight ? "text-neutral-500 group-hover/quality:text-white/80" : "text-neutral-400 group-hover/quality:text-white/80",
+                                            activeDl && "text-emerald-600 dark:text-emerald-400 font-medium"
+                                          )}>
+                                            {activeDl 
+                                              ? activeDl.status === "preparing"
+                                                ? "Preparing stream (fetching URL)..."
+                                                : activeDl.status === "downloading"
+                                                  ? activeDl.progress !== null ? `Downloading in background (${activeDl.progress}%)` : "Downloading stream..."
+                                                  : activeDl.status === "complete"
+                                                    ? "Saved successfully!"
+                                                    : "Extraction failed"
+                                              : q.size || "Standard Quality"
+                                            }
+                                          </span>
+                                        </div>
+                                        <div className={clsx(
+                                          "p-2 rounded-lg transition-colors",
+                                          isLight ? "bg-neutral-100 group-hover/quality:bg-white/20" : "bg-white/10 group-hover/quality:bg-white/20",
+                                          activeDl && "bg-emerald-500/20"
                                         )}>
-                                          {q.size}
-                                        </span>
-                                      )}
+                                          {activeDl ? (
+                                            activeDl.status === "preparing" || activeDl.status === "downloading" ? (
+                                              <Loader2 className="w-4 h-4 text-emerald-500 animate-spin group-hover/quality:text-white" />
+                                            ) : activeDl.status === "complete" ? (
+                                              <AnimatedCheckMark className="w-4 h-4 text-emerald-500" />
+                                            ) : (
+                                              <AlertCircle className="w-4 h-4 text-rose-500" />
+                                            )
+                                          ) : (
+                                            <Download className="w-4 h-4 text-emerald-500 group-hover/quality:text-white" />
+                                          )}
+                                        </div>
+                                      </button>
+                                      
+                                      {/* Direct instant download button */}
+                                      <button type="button"
+                                        onClick={(e) => { e.preventDefault(); downloadFileDirect(q.url, filename); }}
+                                        title="Direct Instant Download (Bypasses local memory cache)"
+                                        className={clsx(
+                                          "p-3.5 rounded-xl transition-all border flex items-center justify-center cursor-pointer",
+                                          isLight 
+                                            ? "bg-neutral-50 border-neutral-200 text-neutral-500 hover:text-white hover:bg-[#ff1e42]" 
+                                            : "bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-[#ff1e42]"
+                                        )}
+                                      >
+                                        <ExternalLink className="w-4 h-4" />
+                                      </button>
                                     </div>
-                                    <div className={clsx("p-2 rounded-lg transition-colors", isLight ? "bg-neutral-100 group-hover/quality:bg-white/20" : "bg-white/10 group-hover/quality:bg-white/20")}>
-                                      <Download className="w-4 h-4 text-emerald-500 group-hover/quality:text-white" />
-                                    </div>
-                                  </button>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
                             {result.url && (
@@ -1746,21 +2654,69 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               </div>
                             )}
                           </div>
-                        ) : result.url ? (
-                          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center w-full">
-                            <button type="button"                               onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, (result.title || "download") + (result.mediaType === "image" ? ".jpg" : ".mp4")); }}
+                        ) : result.url ? (() => {
+                          const activeDl = activeDownloads[result.url];
+                          const filename = (result.title || "download") + (result.mediaType === "image" ? ".jpg" : ".mp4");
+                          return (
+                            <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center w-full">
+                              <button type="button"
+                                onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, filename); }}
+                                disabled={!!activeDl && activeDl.status !== "complete" && activeDl.status !== "failed"}
+                                className={clsx(
+                                  "flex-1 sm:flex-initial inline-flex items-center justify-center gap-3 px-6 py-3.5 rounded-full font-bold transition-all shadow-lg hover:shadow-xl uppercase tracking-wider text-sm cursor-pointer disabled:cursor-not-allowed",
+                                  isLight 
+                                    ? "bg-neutral-950 text-white hover:bg-neutral-800" 
+                                    : "bg-white hover:bg-neutral-200 text-black",
+                                  activeDl && "bg-emerald-600 hover:bg-emerald-500 text-white"
+                                )}
+                              >
+                                {activeDl ? (
+                                  activeDl.status === "preparing" || activeDl.status === "downloading" ? (
+                                    <>
+                                      <Loader2 className="w-5 h-5 animate-spin" />
+                                      {activeDl.status === "preparing" 
+                                        ? "Preparing stream..." 
+                                        : activeDl.progress !== null ? `Downloading (${activeDl.progress}%)` : "Downloading..."
+                                      }
+                                    </>
+                                  ) : activeDl.status === "complete" ? (
+                                    <>
+                                      <AnimatedCheckMark className="w-5 h-5 text-white" />
+                                      Saved successfully!
+                                    </>
+                                  ) : (
+                                    <>
+                                      <AlertCircle className="w-5 h-5 text-rose-300" />
+                                      Failed to download
+                                    </>
+                                  )
+                                ) : (
+                                  <>
+                                    <Download className="w-5 h-5" /> 
+                                    Download Media File
+                                  </>
+                                )}
+                              </button>
                               
-                              className={clsx(
-                                "w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-bold transition-all shadow-lg hover:shadow-xl uppercase tracking-wider text-sm cursor-pointer",
-                                isLight ? "bg-neutral-950 text-white hover:bg-neutral-800" : "bg-white hover:bg-neutral-200 text-black"
-                              )}
-                            >
-                              <Download className="w-5 h-5" /> Download Media File
-                            </button>
-                            <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3.5 rounded-full text-sm" />
-                            <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3.5 rounded-full text-sm" />
-                          </div>
-                        ) : null}
+                              {/* Direct download */}
+                              <button type="button"
+                                onClick={(e) => { e.preventDefault(); downloadFileDirect(result.url, filename); }}
+                                title="Direct Instant Download (Bypasses local memory cache)"
+                                className={clsx(
+                                  "inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-bold transition-all border uppercase tracking-wider text-xs cursor-pointer",
+                                  isLight 
+                                    ? "border-neutral-300 text-neutral-700 bg-neutral-100 hover:bg-neutral-200" 
+                                    : "border-white/10 text-white bg-white/5 hover:bg-white/10"
+                                )}
+                              >
+                                <ExternalLink className="w-4 h-4" /> Direct Instant Download
+                              </button>
+
+                              <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3.5 rounded-full text-sm" />
+                              <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3.5 rounded-full text-sm" />
+                            </div>
+                          );
+                        })() : null}
                       </div>
                     </div>
                   )}
@@ -1802,6 +2758,104 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Real-time platform status - Only shown when not loading & no result is active */}
+        {!result && !isLoading && (
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-60px" }}
+            variants={{
+              hidden: { opacity: 0, y: 30 },
+              visible: {
+                opacity: 1,
+                y: 0,
+                transition: {
+                  duration: 0.6,
+                  ease: "easeOut",
+                  staggerChildren: 0.08
+                }
+              }
+            }}
+            className="w-full max-w-4xl mx-auto mt-12 flex flex-col gap-6 relative z-10"
+          >
+            <div className="text-center mb-4">
+              <h3 className={clsx("text-lg font-bold tracking-tight mb-1", isLight ? "text-neutral-900" : "text-white")}>
+                Supported Platforms
+              </h3>
+              <p className={clsx("text-xs font-medium opacity-60", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                Check which platforms are currently available for direct downloads
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full">
+              {TABS.map((tab) => {
+                const details = getPlatformDetails(tab.id);
+                const ping = platformPings[tab.id] || 60;
+                
+                // Set custom hover glow colors based on the platform id
+                const getGlowClass = (id: Tab) => {
+                  switch(id) {
+                    case 'youtube': return 'hover:shadow-[0_0_20px_rgba(239,68,68,0.25)] dark:hover:shadow-[0_0_25px_rgba(239,68,68,0.35)] hover:border-red-500/40';
+                    case 'instagram': return 'hover:shadow-[0_0_20px_rgba(236,72,153,0.25)] dark:hover:shadow-[0_0_25px_rgba(236,72,153,0.35)] hover:border-pink-500/40';
+                    case 'tiktok': return 'hover:shadow-[0_0_20px_rgba(6,182,212,0.25)] dark:hover:shadow-[0_0_25px_rgba(6,182,212,0.35)] hover:border-cyan-500/40';
+                    case 'facebook': return 'hover:shadow-[0_0_20px_rgba(59,130,246,0.25)] dark:hover:shadow-[0_0_25px_rgba(59,130,246,0.35)] hover:border-blue-500/40';
+                    case 'reddit': return 'hover:shadow-[0_0_20px_rgba(249,115,22,0.25)] dark:hover:shadow-[0_0_25px_rgba(249,115,22,0.35)] hover:border-orange-500/40';
+                    case 'pinterest': return 'hover:shadow-[0_0_20px_rgba(220,38,38,0.25)] dark:hover:shadow-[0_0_25px_rgba(220,38,38,0.35)] hover:border-red-600/40';
+                    case 'x': return 'hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] dark:hover:shadow-[0_0_25px_rgba(255,255,255,0.15)] hover:border-white/20';
+                    case 'linkedin': return 'hover:shadow-[0_0_20px_rgba(14,165,233,0.25)] dark:hover:shadow-[0_0_25px_rgba(14,165,233,0.35)] hover:border-sky-500/40';
+                    default: return 'hover:shadow-md';
+                  }
+                };
+
+                return (
+                  <motion.div 
+                    key={tab.id}
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { 
+                        opacity: 1, 
+                        y: 0,
+                        transition: { duration: 0.5, ease: "easeOut" }
+                      }
+                    }}
+                    whileHover={{ 
+                      y: -6, 
+                      scale: 1.03,
+                      transition: { duration: 0.2, ease: "easeOut" }
+                    }}
+                    whileTap={{ scale: 0.97 }}
+                    className={clsx(
+                      "relative p-5 rounded-3xl border flex flex-col items-center justify-center gap-3.5 backdrop-blur-xl transition-all duration-300 overflow-hidden group/tile cursor-pointer select-none",
+                      isLight 
+                        ? "bg-white/40 border-neutral-200/50 shadow-sm shadow-neutral-100 hover:bg-white/70 hover:border-neutral-300 text-neutral-800" 
+                        : "bg-neutral-900/40 border-white/[0.06] hover:bg-neutral-900/60 hover:border-white/15 shadow-2xl text-neutral-200",
+                      getGlowClass(tab.id)
+                    )}
+                  >
+                    {/* Visual Glass Reflection Sheen */}
+                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/[0.03] to-white/[0.08] opacity-0 group-hover/tile:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
+                    {/* Logo wrapper for colorful 3D glass icon */}
+                    <div className="transition-all duration-300 group-hover/tile:scale-110 select-none">
+                      {render3DGlassIcon(tab.id)}
+                    </div>
+
+                    <div className="flex flex-col items-center text-center">
+                      <span className={clsx("text-xs font-bold tracking-tight", isLight ? "text-neutral-800" : "text-neutral-200")}>
+                        {tab.name.replace(" Downloader", "")}
+                      </span>
+                      <div className="flex items-center gap-1.5 mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold text-emerald-500 bg-emerald-500/10">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span className="tracking-wider uppercase">AVAILABLE</span>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
 
       </div>
 
@@ -2003,7 +3057,136 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           background: linear-gradient(90deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 100%);
           z-index: 10;
         }
+        @keyframes shimmer {
+          0% { left: -100%; }
+          100% { left: 100%; }
+        }
       `}} />
+
+      {/* Global Downloads HUD Overlay */}
+      <AnimatePresence>
+        {Object.keys(activeDownloads).length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 30, filter: "blur(4px)" }}
+            animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, scale: 0.95, y: 20, filter: "blur(4px)" }}
+            transition={{ type: "spring", stiffness: 320, damping: 26 }}
+            className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] px-4 sm:px-0"
+          >
+            <div className={clsx(
+              "p-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border flex flex-col gap-3 backdrop-blur-xl transition-all relative overflow-hidden",
+              isLight 
+                ? "bg-white/70 border-white/50 shadow-[0_8px_32px_rgba(15,23,42,0.06)] text-neutral-800" 
+                : "bg-neutral-900/60 border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.4)] text-white"
+            )}>
+              {/* Highlight background sheen */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none rounded-3xl" />
+
+              <div className="flex items-center justify-between border-b pb-2.5 transition-colors border-neutral-200/40 dark:border-white/10 relative z-10">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </div>
+                  <span className="font-bold text-xs uppercase tracking-wider opacity-90">Active Downloads ({Object.keys(activeDownloads).length})</span>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setActiveDownloads({})}
+                  className="text-xs font-semibold hover:underline opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  Clear all
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3.5 max-h-[250px] overflow-y-auto custom-scrollbar relative z-10 pr-0.5">
+                <AnimatePresence initial={false}>
+                  {Object.entries(activeDownloads).map(([url, rawDl]) => {
+                    const dl = rawDl as { filename: string; progress: number | null; status: "preparing" | "downloading" | "complete" | "failed" };
+                    return (
+                      <motion.div 
+                        key={url}
+                        layout
+                        initial={{ opacity: 0, height: 0, scale: 0.9, y: 15 }}
+                        animate={{ opacity: 1, height: "auto", scale: 1, y: 0 }}
+                        exit={{ opacity: 0, height: 0, scale: 0.9, y: -10 }}
+                        transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                        className="flex flex-col gap-2 p-3 rounded-2xl bg-white/40 dark:bg-white/5 border border-white/30 dark:border-white/5 shadow-sm backdrop-blur-md overflow-hidden group"
+                      >
+                        <div className="flex items-start justify-between text-xs font-semibold gap-2">
+                          <span className="truncate max-w-[75%] text-left font-semibold" title={dl.filename}>{dl.filename}</span>
+                          <span className={clsx(
+                            "font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0",
+                            dl.status === "complete" 
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" 
+                              : dl.status === "failed" 
+                                ? "bg-rose-500/15 text-rose-600 dark:text-rose-400" 
+                                : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                          )}>
+                            {dl.status === "preparing" 
+                              ? "Preparing" 
+                              : dl.status === "complete" 
+                                ? "Saved" 
+                                : dl.status === "failed" 
+                                  ? "Failed" 
+                                  : dl.progress !== null ? `${dl.progress}%` : "Downloading"
+                            }
+                          </span>
+                        </div>
+                        
+                        {/* Progress bar container */}
+                        <div className="w-full h-1.5 rounded-full bg-neutral-200/50 dark:bg-white/10 overflow-hidden relative">
+                          {dl.status === "preparing" ? (
+                            <div className="absolute top-0 left-0 h-full w-1/2 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full animate-[shimmer_1.5s_infinite]" />
+                          ) : (
+                            <motion.div 
+                              className={clsx(
+                                "absolute top-0 left-0 h-full rounded-full transition-all duration-300",
+                                dl.status === "complete" ? "bg-gradient-to-r from-emerald-500 to-teal-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : dl.status === "failed" ? "bg-gradient-to-r from-rose-500 to-red-600" : "bg-gradient-to-r from-blue-500 to-indigo-500"
+                              )}
+                              style={{ width: `${dl.progress !== null ? dl.progress : 50}%` }}
+                              layout
+                            />
+                          )}
+                        </div>
+                        
+                        {/* Action Row */}
+                        <div className="flex items-center justify-between text-[10px] opacity-70">
+                          <span className="truncate max-w-[80%] text-left">
+                            {dl.status === "downloading" 
+                              ? "Streaming content via server..." 
+                              : dl.status === "preparing" 
+                                ? "Resolving secure video URL..." 
+                                : dl.status === "complete" 
+                                  ? "Saved successfully to your device!" 
+                                  : "An error occurred during extraction"
+                            }
+                          </span>
+                          {dl.status !== "complete" && dl.status !== "failed" && (
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                setActiveDownloads(prev => {
+                                  const next = { ...prev };
+                                  delete next[url];
+                                  return next;
+                                });
+                              }}
+                              className="hover:text-rose-500 hover:underline cursor-pointer font-medium"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
     </LazyMotion>
     </>

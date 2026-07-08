@@ -1,7 +1,10 @@
 {
   "name": "Universal Media Downloader",
   "description": "A web application to download media from Pinterest, YouTube, Instagram, TikTok, and Reddit.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "clipboard-read",
+    "clipboard-write"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
