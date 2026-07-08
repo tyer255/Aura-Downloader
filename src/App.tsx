@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PrivacyPolicy, TermsConditions, DMCA, About, Contact, FAQ, NotFound, ServerError, CookiePolicy } from './pages/StaticPages';
 import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -437,6 +437,93 @@ const LOADING_STEPS = [
   { text: "Locating high-resolution photo frames & video streams...", target: 88 },
   { text: "Packing download buffers and wrapping files for instant download...", target: 98 },
 ];
+
+function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }: any) {
+  const [qualities, setQualities] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
+  const [selectedQuality, setSelectedQuality] = useState<string>('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const activeDownload = selectedQuality ? activeDownloads[selectedQuality] : null;
+
+  useEffect(() => {
+    if (fetched || loading) return;
+    
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setLoading(true);
+        fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: item.url })
+        })
+        .then(res => res.json())
+        .then(data => {
+          setLoading(false);
+          setFetched(true);
+          if (data.success && data.qualities) {
+            setQualities(data.qualities);
+            if (data.qualities.length > 0) {
+              setSelectedQuality(data.qualities[0].url);
+            }
+          }
+        })
+        .catch(() => {
+          setLoading(false);
+          setFetched(true);
+        });
+        observer.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+    return () => observer.disconnect();
+  }, [fetched, loading, item.url]);
+
+  return (
+    <div ref={containerRef} className={clsx("p-4 rounded-xl flex flex-col sm:flex-row gap-4 items-center shadow border transition-all", isLight ? "bg-white border-neutral-200" : "bg-white/5 border-white/10")}>
+       <img src={item.thumbnail} alt="thumbnail" className="w-24 h-16 sm:w-32 sm:h-20 object-cover rounded-lg shrink-0 bg-black" />
+       <div className="flex-1 min-w-0 w-full text-left">
+         <h4 className={clsx("font-bold truncate text-sm sm:text-base", isLight ? "text-neutral-900" : "text-white")} title={item.title}>{item.title}</h4>
+         <div className="mt-2 flex items-center gap-2">
+            {loading ? (
+              <span className="text-xs flex items-center gap-1 text-emerald-500"><Loader2 className="w-3 h-3 animate-spin" /> Fetching quality...</span>
+            ) : qualities && qualities.length > 0 ? (
+              <select 
+                className={clsx("text-xs p-1.5 rounded-lg border outline-none cursor-pointer max-w-full", isLight ? "bg-neutral-50 border-neutral-300 text-neutral-800" : "bg-black/50 border-white/20 text-white")}
+                value={selectedQuality}
+                onChange={e => setSelectedQuality(e.target.value)}
+              >
+                {qualities.map((q, i) => (
+                   <option key={i} value={q.url}>{q.label} {q.size && q.size !== 'Original' && q.size !== 'Unknown' ? `(${q.size})` : ''}</option>
+                ))}
+              </select>
+            ) : fetched ? (
+              <span className="text-xs text-red-500">Failed to load</span>
+            ) : null}
+         </div>
+       </div>
+       <button
+         disabled={loading || !qualities || qualities.length === 0 || (activeDownload && activeDownload.status !== 'failed')}
+         onClick={() => onDownloadQueue(selectedQuality, (item.title || "video").slice(0, 30).trim() + ".mp4")}
+         className={clsx(
+           "w-full sm:w-auto px-5 py-2.5 rounded-full font-bold text-xs uppercase tracking-wider shrink-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md", 
+           activeDownload && activeDownload.status === 'complete' 
+             ? "bg-emerald-600 text-white" 
+             : isLight ? "bg-neutral-900 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black"
+         )}
+       >
+         {activeDownload ? (
+           activeDownload.status === 'complete' ? 'Saved' : 
+           activeDownload.status === 'failed' ? 'Retry' : 'Downloading...'
+         ) : 'Download'}
+       </button>
+    </div>
+  );
+}
 
 // Animated check-mark success icon using framer-motion path animation
 function AnimatedCheckMark({ className = "w-5 h-5 text-emerald-500" }: { className?: string }) {
@@ -1158,6 +1245,35 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item_" + (index + 1) + (item.type === "video" ? ".mp4" : ".jpg"));
       }, index * 600); // delay to prevent overwhelming
     });
+  };
+
+  const [downloadingPlaylist, setDownloadingPlaylist] = useState(false);
+  const handleDownloadAllPlaylists = async () => {
+    if (!result || result.mediaType !== 'playlist' || !result.media) return;
+    setDownloadingPlaylist(true);
+    triggerHistoryToast("Fetching best qualities and downloading...");
+    for (let i = 0; i < result.media.length; i++) {
+      const item = result.media[i];
+      try {
+        const res = await fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: item.url })
+        });
+        const data = await res.json();
+        if (data.success && data.qualities && data.qualities.length > 0) {
+           const bestQuality = data.qualities[0].url;
+           await new Promise<void>((resolve) => {
+             downloadFileClientSide(bestQuality, (result.title || "playlist").slice(0, 30).trim() + "_item_" + (i + 1) + ".mp4");
+             setTimeout(resolve, 1500);
+           });
+        }
+      } catch (e) {
+        console.error("Failed to extract for playlist item", i);
+      }
+    }
+    setDownloadingPlaylist(false);
+    triggerHistoryToast("Playlist download complete");
   };
 
   const getBgGlow = (id: Tab) => {
@@ -2205,6 +2321,55 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         </div>
                       </div>
 
+                    </div>
+                  )}
+
+                  {/* PLAYLIST TEMPLATE */}
+                  {result.mediaType === 'playlist' && result.media && result.media.length > 0 && (
+                    <div className="space-y-6">
+                      <div className={clsx(
+                        "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-3xl backdrop-blur-md border transition-colors",
+                        isLight ? "bg-white border-neutral-200 shadow-md" : "bg-white/5 border border-white/10"
+                      )}>
+                        <div>
+                          <div className="flex items-center gap-2 text-emerald-400 mb-1">
+                            <CheckCircle2 className="w-5 h-5" />
+                            <span className="font-semibold text-sm tracking-wide">PLAYLIST READY</span>
+                          </div>
+                          <h3 className={clsx("text-xl font-bold line-clamp-1 transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                            {result.title || "YouTube Playlist"}
+                          </h3>
+                          <p className={clsx("text-xs transition-colors mt-1", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                            {result.media.length} videos extracted
+                          </p>
+                        </div>
+                        <button 
+                          onClick={handleDownloadAllPlaylists}
+                          disabled={downloadingPlaylist}
+                          className={clsx(
+                            "px-6 py-3 rounded-full font-bold transition-all shadow-lg flex items-center gap-2 text-sm shrink-0 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed",
+                            isLight ? "bg-neutral-950 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black shadow-white/10"
+                          )}
+                        >
+                          {downloadingPlaylist ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} 
+                          {downloadingPlaylist ? "Downloading..." : "Download All Playlists"}
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col gap-4">
+                        {result.media.map((item, index) => (
+                          <PlaylistItem 
+                            key={index}
+                            item={item}
+                            index={index}
+                            isLight={isLight}
+                            onDownloadQueue={(url: string, filename: string) => {
+                               downloadFileClientSide(url, filename);
+                            }}
+                            activeDownloads={activeDownloads} 
+                          />
+                        ))}
+                      </div>
                     </div>
                   )}
 

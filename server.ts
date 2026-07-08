@@ -264,8 +264,10 @@ const execAsync = utilSync.promisify(exec);
 
 
 async function extractWithVreden(url: string) {
+  const originalConsoleError = console.error;
+  console.error = () => {};
   try {
-    console.log(`Extracting YouTube video with @vreden/youtube_scraper: ${url}`);
+    console.log(`Extracting YouTube video with @vreden/youtube_scraper...`);
     const result = await vredenYtmp4(url);
     if (result && result.status && result.download && result.download.status) {
       const downloadInfo = result.download;
@@ -303,16 +305,40 @@ async function extractWithVreden(url: string) {
       };
     }
   } catch (err: any) {
-    console.error("Vreden extraction failed:", err.message);
+    // Ignore internal scraper errors
+  } finally {
+    console.error = originalConsoleError;
   }
   return null;
 }
 
 
-async function extractWithYtDlp(url: string) {
+async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
   try {
-    const { stdout } = await execAsync(`./yt-dlp_linux --js-runtimes node --no-playlist --dump-json "${url}"`, { timeout: 25000 });
+    let args = `--js-runtimes node --no-playlist --dump-json "${url}"`;
+    if (isPlaylist) {
+       args = `--js-runtimes node --dump-single-json --flat-playlist "${url}"`;
+    }
+    const { stdout } = await execAsync(`./yt-dlp_linux ${args}`, { timeout: 25000, maxBuffer: 1024 * 1024 * 50 });
     const data = JSON.parse(stdout);
+    
+    if (isPlaylist && data.entries) {
+      const validEntries = data.entries.filter((e: any) => e && e.url && e.id);
+      const media = validEntries.map((entry: any) => ({
+        type: "video",
+        url: entry.url || `https://www.youtube.com/watch?v=${entry.id}`,
+        thumbnail: entry.thumbnails?.[0]?.url || (entry.id ? `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg` : ""),
+        title: entry.title || "YouTube Video"
+      }));
+      return {
+        success: true,
+        title: data.title || "YouTube Playlist",
+        url: media[0]?.url,
+        mediaType: "playlist",
+        media: media,
+        isPlaylist: true
+      };
+    }
     
     let qualities = [];
     let mediaUrl = data.url;
@@ -377,7 +403,7 @@ async function extractWithYtDlp(url: string) {
        qualities: qualities.length > 0 ? qualities : getFallbackQualities(mediaUrl, "video")
      };
   } catch(e: any) {
-    console.log("yt-dlp extraction failed (falling back).", e.message);
+    // yt-dlp extraction was not successful
     return null;
   }
 }
@@ -576,11 +602,13 @@ function getFallbackQualities(url: string, mediaType: string = "video") {
 function classifyUrl(urlStr: string) {
   const url = urlStr.toLowerCase().trim();
   let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'x' | 'linkedin' | 'unknown' = 'unknown';
-  let type: 'profile' | 'community_post' | 'media' = 'media';
+  let type: 'profile' | 'community_post' | 'media' | 'playlist' = 'media';
 
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
     platform = 'youtube';
-    if (url.includes("/channel/") || url.includes("/c/") || url.includes("/@") || url.includes("/community") || url.includes("/post/")) {
+    if (url.includes("/playlist")) {
+      type = 'playlist';
+    } else if (url.includes("/channel/") || url.includes("/c/") || url.includes("/@") || url.includes("/community") || url.includes("/post/")) {
       if (url.includes("/post/") || url.includes("lb=")) {
         type = 'community_post';
       } else {
@@ -873,7 +901,7 @@ async function extractWithCobalt(url: string) {
         }
       }
     } catch (e) {
-      console.log(`Cobalt instance ${instance} failed.`);
+      // Ignore fallback failures
     }
   }
   return null;
@@ -902,6 +930,14 @@ async function extractWithCobalt(url: string) {
         }
       }
 
+      if (type === 'playlist' && platform === 'youtube') {
+        console.log("Playlist URL detected, extracting with yt-dlp flat-playlist.");
+        const ytDlpResult = await extractWithYtDlp(trimmedUrl, true);
+        if (ytDlpResult && ytDlpResult.success) {
+          return res.json(ytDlpResult);
+        }
+      }
+
       // 1. Primary for Facebook: btch.fbdown
       if (lowerUrl.includes("facebook.com") || lowerUrl.includes("fb.watch") || lowerUrl.includes("fb.com")) {
         try {
@@ -919,7 +955,7 @@ async function extractWithCobalt(url: string) {
             });
           }
         } catch (e) {
-          console.log("Facebook btch scraper failed (falling back to yt-dlp).");
+          // Ignore
         }
       }
 
@@ -940,7 +976,7 @@ async function extractWithCobalt(url: string) {
       }
 
       // 2. Cobalt API instances (Best for Vercel/Bolt)
-      console.log("yt-dlp failed or not available, trying Cobalt API instances...");
+      console.log("Trying Cobalt API instances as fallback...");
       const cobaltResult = await extractWithCobalt(trimmedUrl);
       if (cobaltResult && cobaltResult.success) {
         console.log("Extraction via Cobalt succeeded!");
@@ -963,7 +999,7 @@ async function extractWithCobalt(url: string) {
             });
           }
         } catch (e) {
-          console.log("Facebook fallback scraper failed (falling back).");
+          // Ignore
         }
       }
 
