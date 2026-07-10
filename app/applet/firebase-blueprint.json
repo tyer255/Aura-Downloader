@@ -1,0 +1,30 @@
+{
+  "entities": {
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Global admin configuration",
+      "type": "object",
+      "properties": {
+        "instagramEnabled": {
+          "type": "boolean",
+          "description": "Whether Instagram integration is globally enabled"
+        },
+        "instagramState": {
+          "type": "string",
+          "description": "Serialized Instagram state/cookies"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp of last update"
+        }
+      },
+      "required": ["instagramEnabled"]
+    }
+  },
+  "firestore": {
+    "config/admin": {
+      "schema": "AdminConfig",
+      "description": "Stores the global admin configuration, including the Instagram session state."
+    }
+  }
+}

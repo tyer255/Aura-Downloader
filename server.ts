@@ -386,6 +386,16 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
         
       if (qualities.length > 0) {
          mediaUrl = qualities[0].url; // highest quality
+         
+         const audioSourceUrl = bestAudio ? bestAudio.url : data.url;
+         if (audioSourceUrl) {
+            qualities.push({
+               label: "MP3 Audio",
+               url: `/api/proxy-download?url=${encodeURIComponent(audioSourceUrl)}&filename=${encodeURIComponent(data.title || "audio")}.mp3&extractAudio=true`,
+               ext: "mp3",
+               size: "Audio Only"
+            });
+         }
       }
     }
 
@@ -587,11 +597,13 @@ function getInstagramShortcode(url: string): string | null {
 // Fallback quality generator for simple or single-stream extractions
 function getFallbackQualities(url: string, mediaType: string = "video") {
   if (mediaType === "video") {
+    const mp3Url = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=audio.mp3&extractAudio=true`;
     return [
       { label: "1080p (Full HD)", url: url, ext: "mp4", size: "High Definition" },
       { label: "720p (HD Video)", url: url, ext: "mp4", size: "Standard HD" },
       { label: "480p (SD Video)", url: url, ext: "mp4", size: "Standard Definition" },
-      { label: "360p (Mobile Video)", url: url, ext: "mp4", size: "Low Bandwidth" }
+      { label: "360p (Mobile Video)", url: url, ext: "mp4", size: "Low Bandwidth" },
+      { label: "MP3 Audio", url: mp3Url, ext: "mp3", size: "Audio Only" }
     ];
   }
   return [
@@ -768,7 +780,7 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "*");
 
-      const encodedFilename = encodeURIComponent(filename.replace(/[\r\n]+/g, ''));
+      const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
       const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
       res.setHeader("Content-Disposition", disposition);
       res.setHeader("Content-Type", contentType);
@@ -1092,6 +1104,7 @@ async function extractWithCobalt(url: string) {
     const fileUrl = req.query.url;
     const audioUrl = req.query.audioUrl;
     const mux = req.query.mux === "true";
+    const extractAudio = req.query.extractAudio === "true";
     let customFilename = req.query.filename || "download.mp4";
     const inline = req.query.inline === "true";
 
@@ -1099,7 +1112,31 @@ async function extractWithCobalt(url: string) {
       return res.status(400).json({ error: "Missing url parameter" });
     }
 
-    if (mux && audioUrl) {
+    if (extractAudio) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+      const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
+      const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
+      res.setHeader('Content-Disposition', disposition);
+
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', fileUrl as string,
+        '-q:a', '0',
+        '-map', 'a',
+        '-f', 'mp3',
+        'pipe:1'
+      ]);
+
+      ffmpeg.stdout.pipe(res);
+      
+      ffmpeg.on('error', (err) => {
+        console.error('ffmpeg process error:', err);
+        if (!res.headersSent) res.status(500).end();
+      });
+
+      req.on("close", () => {
+        ffmpeg.kill();
+      });
+    } else if (mux && audioUrl) {
       res.setHeader('Content-Type', 'video/mp4');
       const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
       const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;

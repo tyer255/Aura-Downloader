@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PrivacyPolicy, TermsConditions, DMCA, About, Contact, FAQ, NotFound, ServerError, CookiePolicy } from './pages/StaticPages';
 import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera } from 'lucide-react';
+import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera, HelpCircle } from 'lucide-react';
 import { m as motion, LazyMotion, domMax, AnimatePresence } from 'motion/react';
 import { DownloadResult } from './types';
 import clsx from 'clsx';
+import { driver } from "driver.js";
+import "driver.js/dist/driver.css";
 
 import { requestNotificationPermission, showNotification } from './lib/notifications';
 
@@ -795,6 +797,59 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [isHistorySpinning, setIsHistorySpinning] = useState(false);
+  
+  const startTour = () => {
+    const driverObj = driver({
+      showProgress: true,
+      allowClose: false,
+      steps: [
+        { element: '#tour-tabs', popover: { title: 'Select Platform', description: 'First, choose the platform you want to download from (e.g., Pinterest).', side: "bottom", align: 'start' } },
+        { element: '#tour-input', popover: { title: 'Paste Link', description: 'Paste the link of the video or image you want to download.', side: "bottom", align: 'start' } },
+        { 
+          element: '#tour-search-button', 
+          popover: { 
+            title: 'Search', 
+            description: 'Click the search button to fetch the media.', 
+            side: "bottom", align: 'start',
+            onNextClick: () => {
+              // Mock a result to show the next steps
+              setResult({
+                success: true,
+                title: "Example Media Result",
+                mediaType: "video",
+                url: "https://example.com/video.mp4",
+                thumbnail: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500",
+                qualities: [
+                  { label: "HD Video", url: "https://example.com/video.mp4", ext: "mp4", size: "10 MB" }
+                ]
+              });
+              setTimeout(() => {
+                driverObj.moveNext();
+              }, 300);
+            }
+          } 
+        },
+        { element: '#tour-results', popover: { title: 'Check Results', description: 'Check the results at the bottom.', side: "top", align: 'start' } },
+        { element: '#tour-direct-download', popover: { title: 'Direct Download', description: 'Click this button for an instant direct download from the source.', side: "top", align: 'start' } },
+        { element: '#tour-regular-download', popover: { title: 'Wait a bit', description: 'Click this button to download through our secure server if the direct download fails.', side: "top", align: 'start' } },
+      ],
+      onDestroyStarted: () => {
+        localStorage.setItem('hasSeenTour', 'true');
+        setResult(null);
+        driverObj.destroy();
+      }
+    });
+    driverObj.drive();
+  };
+
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('hasSeenTour');
+    if (!hasSeenTour) {
+      setTimeout(() => {
+        startTour();
+      }, 1000);
+    }
+  }, []);
   const [history, setHistory] = useState<{ url: string; title: string; timestamp: number; platform?: Tab; favorite?: boolean; thumbnail?: string; appName?: string }[]>([]);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [copiedHistoryUrl, setCopiedHistoryUrl] = useState<string | null>(null);
@@ -1625,7 +1680,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       <div className="w-full max-w-4xl flex flex-col items-center text-center relative z-10">
         
         {/* Navigation Tabs Bar */}
-        <div className={clsx(
+        <div id="tour-tabs" className={clsx(
           "w-full max-w-2xl border rounded-2xl p-2 flex items-center overflow-x-auto no-scrollbar mb-8 shadow-2xl relative z-10 transition-colors",
           isLight ? "bg-white border-neutral-200/80" : "bg-[#1e1516] border-white/5"
         )}>
@@ -1786,7 +1841,9 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     : "bg-[#1c0d0f]/80 border-white/[0.08] hover:border-white/15 focus-within:border-white/20"
                 )}>
                   <input
-                    type="url"
+                    
+                    
+                    id="tour-input" type="url"
                     value={url}
                     onChange={(e) => handleUrlChange(e.target.value)}
                     placeholder={activeTabData.placeholder}
@@ -1798,14 +1855,15 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     )}
                   />
                   <button
+                    id="tour-search-button"
                     type="submit"
                     disabled={isLoading || !url}
                     aria-label="Start fetching media"
                     className={clsx(
                       "absolute right-2 top-2 bottom-2 w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shrink-0 shadow-lg cursor-pointer",
                       isLight 
-                        ? "bg-neutral-950 text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:opacity-50" 
-                        : "bg-[#cccccc] text-neutral-800 hover:bg-white disabled:bg-neutral-800 disabled:opacity-50"
+                        ? "bg-neutral-950 text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:opacity-70" 
+                        : "bg-[#cccccc] text-neutral-800 hover:bg-white disabled:bg-neutral-800 disabled:text-neutral-400 disabled:opacity-70"
                     )}
                   >
                     {isLoading ? (
@@ -1814,7 +1872,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         isLight ? "border-neutral-400/40 border-t-neutral-100" : "border-neutral-400/40 border-t-neutral-800"
                       )} />
                     ) : (
-                      <Search className={clsx("w-5 h-5 sm:w-6 sm:h-6", isLight ? "text-white" : "text-neutral-800")} />
+                      <Search className="w-5 h-5 sm:w-6 sm:h-6" />
                     )}
                   </button>
                 </div>
@@ -2064,6 +2122,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         <AnimatePresence mode="wait">
           {result && !isLoading && (
             <motion.div
+              id="tour-results"
               initial={{ opacity: 0, y: 25 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -25 }}
@@ -2739,6 +2798,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                   return (
                                     <div key={idx} className="flex items-center gap-2 w-full">
                                       <button type="button"
+                                        id={idx === 0 ? "tour-regular-download" : undefined}
                                         onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, filename); }}
                                         disabled={!!activeDl && activeDl.status !== "complete" && activeDl.status !== "failed"}
                                         className={clsx(
@@ -2796,6 +2856,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                       
                                       {/* Direct instant download button */}
                                       <button type="button"
+                                        id={idx === 0 ? "tour-direct-download" : undefined}
                                         onClick={(e) => { e.preventDefault(); downloadFileDirect(q.url, filename); }}
                                         title="Direct Instant Download (Bypasses local memory cache)"
                                         className={clsx(
@@ -2825,6 +2886,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           return (
                             <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center w-full">
                               <button type="button"
+                                id="tour-regular-download"
                                 onClick={(e) => { e.preventDefault(); downloadFileClientSide(result.url, filename); }}
                                 disabled={!!activeDl && activeDl.status !== "complete" && activeDl.status !== "failed"}
                                 className={clsx(
