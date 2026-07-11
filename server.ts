@@ -810,7 +810,7 @@ function classifyUrl(urlStr: string) {
 
 
 // Robust download streaming helper supporting redirects and client aborts
-function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline = false, maxRedirects = 5) {
+function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline = false, maxRedirects = 5, throttleMBps = 0) {
   if (maxRedirects <= 0) {
     console.error(`Too many redirects for URL: ${fileUrl}`);
     return res.status(500).send("Too many redirects");
@@ -1342,7 +1342,10 @@ async function extractWithCobalt(url: string) {
         ffmpeg.kill();
       });
     } else {
-      pipeUrlStream(fileUrl as string, res, customFilename as string, inline);
+      
+      const throttleMBps = req.query.throttle && req.query.throttle !== 'unlimited' ? parseInt(req.query.throttle as string, 10) : 0;
+      pipeUrlStream(fileUrl as string, res, customFilename as string, inline, 5, throttleMBps);
+
     }
   });
 
