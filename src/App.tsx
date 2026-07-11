@@ -49,15 +49,15 @@ const getProxiedUrl = (url?: string, inline = true) => {
 
 type Tab = 'pinterest' | 'youtube' | 'instagram' | 'tiktok' | 'facebook' | 'reddit' | 'x' | 'linkedin';
 
-const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string; title: string; }[] = [
-  { id: 'pinterest', label: 'Pinterest', placeholder: 'Paste Pinterest Link Here', name: 'Pinterest Downloader', title: 'Pinterest Downloader - Video & Image Saver', description: 'Download high-quality Pinterest images, videos, and GIFs for free. Our fast Pinterest downloader works on all devices without watermarks.' },
-  { id: 'youtube', label: 'YouTube', placeholder: 'Paste YouTube Link (Video, Short, Channel, Playlist)', name: 'YouTube Downloader', title: 'YouTube Downloader - Video & Audio Saver', description: 'Download YouTube videos and audio in HD quality. The fastest free YouTube video downloader for MP4 and MP3 formats.' },
-  { id: 'instagram', label: 'Instagram', placeholder: 'Paste Instagram Link Here', name: 'Instagram Downloader', title: 'Instagram Downloader - Save Photos & Videos', description: 'Download Instagram videos, photos, stories, IGTV and carousels for free. Fast and secure Instagram media saver.' },
-  { id: 'tiktok', label: 'TikTok', placeholder: 'Paste TikTok Link Here', name: 'TikTok Downloader', title: 'TikTok Downloader - No Watermark Video Saver', description: 'Download TikTok videos without watermark. Fast, free HD TikTok video and MP3 audio downloader.' },
-  { id: 'facebook', label: 'Facebook', placeholder: 'Paste Facebook Link Here', name: 'Facebook Downloader', title: 'Facebook Video Downloader - Save FB Videos', description: 'Download Facebook videos and reels in high quality. Free and fast FB video saver.' },
-  { id: 'reddit', label: 'Reddit', placeholder: 'Paste Reddit Link Here', name: 'Reddit Downloader', title: 'Reddit Video Downloader - Save Videos with Audio', description: 'Download Reddit videos with sound and audio. Save Reddit images, GIFs, and media fast and free.' },
-  { id: 'x', label: 'X (Twitter)', placeholder: 'Paste X / Twitter Link Here', name: 'X / Twitter Downloader', title: 'X (Twitter) Video Downloader - Save Tweets', description: 'Download videos and GIFs from X (Twitter). Fast, free, and secure X media saver.' },
-  { id: 'linkedin', label: 'LinkedIn', placeholder: 'Paste LinkedIn Post Link Here', name: 'LinkedIn Downloader', title: 'LinkedIn Video Downloader - Save LI Videos', description: 'Download LinkedIn videos, images, and documents. Save professional media from LinkedIn posts easily.' },
+const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string; title: string; keywords?: string }[] = [
+  { id: 'pinterest', label: 'Pinterest', placeholder: 'Paste Pinterest Link Here', name: 'Pinterest Downloader', title: 'Pinterest Downloader - Download Pinterest Videos & Images Free', description: 'Best free Pinterest Downloader online. Download Pinterest videos, images, and GIFs in HD quality without watermark. Fast, secure, and easy to use.', keywords: 'Pinterest downloader, download Pinterest video, Pinterest video downloader, Pinterest saver' },
+  { id: 'youtube', label: 'YouTube', placeholder: 'Paste YouTube Link (Video, Short, Channel, Playlist)', name: 'YouTube Downloader', title: 'YouTube Downloader - Download YouTube Videos & MP3 Free', description: 'The best free YouTube Downloader. Download YouTube videos in 1080p, 4K HD, and convert YouTube to MP3 audio effortlessly.', keywords: 'YouTube downloader, download YouTube video, YouTube to mp3, free YouTube video downloader' },
+  { id: 'instagram', label: 'Instagram', placeholder: 'Paste Instagram Link Here', name: 'Instagram Downloader', title: 'Instagram Downloader - Download Instagram Videos, Photos & Reels', description: 'Free online Instagram Downloader. Download Instagram reels, photos, videos, IGTV, and stories in high quality easily.', keywords: 'Instagram downloader, download Instagram video, Instagram reels downloader, Instagram story saver' },
+  { id: 'tiktok', label: 'TikTok', placeholder: 'Paste TikTok Link Here', name: 'TikTok Downloader', title: 'TikTok Downloader - Download TikTok Videos Without Watermark', description: 'Best free TikTok Downloader. Download TikTok videos without watermark in HD quality. Fast MP4 & MP3 TikTok saver online.', keywords: 'TikTok downloader, download TikTok video, TikTok no watermark, TikTok video downloader' },
+  { id: 'facebook', label: 'Facebook', placeholder: 'Paste Facebook Link Here', name: 'Facebook Downloader', title: 'Facebook Downloader - Download Facebook Videos & Reels Free', description: 'Free online Facebook Video Downloader. Download Facebook reels and videos in HD quality (MP4) to your device fast and easily.', keywords: 'Facebook downloader, download Facebook video, Facebook reels downloader, FB video downloader' },
+  { id: 'reddit', label: 'Reddit', placeholder: 'Paste Reddit Link Here', name: 'Reddit Downloader', title: 'Reddit Downloader - Download Reddit Videos With Audio', description: 'Free Reddit Video Downloader. Download Reddit videos with sound (audio) in HD quality. Save Reddit GIFs and images easily.', keywords: 'Reddit downloader, download Reddit video with audio, Reddit video saver' },
+  { id: 'x', label: 'X (Twitter)', placeholder: 'Paste X / Twitter Link Here', name: 'X / Twitter Downloader', title: 'X Downloader - Download Twitter Videos & GIFs Free', description: 'Best free X (Twitter) Downloader. Download videos, GIFs, and media from tweets in HD quality quickly and securely.', keywords: 'Twitter downloader, X downloader, download Twitter video, save tweet video' },
+  { id: 'linkedin', label: 'LinkedIn', placeholder: 'Paste LinkedIn Post Link Here', name: 'LinkedIn Downloader', title: 'LinkedIn Downloader - Download LinkedIn Videos Free', description: 'Free online LinkedIn Video Downloader. Download LinkedIn videos, images, and documents in high quality directly to your device.', keywords: 'LinkedIn downloader, download LinkedIn video, LinkedIn video saver' },
 ];
 
 const detectPlatformFromUrl = (url: string): Tab | null => {
@@ -1359,6 +1359,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       <Helmet>
         <title>{activeTabData.title}</title>
         <meta name="description" content={activeTabData.description} />
+        {activeTabData.keywords && <meta name="keywords" content={activeTabData.keywords} />}
         <meta property="og:title" content={activeTabData.title} />
         <meta property="og:description" content={activeTabData.description} />
         <meta property="og:type" content="website" />
@@ -1552,7 +1553,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           initial={{ opacity: 0, y: 12 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, x: 40 }}
-                          className="border rounded-2xl p-4.5 transition-all relative flex flex-col gap-3 group/item overflow-hidden bg-white/[0.02] hover:bg-white/[0.06] border-white/5 hover:border-white/10 shadow-lg shadow-black/30"
+                          className="border rounded-2xl p-4.5 transition-all relative flex flex-col gap-3 group/item overflow-hidden bg-white/[0.02] hover:bg-white/[0.06] backdrop-blur-xl border-white/5 hover:border-white/10 shadow-lg shadow-black/30"
                           style={{
                             boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15)"
                           }}
@@ -1682,7 +1683,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         {/* Navigation Tabs Bar */}
         <div id="tour-tabs" className={clsx(
           "w-full max-w-2xl border rounded-2xl p-2 flex items-center overflow-x-auto no-scrollbar mb-8 shadow-2xl relative z-10 transition-colors",
-          isLight ? "bg-white border-neutral-200/80" : "bg-[#1e1516] border-white/5"
+          isLight ? "bg-white/70 backdrop-blur-xl border-neutral-200/80" : "bg-[#1e1516]/70 backdrop-blur-xl border-white/5"
         )}>
           <div className="flex items-center min-w-max gap-1">
             {TABS.map((tab) => {
@@ -1837,8 +1838,8 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                 <div className={clsx(
                   "relative flex items-center w-full border rounded-full p-2 pl-6 sm:pl-8 shadow-2xl backdrop-blur-xl group transition-all",
                   isLight 
-                    ? "bg-white border-neutral-200 hover:border-neutral-300 focus-within:border-neutral-400" 
-                    : "bg-[#1c0d0f]/80 border-white/[0.08] hover:border-white/15 focus-within:border-white/20"
+                    ? "bg-white/70 backdrop-blur-xl border-neutral-200 hover:border-neutral-300 focus-within:border-neutral-400" 
+                    : "bg-[#1c0d0f]/60 backdrop-blur-xl border-white/[0.08] hover:border-white/15 focus-within:border-white/20"
                 )}>
                   <input
                     
@@ -2136,7 +2137,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   {result.mediaType === 'profile' && result.profile && (
                     <div className={clsx(
                       "border rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md transition-colors",
-                      isLight ? "bg-white border-neutral-200" : "bg-[#1e1516] border-white/10"
+                      isLight ? "bg-white/70 backdrop-blur-xl border-neutral-200" : "bg-[#1e1516]/70 backdrop-blur-xl border-white/10"
                     )}>
                       
                       {/* Banner Backplate */}
@@ -2200,7 +2201,20 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           <h3 className={clsx("text-2xl sm:text-3xl font-extrabold transition-colors", isLight ? "text-neutral-900" : "text-white")}>
                             {result.profile.displayName || result.profile.username}
                           </h3>
-                          <p className="text-red-500 font-mono text-sm mt-1">@{result.profile.username}</p>
+                          <div className="flex items-center gap-3 mt-1">
+                              <p className="text-red-500 font-mono text-sm">@{result.profile.username.replace('@', '')}</p>
+                              {!result.profile.avatarUrl && (
+                                 <span className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                                   Proxy Blocked
+                                 </span>
+                              )}
+                          </div>
+                          {!result.profile.avatarUrl && (
+                             <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-600 dark:text-amber-400 flex items-start gap-3 max-w-2xl">
+                               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                               <p><strong>Anti-Bot Protection Active:</strong> The host server IP (e.g., Render) was blocked by this platform while fetching profile metadata. Using generic placeholder instead.</p>
+                             </div>
+                          )}
                           {result.profile.bio && (
                             <p className={clsx(
                               "text-sm mt-4 leading-relaxed max-w-2xl p-4 rounded-xl border transition-colors",

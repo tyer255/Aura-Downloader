@@ -193,7 +193,7 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
         username = segments[segments.length - 1] || "user";
       }
       
-      const displayName = title.split(" (")[0] || title;
+      const displayName = (title && title !== "Social Media Post" && !title.includes("404") && !title.includes("Not Found")) ? title.split(" (")[0] : username;
       const avatarUrl = thumbnail || "";
       const bio = description || "";
       
@@ -317,7 +317,7 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
   try {
     let args = `--js-runtimes node --no-playlist --dump-json "${url}"`;
     if (isPlaylist) {
-       args = `--js-runtimes node --dump-single-json --flat-playlist "${url}"`;
+       args = `--js-runtimes node --dump-single-json --flat-playlist --playlist-end 15 "${url}"`;
     }
     const { stdout } = await execAsync(`./yt-dlp_linux ${args}`, { timeout: 25000, maxBuffer: 1024 * 1024 * 50 });
     const data = JSON.parse(stdout);
@@ -330,6 +330,39 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
         thumbnail: entry.thumbnails?.[0]?.url || (entry.id ? `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg` : ""),
         title: entry.title || "YouTube Video"
       }));
+
+      const isChannel = url.includes('@') || url.includes('/channel/') || url.includes('/c/');
+      if (isChannel) {
+        let avatarUrl = "";
+        let bannerUrl = "";
+        if (data.thumbnails) {
+          const avatars = data.thumbnails.filter((t: any) => t.id && t.id.includes('avatar'));
+          const banners = data.thumbnails.filter((t: any) => t.id && t.id.includes('banner'));
+          if (avatars.length) avatarUrl = avatars[0].url;
+          if (banners.length) bannerUrl = banners[0].url;
+          
+          if (!avatarUrl && data.thumbnails.length > 0) {
+              avatarUrl = data.thumbnails[data.thumbnails.length - 1].url;
+          }
+        }
+        
+        return {
+          success: true,
+          title: data.title || data.uploader || "YouTube Channel",
+          mediaType: "profile",
+          profile: {
+             username: data.uploader_id || data.uploader || "user",
+             displayName: data.uploader || data.title || "YouTube Channel",
+             avatarUrl: avatarUrl,
+             bannerUrl: bannerUrl,
+             bio: data.description || "",
+             followers: data.channel_follower_count ? data.channel_follower_count.toString() : ""
+          },
+          media: media,
+          isPlaylist: true
+        };
+      }
+
       return {
         success: true,
         title: data.title || "YouTube Playlist",
@@ -937,12 +970,20 @@ async function extractWithCobalt(url: string) {
       console.log(`Processing extraction for platform: ${platform}, type: ${type}, url: ${trimmedUrl}`);
 
       if (isProfile) {
-        console.log("Profile URL detected, bypassing media extractors and using AI extraction directly.");
-        const aiResult = await extractWithAI(trimmedUrl, true);
-        if (aiResult && aiResult.success) {
-          return res.json(aiResult);
+        if (platform === 'youtube') {
+           console.log("YouTube Profile URL detected, extracting with yt-dlp flat-playlist.");
+           const ytDlpResult = await extractWithYtDlp(trimmedUrl, true);
+           if (ytDlpResult && ytDlpResult.success) {
+             return res.json(ytDlpResult);
+           }
         } else {
-           // fallback to other extractors if AI profile extraction fails completely
+          console.log("Profile URL detected, bypassing media extractors and using AI extraction directly.");
+          const aiResult = await extractWithAI(trimmedUrl, true);
+          if (aiResult && aiResult.success) {
+            return res.json(aiResult);
+          } else {
+             // fallback to other extractors if AI profile extraction fails completely
+          }
         }
       }
 
