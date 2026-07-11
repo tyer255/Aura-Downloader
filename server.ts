@@ -837,6 +837,10 @@ export async function startServer() {
     next();
   });
 
+  app.get("/api/ping", (req, res) => {
+    res.status(200).send("ok");
+  });
+
   
 async function extractWithCobalt(url: string) {
   const instances = [
