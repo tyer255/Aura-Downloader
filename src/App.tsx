@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PrivacyPolicy, TermsConditions, DMCA, About, Contact, FAQ, NotFound, ServerError, CookiePolicy } from './pages/StaticPages';
 import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera, HelpCircle } from 'lucide-react';
+import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera, HelpCircle, Settings, DownloadCloud } from 'lucide-react';
 import { m as motion, LazyMotion, domMax, AnimatePresence } from 'motion/react';
 import { DownloadResult } from './types';
 import clsx from 'clsx';
@@ -796,6 +796,39 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+  const [throttleSetting, setThrottleSetting] = useState<string>(localStorage.getItem('downloadThrottle') || 'unlimited');
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    localStorage.setItem('downloadThrottle', throttleSetting);
+  }, [throttleSetting]);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult: any) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the install prompt');
+        } else {
+          console.log('User dismissed the install prompt');
+        }
+        setDeferredPrompt(null);
+      });
+    }
+  };
+
   const [isHistorySpinning, setIsHistorySpinning] = useState(false);
   
   const startTour = () => {
@@ -1071,6 +1104,12 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
   const handleDownload = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!navigator.onLine) {
+      alert("PLEASE CONNECT YOUR NETWORK FIRST THAN RETRY");
+      return;
+    }
+
     if (!url.trim()) return;
 
     requestNotificationPermission();
@@ -1159,8 +1198,10 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
         ? url 
         : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      const throttleParam = throttleSetting !== "unlimited" ? `&throttle=${throttleSetting}` : "";
+      const finalFetchUrl = fetchUrl.includes("?") ? `${fetchUrl}${throttleParam}` : `${fetchUrl}?${throttleParam}`;
       
-      const response = await fetch(fetchUrl);
+      const response = await fetch(finalFetchUrl);
       if (!response.ok) {
         throw new Error(`Server returned status code ${response.status}`);
       }
@@ -1269,9 +1310,11 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
         ? url 
         : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      const throttleParam = throttleSetting !== "unlimited" ? `&throttle=${throttleSetting}` : "";
+      const finalFetchUrl = fetchUrl.includes("?") ? `${fetchUrl}${throttleParam}` : `${fetchUrl}?${throttleParam}`;
 
       const a = document.createElement('a');
-      a.href = fetchUrl;
+      a.href = finalFetchUrl;
       a.download = filename;
       a.target = "_blank"; // Safely streams without interrupting page
       a.style.display = 'none';
@@ -1363,7 +1406,12 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         <meta property="og:title" content={activeTabData.title} />
         <meta property="og:description" content={activeTabData.description} />
         <meta property="og:type" content="website" />
+        <meta property="og:url" content={window.location.href} />
+        <meta property="og:image" content={window.location.origin + "/banner.jpg"} />
         <meta name="twitter:card" content="summary_large_image" />
+        <meta property="twitter:title" content={activeTabData.title} />
+        <meta property="twitter:description" content={activeTabData.description} />
+        <meta property="twitter:image" content={window.location.origin + "/banner.jpg"} />
       </Helmet>
       <LazyMotion features={domMax}>
     <div className={clsx(
@@ -1384,6 +1432,20 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           </a>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Settings Button */}
+          <button 
+            onClick={() => setShowSettings(true)}
+            className={clsx(
+              "w-11 h-11 rounded-full flex items-center justify-center transition-all border shadow-md cursor-pointer",
+              isLight 
+                ? "bg-white border-neutral-200 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100" 
+                : "bg-white/5 border border-white/10 text-white hover:bg-white/10"
+            )}
+            title="Settings"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+
           {/* Theme Toggle Button */}
           <button
             onClick={() => setIsLight(!isLight)}
@@ -1421,7 +1483,88 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         </div>
       </div>
 
-      {/* Glassmorphic Sliding History Drawer */}
+      
+      {/* Settings Drawer */}
+      <AnimatePresence>
+        {showSettings && (
+          <div className="fixed inset-0 z-50 overflow-hidden">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
+              onClick={() => setShowSettings(false)}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 cursor-pointer"
+            />
+              
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "tween", duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className={clsx(
+                "fixed top-0 right-0 h-full w-full sm:w-[400px] z-50 flex flex-col transition-colors duration-700 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] backdrop-blur-[20px] saturate-150",
+                isLight ? "bg-white/40 text-neutral-900 border-l border-white/50" : "bg-[#0c0a09]/50 text-white border-l border-white/10"
+              )}
+            >
+              {/* Header */}
+              <div className="px-8 py-7 flex justify-between items-center shrink-0 relative border-b border-neutral-200/30 dark:border-white/10">
+                <div className="flex items-center gap-4">
+                  <div className={clsx("p-2.5 rounded-xl border shadow-inner", isLight ? "bg-neutral-50 border-neutral-200" : "bg-white/[0.03] border-white/5")}>
+                    <Settings className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
+                    <p className="text-xs opacity-60 mt-0.5">App preferences</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="p-2.5 hover:bg-neutral-200 dark:hover:bg-white/10 rounded-full transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-8 py-6 space-y-8">
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg flex items-center gap-2"><DownloadCloud className="w-5 h-5" /> Download Speed</h3>
+                  <p className="text-sm opacity-70">Choose your download speed. If your internet is slow or disconnecting, pick a slower speed so your download doesn't fail.</p>
+                  
+                  <div className="flex flex-col gap-2 mt-4">
+                    {[
+                      { value: 'unlimited', label: 'Maximum Speed (Default)' },
+                      { value: '5', label: 'Fast (Good for most)' },
+                      { value: '2', label: 'Medium (For slow Wi-Fi)' },
+                      { value: '1', label: 'Slow (For weak mobile data)' },
+                    ].map(option => (
+                      <label key={option.value} className={clsx(
+                        "flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all",
+                        throttleSetting === option.value 
+                          ? (isLight ? "border-blue-500 bg-blue-50/70 text-blue-700" : "border-blue-500 bg-blue-500/20 text-blue-400")
+                          : (isLight ? "border-neutral-200/50 hover:border-neutral-300 bg-white/40" : "border-white/10 hover:border-white/20 bg-black/40")
+                      )}>
+                        <span className="font-medium">{option.label}</span>
+                        <input 
+                          type="radio" 
+                          name="throttle" 
+                          value={option.value} 
+                          checked={throttleSetting === option.value}
+                          onChange={(e) => setThrottleSetting(e.target.value)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+
+{/* Glassmorphic Sliding History Drawer */}
       <AnimatePresence>
         {showHistory && (
           <div className="fixed inset-0 z-50 overflow-hidden">

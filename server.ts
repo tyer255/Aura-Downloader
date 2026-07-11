@@ -1,3 +1,5 @@
+import { Transform } from 'stream';
+import axios from 'axios';
 import { exec, spawn } from 'child_process';
 import utilSync from 'util';
 import express from "express";
@@ -192,33 +194,33 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
         const segments = url.split("/").filter(Boolean);
         username = segments[segments.length - 1] || "user";
       }
-      
-      const displayName = (title && title !== "Social Media Post" && !title.includes("404") && !title.includes("Not Found")) ? title.split(" (")[0] : username;
-      const avatarUrl = thumbnail || "";
-      const bio = description || "";
-      
+
+      let displayName = (title && title !== "Social Media Post" && !title.includes("404") && !title.includes("Not Found")) ? title.split(" (")[0] : username;
+      let avatarUrl = thumbnail || "";
+      let bio = description || "";
       let followers = "Unknown";
       let bannerUrl = "";
 
-      if (url.includes("youtube.com") || url.includes("youtu.be")) {
-        // Try to find followers in YouTube HTML JSON
-        const subMatch = html.match(/\{\"content\":\"([0-9.,]+[KMBkmb]?)\s+subscribers\"\}/i);
+
+      if (!bannerUrl && (url.includes("youtube.com") || url.includes("youtu.be"))) {
+        // Try to find followers in YouTube HTML JSON as fallback
+        const subMatch = html.match(/\{"content":"([0-9.,]+[KMBkmb]?)\s+subscribers"\}/i);
         if (subMatch) {
             followers = subMatch[1];
         } else {
-            const subMatch2 = html.match(/\"simpleText\":\"([0-9.,]+[KMBkmb]?)\s+subscribers\"/i);
+            const subMatch2 = html.match(/"simpleText":"([0-9.,]+[KMBkmb]?)\s+subscribers"/i);
             if (subMatch2) {
                 followers = subMatch2[1];
             }
         }
 
         // Try to find YouTube banner URL
-        const bannerMatch = html.match(/\"banner\":\{.*?\"url\":\"(https:\/\/[^\"]+)\"/);
+        const bannerMatch = html.match(/"banner":\{.*?"url":"(https:\/\/[^"]+)"/);
         if (bannerMatch && bannerMatch[1]) {
             bannerUrl = bannerMatch[1];
         }
       }
-      
+
       return {
         success: true,
         title: displayName,
@@ -345,6 +347,33 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
               avatarUrl = data.thumbnails[data.thumbnails.length - 1].url;
           }
         }
+
+        // ======= RAPID API INTEGRATION =======
+        const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
+        if (rapidKey && (url.includes("youtube.com") || url.includes("youtu.be"))) {
+            try {
+                console.log("Using RapidAPI to enhance YouTube Profile in yt-dlp");
+                const ytHost = process.env.RAPIDAPI_YT_HOST || "yt-api.p.rapidapi.com";
+                let cleanUsername = url.split("@")[1]?.split("/")[0]?.split("?")[0] || data.uploader_id || "";
+                if (cleanUsername) {
+                    const ytRes = await axios.get(`https://${ytHost}/channel/about?id=@${cleanUsername}`, {
+                        headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': ytHost },
+                        timeout: 8000
+                    });
+                    if (ytRes.data) {
+                        const rpdata = ytRes.data;
+                        if (rpdata.avatar && rpdata.avatar.length > 0) avatarUrl = rpdata.avatar[rpdata.avatar.length - 1].url;
+                        if (rpdata.banner && rpdata.banner.length > 0) bannerUrl = rpdata.banner[rpdata.banner.length - 1].url;
+                        if (rpdata.title) data.uploader = rpdata.title;
+                        if (rpdata.description) data.description = rpdata.description;
+                        if (rpdata.subscriberCountText) data.channel_follower_count = rpdata.subscriberCountText;
+                    }
+                }
+            } catch (e: any) {
+                console.error("Rapid API Error in yt-dlp:", e.response?.data || e.message);
+            }
+        }
+        // =====================================
         
         return {
           success: true,
@@ -569,7 +598,55 @@ CRITICAL DIRECTIVES:
         
         // Merge with Cheerio fallback to correct any hallucinated hashes by AI
         try {
-            const localData = localCheerioFallback(htmlContent || "<html><body></body></html>", url, isProfile);
+            let localData = localCheerioFallback(htmlContent || "<html><body></body></html>", url, isProfile);
+            
+            // ======= RAPID API INTEGRATION =======
+            if (isProfile) {
+                const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
+                if (rapidKey) {
+                    try {
+                        if (url.includes("instagram.com")) {
+                            console.log("Using RapidAPI for Instagram Profile");
+                            const igHost = process.env.RAPIDAPI_IG_HOST || "instagram-scraper-api2.p.rapidapi.com";
+                            const cleanUsername = (localData.profile?.username?.replace("@", "")) || url.split("instagram.com/")[1].split("/")[0].split("?")[0];
+                            const igRes = await axios.get(`https://${igHost}/v1/info?username_or_id_or_url=${cleanUsername}`, {
+                                headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': igHost },
+                                timeout: 8000
+                            });
+                            const rpdata = igRes.data?.data;
+                            if (rpdata && rpdata.profile_pic_url_hd) {
+                                if (!localData.profile) localData.profile = {};
+                                localData.profile.displayName = rpdata.full_name || localData.profile.displayName;
+                                localData.profile.avatarUrl = rpdata.profile_pic_url_hd || rpdata.profile_pic_url;
+                                localData.profile.bio = rpdata.biography || localData.profile.bio;
+                                localData.profile.followers = rpdata.edge_followed_by?.count?.toString() || localData.profile.followers;
+                            }
+                        } 
+                        else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+                            console.log("Using RapidAPI for YouTube Profile");
+                            const ytHost = process.env.RAPIDAPI_YT_HOST || "yt-api.p.rapidapi.com";
+                            const cleanUsername = (localData.profile?.username?.replace("@", "")) || "";
+                            const ytRes = await axios.get(`https://${ytHost}/channel/about?id=@${cleanUsername}`, {
+                                headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': ytHost },
+                                timeout: 8000
+                            });
+                            if (ytRes.data) {
+                                const rpdata = ytRes.data;
+                                if (!localData.profile) localData.profile = {};
+                                if (rpdata.avatar && rpdata.avatar.length > 0) localData.profile.avatarUrl = rpdata.avatar[rpdata.avatar.length - 1].url;
+                                if (rpdata.banner && rpdata.banner.length > 0) localData.profile.bannerUrl = rpdata.banner[rpdata.banner.length - 1].url;
+                                localData.profile.displayName = rpdata.title || localData.profile.displayName;
+                                localData.profile.bio = rpdata.description || localData.profile.bio;
+                                localData.profile.followers = rpdata.subscriberCountText || localData.profile.followers;
+                            }
+                        }
+                    } catch (e: any) {
+                        console.error("Rapid API Error:", e.response?.data || e.message);
+                    }
+                }
+            }
+            // =====================================
+
             if (isProfile && localData && localData.success && localData.profile) {
                 if (!data.profile) data.profile = { username: localData.profile.username };
                 if (localData.profile.avatarUrl) {
@@ -770,7 +847,7 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
         console.log(`Following redirect: ${response.statusCode} -> ${redirectUrl}`);
         // CRITICAL: destroy the redirect response to release socket immediately!
         response.destroy();
-        pipeUrlStream(redirectUrl, res, customFilename, inline, maxRedirects - 1);
+        pipeUrlStream(redirectUrl, res, customFilename, inline, maxRedirects - 1, throttleMBps);
         return;
       }
 
@@ -833,7 +910,13 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
         request.destroy();
       });
 
-      response.pipe(res);
+      if (throttleMBps > 0) {
+        const bytesPerSecond = throttleMBps * 1024 * 1024;
+        const throttler = new ThrottleStream(bytesPerSecond);
+        response.pipe(throttler).pipe(res);
+      } else {
+        response.pipe(res);
+      }
     });
 
     request.on("error", (err) => {
@@ -859,7 +942,38 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
 
 
 export async function startServer() {
-  const app = express();
+  
+class ThrottleStream extends Transform {
+  private bytesPassed = 0;
+  private startTime = Date.now();
+  private maxBytesPerSecond: number;
+
+  constructor(maxBytesPerSecond: number) {
+    super();
+    this.maxBytesPerSecond = maxBytesPerSecond;
+  }
+
+  _transform(chunk: any, encoding: string, callback: Function) {
+    this.bytesPassed += chunk.length;
+    
+    const now = Date.now();
+    const elapsed = (now - this.startTime) / 1000; // in seconds
+    const expectedBytes = elapsed * this.maxBytesPerSecond;
+    
+    if (this.bytesPassed > expectedBytes) {
+      const waitTime = ((this.bytesPassed - expectedBytes) / this.maxBytesPerSecond) * 1000;
+      setTimeout(() => {
+        this.push(chunk);
+        callback();
+      }, waitTime);
+    } else {
+      this.push(chunk);
+      callback();
+    }
+  }
+}
+
+const app = express();
   const PORT = 3000;
 
   app.use(express.json());
@@ -870,7 +984,22 @@ export async function startServer() {
     next();
   });
 
-  app.get("/api/ping", (req, res) => {
+  
+app.get("/api/env-debug", (req, res) => {
+    res.json({
+        keys: Object.keys(process.env).filter(k => k.toLowerCase().includes("rapid"))
+    });
+});
+
+
+app.get("/api/env-debug2", (req, res) => {
+    const std = ['PATH', 'NODE_ENV', 'HOSTNAME', 'HOME', 'USER', 'PWD', 'SHLVL', 'TZ', 'TERM', 'YARN_VERSION'];
+    res.json({
+        keys: Object.keys(process.env).filter(k => !std.includes(k) && !k.startsWith('npm_') && !k.startsWith('NVM_'))
+    });
+});
+
+app.get("/api/ping", (req, res) => {
     res.status(200).send("ok");
   });
 
