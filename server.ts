@@ -1350,6 +1350,10 @@ async function extractWithCobalt(url: string) {
   });
 
 
+  app.get("/api/health", (req, res) => {
+    res.status(200).send("OK");
+  });
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
