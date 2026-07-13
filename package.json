@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@bochilteam/scraper": "^5.0.1",
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
     "@distube/ytdl-core": "^4.16.12",
     "@google/genai": "^2.4.0",
     "@jerrycoder/instagram-api": "^2.5.9",
@@ -64,6 +66,7 @@
     "youtubei.js": "^17.2.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
     "@types/canvas-confetti": "^1.9.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
