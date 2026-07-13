@@ -1415,20 +1415,71 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       </Helmet>
       <LazyMotion features={domMax}>
     <div className={clsx(
-        "min-h-screen bg-gradient-to-b flex flex-col items-center pt-8 pb-12 px-4 font-sans transition-colors duration-700",
+        "min-h-screen bg-gradient-to-b flex flex-col items-center pt-24 sm:pt-28 pb-12 px-4 font-sans transition-colors duration-700",
       isLight ? "text-neutral-900 selection:bg-red-500/10" : "text-neutral-50 selection:bg-red-500/30",
       getBgGlow(activeTab)
     )}>
       
-      {/* Top Header */}
-      <div className="w-full max-w-2xl flex flex-row items-center justify-between mb-8 sm:mb-16 relative z-20 gap-2 overflow-x-auto no-scrollbar">
+      {/* App Branding Header - Glassmorphism Full Width Strip */}
+      <div className={clsx(
+        "fixed top-0 left-0 right-0 w-full flex items-center justify-start gap-3 sm:gap-3.5 px-4 py-3 sm:px-6 sm:py-3 border-b backdrop-blur-xl z-50 transition-colors duration-700 shadow-sm",
+        isLight ? "bg-white/80 border-neutral-200/50" : "bg-[#0c0a09]/80 border-white/5"
+      )}>
+        {/* Custom Premium Aura Logo - App Store Style */}
+        <div className="relative w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-2xl shadow-lg overflow-hidden p-[1px]">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/30 to-purple-500/30" />
+          <div className="w-full h-full rounded-[15px] flex items-center justify-center relative overflow-hidden shadow-inner bg-[#0a0f18]">
+             {/* Glossy overlay effect and waves */}
+             <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent" />
+             <div className="absolute bottom-0 left-0 right-0 h-1/2 opacity-70">
+                <svg viewBox="0 0 100 50" preserveAspectRatio="none" className="w-full h-full">
+                  <path d="M0,50 L0,20 Q25,40 50,20 T100,30 L100,50 Z" fill="url(#wave-grad)"/>
+                  <defs>
+                    <linearGradient id="wave-grad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#0066ff"/>
+                      <stop offset="100%" stopColor="#9900ff"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+             </div>
+             
+             {/* Premium abstract 'A' download icon */}
+             <svg width="100%" height="100%" viewBox="0 0 100 100" fill="none" className="relative z-10 drop-shadow-md">
+                <defs>
+                   <linearGradient id="a-grad" x1="0.5" y1="0" x2="0.5" y2="1">
+                     <stop offset="0%" stopColor="#00e5ff"/>
+                     <stop offset="100%" stopColor="#0044ff"/>
+                   </linearGradient>
+                </defs>
+                {/* The "A" shape */}
+                <path d="M28 65 L46 22 Q50 14 54 22 L72 65" stroke="url(#a-grad)" strokeWidth="14" strokeLinecap="round" strokeLinejoin="round"/>
+                
+                {/* The Arrow */}
+                <path d="M50 38 L50 58 M42 50 L50 58 L58 50" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+                
+                {/* The Tray */}
+                <path d="M36 68 L36 72 Q36 78 42 78 L58 78 Q64 78 64 72 L64 68" stroke="#00ccff" strokeWidth="6" strokeLinecap="round" fill="none"/>
+             </svg>
+          </div>
+        </div>
+
+        <div className="relative z-10 ml-1">
+           <h1 className={clsx(
+               "text-base sm:text-lg font-black tracking-tight uppercase",
+               isLight ? "text-neutral-900" : "text-white"
+           )}>AURA Downloader</h1>
+        </div>
+      </div>
+
+      {/* Top Header Controls */}
+      <div className="w-full max-w-2xl flex flex-row items-center justify-between mb-8 sm:mb-12 relative z-20 gap-2 overflow-x-auto no-scrollbar">
         <div className={clsx(
-          "flex items-center rounded-full pl-3 sm:pl-4 pr-1 sm:pr-1.5 py-1 sm:py-1.5 transition-colors border shrink-0",
-          isLight ? "bg-white border-neutral-200 text-neutral-600" : "bg-white/5 border border-white/10 text-white"
+          "flex items-center rounded-full pl-4 sm:pl-5 pr-1.5 sm:pr-2 py-1.5 sm:py-2 transition-colors border shrink-0 shadow-sm",
+          isLight ? "bg-white border-neutral-200 text-neutral-700" : "bg-white/5 border border-white/10 text-neutral-200"
         )}>
-          <span className="text-xs sm:text-sm font-medium tracking-wide mr-2 sm:mr-3 uppercase whitespace-nowrap">Support =</span>
-          <a href="https://youtube.com/@mridulgaming-_-official-800?si=qsAdamH6-973hgBe" target="_blank" rel="noopener noreferrer" className="bg-[#ff0000] text-white text-xs sm:text-sm px-3 sm:px-4 py-1 sm:py-1.5 rounded-full font-semibold flex items-center gap-1.5 hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 whitespace-nowrap">
-             <Youtube className="w-3 h-3 sm:w-4 sm:h-4" /> Subscribe
+          <span className="text-sm sm:text-base font-bold tracking-wide mr-3 sm:mr-4 uppercase whitespace-nowrap">Support =</span>
+          <a href="https://youtube.com/@mridulgaming-_-official-800?si=qsAdamH6-973hgBe" target="_blank" rel="noopener noreferrer" className="bg-[#ff0000] text-white text-sm sm:text-base px-5 sm:px-6 py-1.5 sm:py-2 rounded-full font-bold flex items-center gap-2 hover:bg-red-600 transition-colors shadow-lg shadow-red-500/30 whitespace-nowrap">
+             <Youtube className="w-4 h-4 sm:w-5 sm:h-5" /> Subscribe
           </a>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
