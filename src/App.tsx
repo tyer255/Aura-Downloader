@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReloadPrompt from './components/ReloadPrompt';
+import NotificationRequest from './components/NotificationRequest';
+
 import { PrivacyPolicy, TermsConditions, DMCA, About, Contact, FAQ, NotFound, ServerError, CookiePolicy } from './pages/StaticPages';
 import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera, HelpCircle, Settings, DownloadCloud } from 'lucide-react';
 import { m as motion, LazyMotion, domMax, AnimatePresence } from 'motion/react';
+import { subscribeUserToPush } from './push';
+
 import { DownloadResult } from './types';
 import clsx from 'clsx';
 import { driver } from "driver.js";
@@ -817,6 +821,13 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      subscribeUserToPush();
+    }
+  }, []);
+
   const [throttleSetting, setThrottleSetting] = useState<string>(localStorage.getItem('downloadThrottle') || 'unlimited');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
@@ -3652,6 +3663,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       </AnimatePresence>
     </div>
       <ReloadPrompt isLight={isLight} />
+      <NotificationRequest isLight={isLight} />
 
     </LazyMotion>
 

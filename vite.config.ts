@@ -12,7 +12,8 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'icon.svg', 'apple-touch-icon.png'],
       manifest: false, // We already have manifest.json in public/
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+      importScripts: ['/push-sw.js']
       }
     })
   ],

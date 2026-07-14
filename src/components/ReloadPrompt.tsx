@@ -17,6 +17,26 @@ export default function ReloadPrompt({ isLight }: { isLight: boolean }) {
     },
   });
 
+
+  React.useEffect(() => {
+    if (needRefresh && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification('App Updated!', {
+          body: 'A new version of AURA Downloader is available. Refresh to use the latest features!',
+          icon: '/icon-192.png'
+        });
+      } catch (e) {
+        // Some browsers require Service Worker registration to show notifications
+        navigator.serviceWorker.ready.then(reg => {
+          reg.showNotification('App Updated!', {
+            body: 'A new version of AURA Downloader is available. Refresh to use the latest features!',
+            icon: '/icon-192.png'
+          });
+        });
+      }
+    }
+  }, [needRefresh]);
+
   return (
     <AnimatePresence>
       {needRefresh && (
