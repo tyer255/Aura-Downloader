@@ -51,7 +51,7 @@ COPY package*.json ./
 
 # Install dependencies (skipping puppeteer download for now)
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-RUN npm ci
+RUN npm install
 
 # Set the cache dir so puppeteer browsers install goes to the right place inside the container
 ENV PUPPETEER_CACHE_DIR=/app/puppeteer-cache
