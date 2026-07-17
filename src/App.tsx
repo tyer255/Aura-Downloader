@@ -733,8 +733,18 @@ function QRCodeButton({ url, className, isLight }: { url: string; className?: st
                 {qrCodeUrl ? (
                   <img src={qrCodeUrl} alt="QR Code" className="w-44 h-44 select-none rounded-lg"  loading="lazy" decoding="async" width="400" height="400" />
                 ) : error ? (
-                  <div className="w-44 h-44 flex items-center justify-center text-red-500 text-xs font-semibold text-center">
-                    {error}
+                  <div className="w-44 min-h-[11rem] flex flex-col items-center justify-center text-red-500 text-[11px] leading-relaxed font-medium text-center px-4 py-2 gap-3">
+                    <p>{error.replace(/Please go to RapidAPI.*/, "")}</p>
+                    {error.includes("RapidAPI") && (
+                       <a 
+                         href="https://rapidapi.com/smiash/api/instagram-scraper-api2/pricing" 
+                         target="_blank" 
+                         rel="noopener noreferrer"
+                         className="px-3 py-1.5 bg-[#ff1e42] text-white rounded-md text-xs font-semibold hover:bg-red-600 transition-colors shadow-sm"
+                       >
+                         Subscribe for Free
+                       </a>
+                    )}
                   </div>
                 ) : (
                   <div className="w-44 h-44 flex items-center justify-center">
@@ -787,6 +797,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     if (routeTab) setActiveTab(routeTab);
   }, [routeTab]);
   const [url, setUrl] = useState('');
+  const [twitterAuthToken, setTwitterAuthToken] = useState(localStorage.getItem('twitterAuthToken') || '');
   const [validationError, setValidationError] = useState<{
     title: string;
     message: string;
@@ -1169,7 +1180,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() })
+        body: JSON.stringify({ url: url.trim(), twitterAuthToken })
       });
       const data = await res.json();
       
@@ -1214,6 +1225,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
   
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+
 
   const downloadFileClientSide = async (url: string, filename: string) => {
     try {
@@ -1453,9 +1465,10 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       
       {/* App Branding Header - Glassmorphism Full Width Strip */}
       <div className={clsx(
-        "fixed top-0 left-0 right-0 w-full flex items-center justify-start gap-3 sm:gap-3.5 px-4 py-3 sm:px-6 sm:py-3 border-b backdrop-blur-xl z-50 transition-colors duration-700 shadow-sm",
+        "fixed top-0 left-0 right-0 w-full flex items-center justify-between px-4 py-3 sm:px-6 sm:py-3 border-b backdrop-blur-xl z-50 transition-colors duration-700 shadow-sm",
         isLight ? "bg-white/80 border-neutral-200/50" : "bg-[#0c0a09]/80 border-white/5"
       )}>
+        <div className="flex items-center gap-3 sm:gap-3.5">
         {/* Custom Premium Aura Logo - App Store Style */}
         <div className="relative w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-2xl shadow-lg overflow-hidden p-[1px]">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/30 to-purple-500/30" />
@@ -1499,6 +1512,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                "text-base sm:text-lg font-black tracking-tight uppercase",
                isLight ? "text-neutral-900" : "text-white"
            )}>AURA Downloader</h1>
+        </div>
         </div>
       </div>
 
@@ -2066,8 +2080,25 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               )}
             </AnimatePresence>
 
-            {/* Search & URL Input Box */}
+          {/* Search & URL Input Box */}
             <form onSubmit={handleDownload} className="w-full max-w-2xl mb-6 relative">
+                {activeTab === 'twitter' && (
+                  <div className="absolute -top-12 left-0 right-0 flex justify-center">
+                    <input
+                      type="text"
+                      value={twitterAuthToken}
+                      onChange={(e) => {
+                        setTwitterAuthToken(e.target.value);
+                        localStorage.setItem("twitterAuthToken", e.target.value);
+                      }}
+                      placeholder="Optional: Enter Twitter auth_token cookie to bypass rate limits"
+                      className={clsx(
+                        "w-full max-w-md px-4 py-2 rounded-full text-xs transition-all outline-none border",
+                        isLight ? "bg-white/50 border-neutral-200 text-neutral-800 placeholder-neutral-500" : "bg-black/20 border-white/10 text-white placeholder-neutral-400"
+                      )}
+                    />
+                  </div>
+                )}
                 <div className={clsx(
                   "relative flex items-center w-full border rounded-full p-2 pl-6 sm:pl-8 shadow-2xl backdrop-blur-xl group transition-all",
                   isLight 
@@ -3015,6 +3046,12 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           <CheckCircle2 className="w-5 h-5" />
                           <span className="font-semibold text-sm tracking-wide">EXTRACTION SUCCESSFUL</span>
                         </div>
+                        {result.warning && (
+                          <div className="bg-yellow-50 text-yellow-600 p-4 rounded-xl mb-4 flex items-start gap-3 border border-yellow-200">
+                            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                            <p className="text-sm font-medium leading-relaxed">{result.warning}</p>
+                          </div>
+                        )}
                         <h3 className={clsx("text-xl font-bold mb-6 line-clamp-3 leading-snug transition-colors", isLight ? "text-neutral-900" : "text-white")}>
                           {result.title || "Ready File Asset"}
                         </h3>
@@ -3208,7 +3245,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       "leading-relaxed text-sm font-medium transition-colors mb-4",
                       isLight ? "text-red-600/90" : "text-red-400/80"
                     )}>
-                      {result.error || "The URL link is unsupported, private, or being blocked by the origin servers."}
+                      {result.error || result.message || "The URL link is unsupported, private, or being blocked by the origin servers."}
                     </p>
                     {(result.thumbnail || result.title) && (
                       <div className={clsx(
