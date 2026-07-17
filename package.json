@@ -11,7 +11,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "prebuild": "npm run setup-python",
-    "setup-python": "curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && python3 -m pip install instaloader",
+    "setup-python": "curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages && python3 -m pip install instaloader --break-system-packages",
     "predev": "npm run setup-python",
     "prestart": "npm run setup-python"
   },
