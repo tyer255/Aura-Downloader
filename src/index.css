@@ -70,3 +70,11 @@ html.dark .driver-popover-footer button:hover {
   background: rgba(255, 255, 255, 0.2) !important;
 }
 html.dark .driver-popover-progress-text { color: #aaa !important; }
+
+
+body {
+  @apply bg-neutral-50 text-neutral-900 transition-colors duration-700;
+}
+html.dark body {
+  @apply bg-[#0a0a0a] text-neutral-50;
+}

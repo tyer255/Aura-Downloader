@@ -789,7 +789,7 @@ function QRCodeButton({ url, className, isLight }: { url: string; className?: st
   );
 }
 
-function DownloaderView({ routeTab }: { routeTab?: Tab }) {
+export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>(routeTab || 'pinterest');
   
@@ -1044,6 +1044,13 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   React.useEffect(() => {
     try {
       localStorage.setItem('theme', isLight ? 'light' : 'dark');
+      if (isLight) {
+        document.documentElement.classList.remove('dark');
+        document.body.style.backgroundColor = '#fafafa';
+      } else {
+        document.documentElement.classList.add('dark');
+        document.body.style.backgroundColor = '#0a0a0a';
+      }
     } catch (e) {}
   }, [isLight]);
 
@@ -1666,9 +1673,6 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           </div>
         )}
       </AnimatePresence>
-
-
-{/* Glassmorphic Sliding History Drawer */}
       <AnimatePresence>
         {showHistory && (
           <div className="fixed inset-0 z-50 overflow-hidden">
@@ -1800,7 +1804,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           initial={{ opacity: 0, y: 12 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, x: 40 }}
-                          className="border rounded-2xl p-4.5 transition-all relative flex flex-col gap-3 group/item overflow-hidden bg-white/[0.02] hover:bg-white/[0.06] backdrop-blur-xl border-white/5 hover:border-white/10 shadow-lg shadow-black/30"
+                          className="border rounded-2xl p-4 transition-all relative flex flex-col gap-3 group/item overflow-hidden bg-white/[0.02] hover:bg-white/[0.06] backdrop-blur-xl border-white/5 hover:border-white/10 shadow-lg shadow-black/30"
                           style={{
                             boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15)"
                           }}
@@ -1891,12 +1895,6 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         </motion.div>
                       );
                     })}
-                  </AnimatePresence>
-                )}
-              </div>
-
-              {/* Floating toast notification */}
-              <AnimatePresence>
                 {historyToast && (
                   <motion.div
                     initial={{ opacity: 0, y: 15 }}
@@ -1909,9 +1907,9 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              {/* Bottom Slider Footer */}
-              <div className="p-4 border-t flex justify-center transition-colors relative z-10 border-white/5 bg-black/15">
+              )}
+              </div>
+              <div className="p-4 border-t border-white/10">
                 <button
                   onClick={() => setShowHistory(false)}
                   className="w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border border-white/10 text-center hover:scale-[1.01] active:scale-[0.99] bg-white/5 hover:bg-white/10 text-white"
@@ -1924,11 +1922,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           </div>
         )}
       </AnimatePresence>
-
-      <div className="w-full max-w-4xl flex flex-col items-center text-center relative z-10">
-        
-        {/* Navigation Tabs Bar */}
-        <div id="tour-tabs" className={clsx(
+      <div className={clsx(
           "w-full max-w-2xl border rounded-2xl p-2 flex items-center overflow-x-auto no-scrollbar mb-8 shadow-2xl relative z-10 transition-colors",
           isLight ? "bg-white/70 backdrop-blur-xl border-neutral-200/80" : "bg-[#1e1516]/70 backdrop-blur-xl border-white/5"
         )}>
@@ -2048,17 +2042,17 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   className={clsx(
-                    "w-full max-w-2xl p-4.5 rounded-3xl mb-8 border flex flex-col sm:flex-row items-center justify-between gap-4 text-sm font-medium transition-colors text-left shadow-lg backdrop-blur-sm",
+                    "w-full max-w-2xl p-5 rounded-3xl mb-8 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-sm font-medium transition-colors text-left shadow-lg backdrop-blur-sm",
                     isLight 
                       ? "bg-amber-50/90 border-amber-200 text-amber-900" 
                       : "bg-amber-950/20 border-amber-500/20 text-amber-200"
                   )}
                 >
-                  <div className="flex items-center gap-3.5">
-                    <AlertCircle className="w-5.5 h-5.5 text-amber-500 shrink-0" />
-                    <div>
-                      <h4 className="font-extrabold text-base tracking-tight mb-0.5">{validationError.title}</h4>
-                      <p className={clsx("text-xs font-medium leading-relaxed", isLight ? "text-neutral-600" : "text-neutral-400")}>
+                  <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                    <AlertCircle className="w-5.5 h-5.5 text-amber-500 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-extrabold text-base tracking-tight mb-0.5 truncate">{validationError.title}</h4>
+                      <p className={clsx("text-xs font-medium leading-relaxed break-words", isLight ? "text-neutral-600" : "text-neutral-400")}>
                         {validationError.message}
                       </p>
                     </div>
@@ -2072,18 +2066,15 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       setValidationError(null);
                       setUrl(prevUrl);
                     }}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold transition-all text-xs cursor-pointer shadow-md hover:shadow-lg shadow-amber-500/20 whitespace-nowrap uppercase tracking-wider"
+                    className="w-full sm:w-auto px-5 py-2.5 shrink-0 rounded-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold transition-all text-xs cursor-pointer shadow-md hover:shadow-lg shadow-amber-500/20 whitespace-nowrap uppercase tracking-wider"
                   >
                     Switch to {validationError.targetTabName}
                   </button>
                 </motion.div>
               )}
             </AnimatePresence>
-
-          {/* Search & URL Input Box */}
-            <form onSubmit={handleDownload} className="w-full max-w-2xl mb-6 relative">
-                {activeTab === 'twitter' && (
-                  <div className="absolute -top-12 left-0 right-0 flex justify-center">
+            {activeTab === 'x' && (
+              <div className="flex flex-col items-center w-full mb-4">
                     <input
                       type="text"
                       value={twitterAuthToken}
@@ -2091,7 +2082,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         setTwitterAuthToken(e.target.value);
                         localStorage.setItem("twitterAuthToken", e.target.value);
                       }}
-                      placeholder="Optional: Enter Twitter auth_token cookie to bypass rate limits"
+                      placeholder="Optional: Enter Twitter auth_token cookie"
                       className={clsx(
                         "w-full max-w-md px-4 py-2 rounded-full text-xs transition-all outline-none border",
                         isLight ? "bg-white/50 border-neutral-200 text-neutral-800 placeholder-neutral-500" : "bg-black/20 border-white/10 text-white placeholder-neutral-400"
@@ -2099,6 +2090,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     />
                   </div>
                 )}
+              <form onSubmit={handleDownload} className="w-full relative z-20">
                 <div className={clsx(
                   "relative flex items-center w-full border rounded-full p-2 pl-6 sm:pl-8 shadow-2xl backdrop-blur-xl group transition-all",
                   isLight 
@@ -2125,7 +2117,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     disabled={isLoading || !url}
                     aria-label="Start fetching media"
                     className={clsx(
-                      "absolute right-2 top-2 bottom-2 w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shrink-0 shadow-lg cursor-pointer",
+                      "absolute right-2 top-1/2 -translate-y-1/2 w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shrink-0 shadow-lg cursor-pointer",
                       isLight 
                         ? "bg-neutral-950 text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:opacity-70" 
                         : "bg-[#cccccc] text-neutral-800 hover:bg-white disabled:bg-neutral-800 disabled:text-neutral-400 disabled:opacity-70"
@@ -2144,7 +2136,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               </form>
 
               {/* Quick Actions Row */}
-              <div className="flex flex-wrap items-center justify-center gap-3 mb-8 w-full max-w-2xl relative z-20">
+              <div className="flex flex-wrap items-center justify-center gap-3 mt-6 mb-8 w-full max-w-2xl relative z-20">
                 <button
                   type="button"
                   onClick={handlePasteFromClipboard}
@@ -2200,6 +2192,8 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               </div>
 
               {/* Link Vault Batch Queue Panel (Glassmorphic) */}
+              </motion.div>
+            </AnimatePresence>
               <AnimatePresence>
                 {showVault && (
                   <motion.div
@@ -2326,62 +2320,68 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   </motion.div>
                 )}
               </AnimatePresence>
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Dynamic Media Extraction Dashboard / Loading State */}
-        <AnimatePresence mode="wait">
-          {isLoading && (() => {
-            
-            return (
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -30 }}
-                className="w-full max-w-md mx-auto flex flex-col items-center mt-4"
-              >
-                {/* Central Card with Spinner */}
-                <div className={clsx(
-                  "w-full aspect-square border rounded-[36px] flex items-center justify-center shadow-[0_25px_50px_rgba(0,0,0,0.5)] backdrop-blur-xl relative mb-8 overflow-hidden transition-colors",
-                  isLight ? "bg-white border-neutral-200" : "bg-[#1e1315]/70 border-[#301618]"
-                )}>
-                  <div className="relative w-14 h-14 flex items-center justify-center">
-                    <div className={clsx("absolute inset-0 border-4 rounded-full", isLight ? "border-neutral-200" : "border-neutral-800/60")}></div>
-                    <div className={clsx("absolute inset-0 border-4 rounded-full animate-spin", isLight ? "border-t-neutral-800" : "border-t-neutral-400/80")}></div>
-                  </div>
+          {isLoading && (
+            <motion.div
+              key="loading-skeleton"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="w-full mt-16 max-w-md mx-auto flex flex-col items-center space-y-6 px-4"
+            >
+              {/* Skeleton Image/Video Box */}
+              <div className={clsx(
+                "w-full aspect-square sm:aspect-video rounded-3xl overflow-hidden relative shadow-2xl",
+                isLight ? "bg-neutral-100 border border-neutral-200" : "bg-white/5 border border-white/10"
+              )}>
+                {/* Moving Shimmer Effect */}
+                <motion.div 
+                  className={clsx(
+                    "absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent to-transparent",
+                    isLight ? "via-neutral-200/50" : "via-white/10"
+                  )}
+                  animate={{ x: ["-100%", "200%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                />
+                {/* Centered Spinner */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className={clsx("w-8 h-8 animate-spin", isLight ? "text-neutral-400" : "text-white/20")} />
                 </div>
-
-                {/* Status / Percentage Row */}
-                <div className="w-full flex justify-between items-center px-1 mb-3">
-                  <span className={clsx("text-sm font-medium transition-colors", isLight ? "text-neutral-700" : "text-neutral-300")}>
-                    Extracting media details...
-                  </span>
-                  <span className="text-sm font-bold text-blue-500">
-                    {LOADING_STEPS[loadingStep].target}%
-                  </span>
-                </div>
-
-                {/* Determinate Progress Bar */}
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="w-full space-y-3 mt-4">
                 <div className={clsx(
-                  "w-full h-3 rounded-full overflow-hidden mb-4 shadow-inner transition-colors relative", 
-                  isLight ? "bg-neutral-200" : "bg-neutral-800/80"
+                  "flex justify-between text-xs font-medium",
+                  isLight ? "text-neutral-700" : "text-white/70"
                 )}>
+                  <span>Progress</span>
+                  <span>{LOADING_STEPS[loadingStep].target}%</span>
+                </div>
+                {/* Outer Track */}
+                <div className={clsx(
+                  "w-full h-3 rounded-full overflow-hidden relative shadow-inner",
+                  isLight ? "bg-neutral-200 border border-neutral-300" : "bg-white/5 border border-white/10"
+                )}>
+                  {/* Inner Fill */}
                   <motion.div 
-                    className="absolute top-0 left-0 h-full rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]"
-                    initial={{ width: "0%" }}
+                    className={clsx(
+                      "absolute top-0 left-0 bottom-0 shadow-[0_0_10px_rgba(255,255,255,0.5)]",
+                      isLight ? "bg-neutral-800" : "bg-white"
+                    )}
+                    initial={{ width: 0 }}
                     animate={{ width: `${LOADING_STEPS[loadingStep].target}%` }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    transition={{ ease: "easeOut", duration: 0.5 }}
                   />
                 </div>
-
-                {/* Status message */}
-                <div className={clsx("text-sm font-semibold tracking-wide transition-colors", isLight ? "text-neutral-600" : "text-neutral-400")}>
-                  {LOADING_STEPS[loadingStep].text}
+                <div className={clsx(
+                  "text-center text-xs font-medium",
+                  isLight ? "text-neutral-500" : "text-white/50"
+                )}>
+                  Processing Link...
                 </div>
-              </motion.div>
-            );
-          })()}
-        </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
 
         {/* Results Area */}
         <AnimatePresence mode="wait">
@@ -2462,7 +2462,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
                         {/* Names Details */}
                         <div className="mb-6">
-                          <h3 className={clsx("text-2xl sm:text-3xl font-extrabold transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                          <h3 className={clsx("text-2xl sm:text-3xl font-extrabold transition-colors break-words", isLight ? "text-neutral-900" : "text-white")}>
                             {result.profile.displayName || result.profile.username}
                           </h3>
                           <div className="flex items-center gap-3 mt-1">
@@ -3052,7 +3052,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             <p className="text-sm font-medium leading-relaxed">{result.warning}</p>
                           </div>
                         )}
-                        <h3 className={clsx("text-xl font-bold mb-6 line-clamp-3 leading-snug transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                        <h3 className={clsx("text-xl font-bold mb-6 line-clamp-3 leading-snug break-words transition-colors", isLight ? "text-neutral-900" : "text-white")}>
                           {result.title || "Ready File Asset"}
                         </h3>
                         {result.description && (
@@ -3269,10 +3269,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Real-time platform status - Only shown when not loading & no result is active */}
-        {!result && !isLoading && (
-          <motion.div
+        <motion.div
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, margin: "-60px" }}
@@ -3366,7 +3363,6 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               })}
             </div>
           </motion.div>
-        )}
 
       </div>
 
@@ -3531,12 +3527,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           );
         })()}
       </AnimatePresence>
-      
-      {/* Global CSS Injectors for custom features */}
-      <style dangerouslySetInnerHTML={{__html: `
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
+      <style dangerouslySetInnerHTML={{ __html: `
         .no-scrollbar {
           -ms-overflow-style: none;
           scrollbar-width: none;
@@ -3578,127 +3569,97 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       <AnimatePresence>
         {Object.keys(activeDownloads).length > 0 && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 30, filter: "blur(4px)" }}
-            animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.95, y: 20, filter: "blur(4px)" }}
-            transition={{ type: "spring", stiffness: 320, damping: 26 }}
-            className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] px-4 sm:px-0"
+            initial={{ opacity: 0, y: 50 }} // Slide up from bottom
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              "fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md border rounded-2xl p-4 shadow-2xl z-50 flex flex-col space-y-4",
+              isLight ? "bg-white border-neutral-200" : "bg-[#1a1a1a] border-white/10"
+            )}
           >
-            <div className={clsx(
-              "p-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border flex flex-col gap-3 backdrop-blur-xl transition-all relative overflow-hidden",
-              isLight 
-                ? "bg-white/70 border-white/50 shadow-[0_8px_32px_rgba(15,23,42,0.06)] text-neutral-800" 
-                : "bg-neutral-900/60 border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.4)] text-white"
-            )}>
-              {/* Highlight background sheen */}
-              <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none rounded-3xl" />
-
-              <div className="flex items-center justify-between border-b pb-2.5 transition-colors border-neutral-200/40 dark:border-white/10 relative z-10">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            {Object.entries(activeDownloads).map(([url, rawDl]) => {
+              const dl = rawDl as { filename: string; progress: number | null; status: "preparing" | "downloading" | "complete" | "failed" };
+              return (
+                <div key={url} className="flex flex-col space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <span className={clsx(
+                      "text-sm font-medium flex items-center space-x-2 truncate min-w-0 max-w-[70%]",
+                      isLight ? "text-neutral-900" : "text-white"
+                    )}>
+                      {dl.status === "preparing" || dl.status === "downloading" ? (
+                        <Loader2 className={clsx("w-4 h-4 animate-spin", isLight ? "text-neutral-500" : "text-white/70")} />
+                      ) : dl.status === "complete" ? (
+                        <AnimatedCheckMark className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-500" />
+                      )}
+                      <span className="truncate" title={dl.filename}>{dl.filename}</span>
+                    </span>
+                    <span className={clsx(
+                      "text-xs font-mono shrink-0",
+                      isLight ? "text-neutral-500" : "text-white/50"
+                    )}>
+                      {dl.status === "preparing"
+                        ? 'Fetching...'
+                        : dl.status === "complete"
+                          ? 'Done'
+                          : dl.status === "failed"
+                            ? 'Failed'
+                            : dl.progress === -1 || dl.progress === null 
+                              ? 'Fetching...' 
+                              : `${dl.progress}%`}
+                    </span>
                   </div>
-                  <span className="font-bold text-xs uppercase tracking-wider opacity-90">Active Downloads ({Object.keys(activeDownloads).length})</span>
-                </div>
-                <button 
-                  type="button"
-                  onClick={() => setActiveDownloads({})}
-                  className="text-xs font-semibold hover:underline opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
-                >
-                  Clear all
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-3.5 max-h-[250px] overflow-y-auto custom-scrollbar relative z-10 pr-0.5">
-                <AnimatePresence initial={false}>
-                  {Object.entries(activeDownloads).map(([url, rawDl]) => {
-                    const dl = rawDl as { filename: string; progress: number | null; status: "preparing" | "downloading" | "complete" | "failed" };
-                    return (
+                  
+                  {/* Progress Track */}
+                  <div className={clsx(
+                    "relative w-full h-2 rounded-full overflow-hidden",
+                    isLight ? "bg-neutral-200" : "bg-white/5"
+                  )}>
+                    {dl.status === "preparing" || (dl.status === "downloading" && (dl.progress === -1 || dl.progress === null)) ? (
+                      // Indeterminate Infinite Animation
                       <motion.div 
-                        key={url}
-                        layout
-                        initial={{ opacity: 0, height: 0, scale: 0.9, y: 15 }}
-                        animate={{ opacity: 1, height: "auto", scale: 1, y: 0 }}
-                        exit={{ opacity: 0, height: 0, scale: 0.9, y: -10 }}
-                        transition={{ type: "spring", stiffness: 350, damping: 28 }}
-                        className="flex flex-col gap-2 p-3 rounded-2xl bg-white/40 dark:bg-white/5 border border-white/30 dark:border-white/5 shadow-sm backdrop-blur-md overflow-hidden group"
-                      >
-                        <div className="flex items-start justify-between text-xs font-semibold gap-2">
-                          <span className="truncate max-w-[75%] text-left font-semibold" title={dl.filename}>{dl.filename}</span>
-                          <span className={clsx(
-                            "font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0",
-                            dl.status === "complete" 
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" 
-                              : dl.status === "failed" 
-                                ? "bg-rose-500/15 text-rose-600 dark:text-rose-400" 
-                                : "bg-blue-500/15 text-blue-600 dark:text-blue-400"
-                          )}>
-                            {dl.status === "preparing" 
-                              ? "Preparing" 
-                              : dl.status === "complete" 
-                                ? "Saved" 
-                                : dl.status === "failed" 
-                                  ? "Failed" 
-                                  : dl.progress !== null ? `${dl.progress}%` : "Downloading"
-                            }
-                          </span>
-                        </div>
-                        
-                        {/* Progress bar container */}
-                        <div className="w-full h-1.5 rounded-full bg-neutral-200/50 dark:bg-white/10 overflow-hidden relative">
-                          {dl.status === "preparing" ? (
-                            <div className="absolute top-0 left-0 h-full w-1/2 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full animate-[shimmer_1.5s_infinite]" />
-                          ) : (
-                            <motion.div 
-                              className={clsx(
-                                "absolute top-0 left-0 h-full rounded-full transition-all duration-300",
-                                dl.status === "complete" ? "bg-gradient-to-r from-emerald-500 to-teal-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : dl.status === "failed" ? "bg-gradient-to-r from-rose-500 to-red-600" : "bg-gradient-to-r from-blue-500 to-indigo-500"
-                              )}
-                              style={{ width: `${dl.progress !== null ? dl.progress : 50}%` }}
-                              layout
-                            />
-                          )}
-                        </div>
-                        
-                        {/* Action Row */}
-                        <div className="flex items-center justify-between text-[10px] opacity-70">
-                          <span className="truncate max-w-[80%] text-left">
-                            {dl.status === "downloading" 
-                              ? "Streaming content via server..." 
-                              : dl.status === "preparing" 
-                                ? "Resolving secure video URL..." 
-                                : dl.status === "complete" 
-                                  ? "Saved successfully to your device!" 
-                                  : "An error occurred during extraction"
-                            }
-                          </span>
-                          {dl.status !== "complete" && dl.status !== "failed" && (
-                            <button 
-                              type="button" 
-                              onClick={() => {
-                                setActiveDownloads(prev => {
-                                  const next = { ...prev };
-                                  delete next[url];
-                                  return next;
-                                });
-                              }}
-                              className="hover:text-rose-500 hover:underline cursor-pointer font-medium"
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-              </div>
-            </div>
+                        className={clsx(
+                          "absolute inset-y-0 left-0 w-1/2 rounded-full",
+                          isLight ? "bg-neutral-800/40" : "bg-white/40"
+                        )}
+                        animate={{ x: ["-100%", "200%"] }}
+                        transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                      />
+                    ) : (
+                      // Determinate Fill Animation
+                      <motion.div 
+                        className={clsx(
+                          "absolute inset-y-0 left-0 rounded-full transition-colors",
+                          dl.status === "complete" 
+                            ? "bg-emerald-500"
+                            : dl.status === "failed"
+                              ? "bg-rose-500"
+                              : isLight ? "bg-neutral-800" : "bg-white/80"
+                        )}
+                        initial={{ width: 0 }}
+                        animate={{ width: dl.status === "complete" ? "100%" : `${dl.progress || 0}%` }}
+                        transition={{ ease: "easeOut" }}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            
+            <button 
+              type="button" 
+              onClick={() => setActiveDownloads({})}
+              className={clsx(
+                "text-xs font-semibold hover:underline w-fit self-end mt-2 transition-opacity opacity-60 hover:opacity-100",
+                isLight ? "text-neutral-600" : "text-white"
+              )}
+            >
+              Clear All
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
       <ReloadPrompt isLight={isLight} />
       <NotificationRequest isLight={isLight} />
 
