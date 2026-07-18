@@ -24,9 +24,3 @@ fix-*.cjs
 fix-*.js
 fix.txt
 out.json
-instaloader/
-xtractor
-yt-dlp_linux
-linux-amd64.zip
-.git
-.git/

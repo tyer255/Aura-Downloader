@@ -1,20 +1,9 @@
-import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  plugins: [
-    react(), 
-    VitePWA({
-      registerType: 'prompt',
-      includeAssets: ['favicon.ico', 'icon.svg', 'apple-touch-icon.png'],
-      manifest: false, // We already have manifest.json in public/
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-      importScripts: ['/push-sw.js']
-      }
-    })
-  ],
+  plugins: [react(), tailwindcss()],
   server: {
     allowedHosts: true,
   },

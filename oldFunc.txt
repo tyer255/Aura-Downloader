@@ -1,5 +1,3 @@
-import { exec, spawn } from 'child_process';
-import utilSync from 'util';
 import express from "express";
 
 import path from "path";
@@ -248,7 +246,7 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
       };
     }
   } catch (err: any) {
-    console.log("Local Cheerio fallback failed (falling back).");
+    console.error("Local Cheerio fallback failed:", err.message);
     return {
       success: false,
       error: "Could not parse media. Details: " + err.message
@@ -258,84 +256,39 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
 
 // Use Gemini-3.5-flash to extract high fidelity direct media URLs & Profile data
 
-
-
+import { exec } from 'child_process';
+import utilSync from 'util';
 const execAsync = utilSync.promisify(exec);
-
 
 async function extractWithYtDlp(url: string) {
   try {
-    const { stdout } = await execAsync(`./yt-dlp_linux --js-runtimes node --no-playlist --dump-json "${url}"`, { timeout: 25000 });
+    const { stdout } = await execAsync(`./yt-dlp --dump-json "${url}"`, { timeout: 15000 });
     const data = JSON.parse(stdout);
     
-    let qualities = [];
+    // Choose the best video URL
     let mediaUrl = data.url;
+    if (!mediaUrl && data.formats) {
+       // get best format with video and audio
+       const best = data.formats.filter((f: any) => f.vcodec !== 'none' && f.acodec !== 'none').sort((a: any, b: any) => (b.height || 0) - (a.height || 0))[0];
+       if (best) mediaUrl = best.url;
+       else if (data.formats.length > 0) mediaUrl = data.formats[0].url;
+    }
     
-    if (data.formats && data.formats.length > 0) {
-      // Find the best audio format
-      const audioFormats = data.formats.filter((f: any) => f.acodec !== 'none' && f.vcodec === 'none');
-      const bestAudio = audioFormats.sort((a: any, b: any) => (b.abr || 0) - (a.abr || 0))[0];
-
-      // Video formats
-      const videoFormats = data.formats.filter((f: any) => f.vcodec !== 'none');
-      
-      const heights = new Map();
-      videoFormats.forEach((f: any) => {
-        if (!f.height) return;
-        const current = heights.get(f.height);
-        
-        // Prefer formats with audio
-        if (!current || (current.acodec === 'none' && f.acodec !== 'none')) {
-          heights.set(f.height, f);
-        }
-      });
-      
-      qualities = Array.from(heights.values())
-        .sort((a: any, b: any) => b.height - a.height)
-        .map((f: any) => {
-          const hasAudio = f.acodec !== 'none';
-          
-          let proxyUrl = `/api/proxy-download?url=${encodeURIComponent(f.url)}&filename=${encodeURIComponent(data.title || "video")}.mp4`;
-          
-          // If the format has no audio, but we have a bestAudio format, we can mux them
-          if (!hasAudio && bestAudio && f.ext === 'mp4' && bestAudio.ext === 'm4a') {
-             proxyUrl += `&audioUrl=${encodeURIComponent(bestAudio.url)}&mux=true`;
-          } else if (!hasAudio && bestAudio) {
-             proxyUrl += `&audioUrl=${encodeURIComponent(bestAudio.url)}&mux=true`;
-          }
-          
-          return {
-            label: `${f.height}p (${f.ext})`,
-            url: proxyUrl,
-            ext: f.ext || "mp4",
-            size: hasAudio || bestAudio ? "Video + Audio" : "Video Only"
-          };
-        });
-        
-      if (qualities.length > 0) {
-         mediaUrl = qualities[0].url; // highest quality
-      }
+    if (mediaUrl) {
+       return {
+         success: true,
+         url: mediaUrl,
+         title: data.title || "Video",
+         thumbnail: data.thumbnail || "",
+         mediaType: "video",
+         source: "yt-dlp"
+       };
     }
-
-    if (!mediaUrl && data.url) {
-      mediaUrl = `/api/proxy-download?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(data.title || "download")}.${data.ext || "mp4"}`;
-    }
-
-    return {
-       success: true,
-       title: data.title || "Extracted Video",
-       url: mediaUrl,
-       thumbnail: data.thumbnail || "",
-       mediaType: "video",
-       source: "yt-dlp",
-       qualities: qualities.length > 0 ? qualities : getFallbackQualities(mediaUrl, "video")
-     };
   } catch(e: any) {
-    console.log("yt-dlp extraction failed (falling back).", e.message);
-    return null;
+    console.error("yt-dlp extraction failed:", e.message);
   }
+  return null;
 }
-
 
 async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
   const ai = getGemini();
@@ -387,11 +340,10 @@ async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
 
 CRITICAL DIRECTIVES:
 1. Locate high-quality direct download or stream URLs. Look for CDN patterns, source tags, og:video, og:image, and JSON blobs.
-2. If this is a profile page (YouTube channel, Instagram user, TikTok user, Facebook profile, Pinterest profile, LinkedIn profile), extract user profile information: avatar picture URL (high res), banner picture URL, display name, follower counts, bio.
-3. If this is a profile page or community post, ALWAYS extract up to 15 recent media posts (videos, shorts, photos, reels, gallery) from the profile (if available in the HTML). Put these in the "media" array with the appropriate type ("video" or "image").
-4. If this is a post containing multiple images (Instagram carousel, YouTube community post, Facebook gallery), return ALL extracted media items in the "media" array.
-5. If it's a video, get the highest quality .mp4 or .m3u8 stream.
-6. Return the result strictly in JSON format matching the response schema. No conversational wrapper or markdown formatting.`;
+2. If this is a profile page (YouTube channel, Instagram user, TikTok user, Facebook profile, Pinterest profile), extract user profile information: avatar picture URL (high res), banner picture URL, display name, follower counts, bio.
+3. If this is a post containing multiple images (Instagram carousel, YouTube community post, Facebook gallery), return ALL extracted media items in the "media" array.
+4. If it's a video, get the highest quality .mp4 or .m3u8 stream.
+5. Return the result strictly in JSON format matching the response schema. No conversational wrapper or markdown formatting.`;
 
   const responseSchema = {
     type: Type.OBJECT,
@@ -435,7 +387,7 @@ CRITICAL DIRECTIVES:
     required: ["success"]
   };
 
-  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash"];
+  const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash"];
   for (const modelName of modelsToTry) {
     try {
       console.log(`Attempting AI extraction using model: ${modelName}`);
@@ -451,33 +403,6 @@ CRITICAL DIRECTIVES:
 
       if (response && response.text) {
         const data = JSON.parse(response.text.trim());
-        
-        // Merge with Cheerio fallback to correct any hallucinated hashes by AI
-        try {
-            const localData = localCheerioFallback(htmlContent || "<html><body></body></html>", url, isProfile);
-            if (isProfile && localData && localData.success && localData.profile) {
-                if (!data.profile) data.profile = { username: localData.profile.username };
-                if (localData.profile.avatarUrl) {
-                     data.profile.avatarUrl = localData.profile.avatarUrl;
-                     data.thumbnail = localData.profile.avatarUrl;
-                }
-                if (localData.profile.bannerUrl) {
-                     data.profile.bannerUrl = localData.profile.bannerUrl;
-                }
-                if (localData.profile.followers && localData.profile.followers !== "Unknown") {
-                     data.profile.followers = localData.profile.followers;
-                }
-                if (localData.profile.displayName) {
-                     data.profile.displayName = localData.profile.displayName;
-                }
-            } else if (!isProfile && localData && localData.success) {
-                if (localData.thumbnail) data.thumbnail = localData.thumbnail;
-                if (localData.url && (!data.url || !data.url.startsWith("http"))) data.url = localData.url;
-            }
-        } catch (mergeErr) {
-            console.log("Merge err: ", mergeErr);
-        }
-
         if (data && data.success) {
           console.log(`Successfully completed metadata extraction using ${modelName}`);
           return data;
@@ -516,13 +441,22 @@ function getInstagramShortcode(url: string): string | null {
 function getFallbackQualities(url: string, mediaType: string = "video") {
   if (mediaType === "video") {
     return [
-      { label: "Default Quality", url: url, ext: "mp4", size: "Video" }
+      { label: "1080p (Full HD)", url: url, ext: "mp4", size: "High Definition" },
+      { label: "720p (HD Video)", url: url, ext: "mp4", size: "Standard HD" },
+      { label: "480p (SD Video)", url: url, ext: "mp4", size: "Standard Definition" },
+      { label: "360p (Mobile Video)", url: url, ext: "mp4", size: "Low Bandwidth" }
     ];
   }
   return [
-    { label: "Original Resolution", url: url, ext: "jpg", size: "Image" }
+    {
+      label: "Original Resolution (Image)",
+      url: url,
+      ext: "jpg",
+      size: "Original"
+    }
   ];
 }
+
 // Classify URL to decide the optimal parsing route
 function classifyUrl(urlStr: string) {
   const url = urlStr.toLowerCase().trim();
@@ -540,6 +474,7 @@ function classifyUrl(urlStr: string) {
     }
   } else if (url.includes("instagram.com")) {
     platform = 'instagram';
+    // Check if it is a profile
     if (!url.includes("/p/") && !url.includes("/reel/") && !url.includes("/tv/") && !url.includes("/stories/")) {
       const path = urlStr.split("instagram.com")[1] || "";
       const segments = path.split("?")[0].split("/").filter(Boolean);
@@ -550,7 +485,7 @@ function classifyUrl(urlStr: string) {
   } else if (url.includes("facebook.com") || url.includes("fb.watch") || url.includes("fb.com")) {
     platform = 'facebook';
     if (url.includes("/profile.php") || url.includes("/people/") || (!url.includes("/videos/") && !url.includes("/reel/") && !url.includes("/watch") && !url.includes("/posts/") && !url.includes("/photo.php"))) {
-      const path = urlStr.split(/facebook\.com|fb\.com/)[1] || "";
+      const path = urlStr.split("facebook.com")[1] || "";
       if (path) {
         const segments = path.split("?")[0].split("/").filter(Boolean);
         if (segments.length === 1) {
@@ -573,9 +508,6 @@ function classifyUrl(urlStr: string) {
     platform = 'unknown'; // handle via AI/yt-dlp
   } else if (url.includes("reddit.com") || url.includes("redd.it")) {
     platform = 'reddit';
-    if (url.includes("/user/") || url.includes("/u/")) {
-      type = 'profile';
-    }
   } else if (url.includes("pinterest.com") || url.includes("pin.it")) {
     platform = 'pinterest';
     if (!url.includes("/pin/") && !url.includes("pin.it")) {
@@ -589,26 +521,12 @@ function classifyUrl(urlStr: string) {
     }
   } else if (url.includes("x.com") || url.includes("twitter.com")) {
     platform = 'x';
-    if (!url.includes("/status/")) {
-      const path = urlStr.split(/x\.com|twitter\.com/)[1] || "";
-      if (path) {
-        const segments = path.split("?")[0].split("/").filter(Boolean);
-        if (segments.length === 1) {
-          type = 'profile';
-        }
-      }
-    }
   } else if (url.includes("linkedin.com")) {
     platform = 'linkedin';
-    if (url.includes("/in/") || url.includes("/company/")) {
-      type = 'profile';
-    } else if (url.includes("/posts/")) {
-      type = 'community_post';
-    }
   }
+
   return { platform, type };
 }
-
 
 // Robust download streaming helper supporting redirects and client aborts
 function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline = false, maxRedirects = 5) {
@@ -679,7 +597,7 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
         ext = "mp4";
       }
 
-      let filename = customFilename || "download";
+      let filename = customFilename;
       if (!path.extname(filename)) {
         filename = `${filename}.${ext}`;
       }
@@ -691,8 +609,7 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "*");
 
-      const encodedFilename = encodeURIComponent(filename.replace(/[\r\n]+/g, ''));
-      const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
+      const disposition = inline ? "inline" : `attachment; filename="${filename}"`;
       res.setHeader("Content-Disposition", disposition);
       res.setHeader("Content-Type", contentType);
       if (contentLength) {
@@ -735,267 +652,5 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
   }
 }
 
-
-export async function startServer() {
-  const app = express();
-  const PORT = 3000;
-
-  app.use(express.json());
-  app.use((req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    next();
-  });
-
-  
-async function extractWithCobalt(url: string) {
-  const instances = [
-    "https://co.wuk.sh/api/json",
-    "https://cobalt.q0.is/api/json",
-    "https://api.cobalt.bckc.rs/api/json",
-    "https://cobalt.kwiatekit.com/api/json",
-    "https://cobalt.shiron.dev/api/json",
-    "https://api.cobalt.tools/api/json",
-    "https://api.ryzendesu.vip/api/downloader/igdl" 
-  ];
-
-  for (const instance of instances) {
-    try {
-      console.log(`Trying Cobalt instance: ${instance}`);
-      const isRyzen = instance.includes('ryzendesu');
-      
-      let res;
-      if (isRyzen) {
-        res = await fetch(`${instance}?url=${encodeURIComponent(url)}`);
-      } else {
-        res = await fetch(instance, {
-          method: "POST",
-          headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            url: url,
-            aFormat: "best",
-            vQuality: "max"
-          })
-        });
-      }
-
-      if (res.ok) {
-        const data = await res.json();
-        
-        if (isRyzen && data.data && data.data.length > 0) {
-           return {
-             success: true,
-             title: "Instagram Video",
-             url: data.data[0].url,
-             mediaType: "video",
-             qualities: getFallbackQualities(data.data[0].url, "video"),
-             media: data.data.map((m: any) => ({ type: "video", url: m.url, thumbnail: m.thumbnail || "" }))
-           };
-        }
-
-        if (data.status === "redirect" || data.status === "stream" || data.status === "success") {
-          return {
-            success: true,
-            title: "Extracted Media",
-            url: data.url,
-            mediaType: "video",
-            qualities: getFallbackQualities(data.url, "video"),
-            media: [{ type: "video", url: data.url }]
-          };
-        }
-        if (data.status === "picker") {
-          // Multiple items
-          const media = data.picker.map((item: any) => ({
-            type: item.type === "video" ? "video" : "image",
-            url: item.url,
-            thumbnail: item.thumb || ""
-          }));
-          return {
-            success: true,
-            title: "Extracted Media",
-            url: media[0]?.url,
-            mediaType: media[0]?.type,
-            media: media
-          };
-        }
-      }
-    } catch (e) {
-      console.log(`Cobalt instance ${instance} failed.`);
-    }
-  }
-  return null;
+return { success: false, error: "All public Cobalt endpoints failed. Please wait or try another tool." };
 }
-
-  app.post("/api/download", async (req, res) => {
-    const { url } = req.body;
-    if (!url) {
-      return res.status(400).json({ success: false, message: "URL is required" });
-    }
-    
-    try {
-      const trimmedUrl = url.trim();
-      const lowerUrl = trimmedUrl.toLowerCase();
-      const { platform, type } = classifyUrl(trimmedUrl);
-      const isProfile = type === 'profile' || type === 'community_post';
-      console.log(`Processing extraction for platform: ${platform}, type: ${type}, url: ${trimmedUrl}`);
-
-      if (isProfile) {
-        console.log("Profile URL detected, bypassing media extractors and using AI extraction directly.");
-        const aiResult = await extractWithAI(trimmedUrl, true);
-        if (aiResult && aiResult.success) {
-          return res.json(aiResult);
-        } else {
-           // fallback to other extractors if AI profile extraction fails completely
-        }
-      }
-
-      // 1. Primary: yt-dlp_linux
-      const ytDlpResult = await extractWithYtDlp(trimmedUrl);
-      if (ytDlpResult && ytDlpResult.success) {
-        console.log("Extraction via yt-dlp succeeded!");
-        return res.json(ytDlpResult);
-      }
-
-      // 2. Cobalt API instances (Best for Vercel/Bolt)
-      console.log("yt-dlp failed or not available, trying Cobalt API instances...");
-      const cobaltResult = await extractWithCobalt(trimmedUrl);
-      if (cobaltResult && cobaltResult.success) {
-        console.log("Extraction via Cobalt succeeded!");
-        return res.json(cobaltResult);
-      }
-
-      // 3. Fallbacks for specific platforms
-      if (lowerUrl.includes("tiktok.com")) {
-        try {
-          const result = await btch.ttdl(trimmedUrl);
-          if (result && result.status && result.video && result.video.length > 0) {
-            const videoUrl = result.video[0];
-            return res.json({
-              success: true,
-              title: result.title || "TikTok Video",
-              thumbnail: result.thumbnail,
-              url: videoUrl,
-              mediaType: "video",
-              qualities: getFallbackQualities(videoUrl, "video"),
-              media: [{ type: "video", url: videoUrl, thumbnail: result.thumbnail }]
-            });
-          }
-        } catch (e) {
-          console.log("TikTok fallback scraper failed (falling back).");
-        }
-      }
-      
-      if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be")) {
-        try {
-          const result = await btch.youtube(trimmedUrl);
-          if (result && result.status && result.mp4) {
-            return res.json({
-              success: true,
-              title: result.title || "YouTube Video",
-              thumbnail: result.thumbnail,
-              url: result.mp4,
-              mediaType: "video",
-              qualities: getFallbackQualities(result.mp4, "video"),
-              media: [{ type: "video", url: result.mp4, thumbnail: result.thumbnail }]
-            });
-          }
-        } catch (e) {
-          console.log("YouTube fallback scraper failed (falling back).");
-        }
-      }
-
-      // 3. AI / Cheerio fallback
-      console.log("No specialized or yt-dlp scraper succeeded. Running last-resort AI/Cheerio fallback...");
-      const aiResult = await extractWithAI(trimmedUrl, isProfile);
-      if (aiResult && aiResult.success) {
-        console.log("Last-resort extraction succeeded!");
-        return res.json(aiResult);
-      }
-
-      return res.status(400).json({ 
-         success: false, 
-         message: "Extraction failed: The media content could not be retrieved. Please verify the link is public and try again." 
-       });
-          
-    } catch (error) {
-      console.error("API Download Exception:", error.message);
-      return res.status(500).json({ success: false, message: error.message || "An unexpected error occurred while processing the URL." });
-    }
-  });
-
-  
-  app.get("/api/proxy-download", (req, res) => {
-    const fileUrl = req.query.url;
-    const audioUrl = req.query.audioUrl;
-    const mux = req.query.mux === "true";
-    let customFilename = req.query.filename || "download.mp4";
-    const inline = req.query.inline === "true";
-
-    if (!fileUrl) {
-      return res.status(400).json({ error: "Missing url parameter" });
-    }
-
-    if (mux && audioUrl) {
-      res.setHeader('Content-Type', 'video/mp4');
-      const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
-      const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
-      res.setHeader('Content-Disposition', disposition);
-
-      // Mux using ffmpeg safely with spawn
-      const ffmpeg = spawn('ffmpeg', [
-        '-i', fileUrl as string,
-        '-i', audioUrl as string,
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-movflags', 'frag_keyframe+empty_moov',
-        '-f', 'mp4',
-        'pipe:1'
-      ]);
-      
-      ffmpeg.stdout.pipe(res);
-      
-      ffmpeg.stderr.on('data', (d) => {
-         // console.log('ffmpeg:', d.toString());
-      });
-      
-      ffmpeg.on('error', (err) => {
-        console.error('ffmpeg process error:', err);
-        if (!res.headersSent) res.status(500).end();
-      });
-      
-      req.on("close", () => {
-        ffmpeg.kill();
-      });
-    } else {
-      pipeUrlStream(fileUrl as string, res, customFilename as string, inline);
-    }
-  });
-
-
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  if (!process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
-  return app;
-}
-
-startServer();
