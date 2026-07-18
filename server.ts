@@ -513,15 +513,26 @@ async function extractTwitterXtractor(url: string, authToken?: string) {
   return null;
 }
 
+
 async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
   try {
-    let args = `--js-runtimes node --no-playlist --dump-json "${url}"`;
-    if (isPlaylist) {
-       args = `--js-runtimes node --dump-single-json --flat-playlist --playlist-end 15 "${url}"`;
-    }
-    const { stdout } = await execAsync(`./yt-dlp_linux ${args}`, { timeout: 25000, maxBuffer: 1024 * 1024 * 50 });
-    const data = JSON.parse(stdout);
+    const youtubedl = (await import('youtube-dl-exec')).default;
     
+    let options: any = {
+      dumpSingleJson: true,
+      noWarnings: true,
+      noCheckCertificate: true,
+      preferFreeFormats: true,
+      noPlaylist: !isPlaylist
+    };
+    
+    if (isPlaylist) {
+       options.flatPlaylist = true;
+       options.playlistEnd = 15;
+    }
+    
+    const data: any = await youtubedl(url, options);
+
     if (isPlaylist && data.entries) {
       const validEntries = data.entries.filter((e: any) => e && e.url && e.id);
       const media = validEntries.map((entry: any) => ({
@@ -554,7 +565,7 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
                 const ytHost = process.env.RAPIDAPI_YT_HOST || "yt-api.p.rapidapi.com";
                 let cleanUsername = url.split("@")[1]?.split("/")[0]?.split("?")[0] || data.uploader_id || "";
                 if (cleanUsername) {
-                    const ytRes = await axios.get(`https://${ytHost}/channel/about?id=@${cleanUsername}`, {
+                    const ytRes = await (await import('axios')).default.get(`https://${ytHost}/channel/about?id=@${cleanUsername}`, {
                         headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': ytHost },
                         timeout: 8000
                     });
@@ -618,62 +629,53 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
         
         // Prefer formats with audio
         if (!current || (current.acodec === 'none' && f.acodec !== 'none')) {
-          heights.set(f.height, f);
+           heights.set(f.height, f);
         }
       });
       
-      qualities = Array.from(heights.values())
-        .sort((a: any, b: any) => b.height - a.height)
-        .map((f: any) => {
-          const hasAudio = f.acodec !== 'none';
-          
-          let proxyUrl = `/api/proxy-download?url=${encodeURIComponent(f.url)}&filename=${encodeURIComponent(data.title || "video")}.mp4`;
-          
-          // If the format has no audio, but we have a bestAudio format, we can mux them
-          if (!hasAudio && bestAudio && f.ext === 'mp4' && bestAudio.ext === 'm4a') {
-             proxyUrl += `&audioUrl=${encodeURIComponent(bestAudio.url)}&mux=true`;
-          } else if (!hasAudio && bestAudio) {
-             proxyUrl += `&audioUrl=${encodeURIComponent(bestAudio.url)}&mux=true`;
-          }
-          
-          return {
-            label: `${f.height}p (${f.ext})`,
-            url: proxyUrl,
-            ext: f.ext || "mp4",
-            size: hasAudio || bestAudio ? "Video + Audio" : "Video Only"
-          };
-        });
-        
-      if (qualities.length > 0) {
-         mediaUrl = qualities[0].url; // highest quality
+      // Sort heights descending
+      const sortedHeights = Array.from(heights.keys()).sort((a, b) => b - a);
+      
+      sortedHeights.forEach((h: number) => {
+         const f = heights.get(h);
+         let qUrl = f.url;
          
-         const audioSourceUrl = bestAudio ? bestAudio.url : data.url;
-         if (audioSourceUrl) {
-            qualities.push({
-               label: "MP3 Audio",
-               url: `/api/proxy-download?url=${encodeURIComponent(audioSourceUrl)}&filename=${encodeURIComponent(data.title || "audio")}.mp3&extractAudio=true`,
-               ext: "mp3",
-               size: "Audio Only"
-            });
+         // If video has no audio, proxy it to mux with best audio
+         if (f.acodec === 'none' && bestAudio) {
+            qUrl = `/api/proxy-download?url=${encodeURIComponent(f.url)}&audioUrl=${encodeURIComponent(bestAudio.url)}&mux=true&filename=video_${h}p.mp4`;
          }
+         
+         qualities.push({
+            label: `${h}p`,
+            url: qUrl,
+            ext: "mp4",
+            size: `~ ${Math.round((f.filesize || f.filesize_approx || 0) / 1024 / 1024)} MB`
+         });
+      });
+      
+      if (qualities.length > 0) {
+         mediaUrl = qualities[0].url; // Best quality
+      } else {
+         // Fallback to finding standard formats
+         const formatList = data.formats;
+         const best = formatList.find((f: any) => f.format_id === '22' || f.format_id === '18') || formatList[formatList.length - 1];
+         if (best) mediaUrl = best.url;
       }
     }
 
     if (!mediaUrl && data.url) {
-      mediaUrl = `/api/proxy-download?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(data.title || "download")}.${data.ext || "mp4"}`;
+        mediaUrl = data.url;
     }
 
-    if (!mediaUrl) return null;
-
     return {
-       success: true,
-       title: data.title || "Extracted Video",
-       url: mediaUrl,
-       thumbnail: data.thumbnail || "",
-       mediaType: "video",
-       source: "yt-dlp",
-       qualities: qualities.length > 0 ? qualities : getFallbackQualities(mediaUrl, "video")
-     };
+      success: true,
+      title: data.title || "Extracted Video",
+      url: mediaUrl,
+      thumbnail: data.thumbnail || "",
+      mediaType: "video",
+      source: "yt-dlp",
+      qualities: qualities.length > 0 ? qualities : getFallbackQualities(mediaUrl, "video")
+    };
   } catch(e: any) {
     // yt-dlp extraction was not successful
     return null;
@@ -1092,6 +1094,56 @@ app.get("/api/ping", (req, res) => {
 async function getBtch() {
   const mod = await import('btch-downloader');
   return mod.default || mod;
+}
+
+
+async function extractPinterestBtch(url: string) {
+  console.log("Trying btch-downloader for Pinterest...");
+  try {
+    const mod = await import('btch-downloader');
+    const pinterest = mod.pinterest || (mod.default && mod.default.pinterest);
+    if (!pinterest) {
+        console.log("pinterest function not found in btch-downloader");
+        return null;
+    }
+    const r = await pinterest(url);
+    if (r && r.status && r.result && r.result.result) {
+       const pin = r.result.result;
+       let mediaType = "image";
+       let primaryUrl = pin.image || pin.images?.orig?.url;
+       
+       if (pin.is_video && pin.video_url) {
+           mediaType = "video";
+           primaryUrl = pin.video_url;
+       } else if (pin.videos && pin.videos.V_720P) {
+           mediaType = "video";
+           primaryUrl = pin.videos.V_720P.url;
+       } else if (pin.videos && pin.videos.V_1080P) {
+           mediaType = "video";
+           primaryUrl = pin.videos.V_1080P.url;
+       }
+
+       // Handle GIF if the image url ends with .gif
+       if (mediaType === "image" && primaryUrl && primaryUrl.toLowerCase().endsWith('.gif')) {
+           mediaType = "gif";
+       }
+       
+       if (primaryUrl) {
+           return {
+             success: true,
+             title: pin.title || pin.description || "Pinterest Pin",
+             thumbnail: pin.image || pin.images?.orig?.url || "",
+             url: primaryUrl,
+             mediaType: mediaType,
+             qualities: mediaType === "video" ? getFallbackQualities(primaryUrl, "video") : undefined,
+             media: [{ type: mediaType, url: primaryUrl, thumbnail: pin.image || "" }]
+           };
+       }
+    }
+  } catch (e) {
+    console.error("btch-downloader pinterest error:", e);
+  }
+  return null;
 }
 
 async function extractInstagramBtch(url: string) {
@@ -1522,6 +1574,13 @@ app.post("/api/download", async (req, res) => {
         }
       }
       } else {
+        if (platform === 'pinterest') {
+            const pinResult = await extractPinterestBtch(trimmedUrl);
+            if (pinResult && pinResult.success) {
+                return res.json(pinResult);
+            }
+        }
+        
         console.log("Trying Cobalt API...");
         const cobaltResult = await extractWithCobalt(trimmedUrl);
         if (cobaltResult && cobaltResult.success) {

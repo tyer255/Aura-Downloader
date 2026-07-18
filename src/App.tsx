@@ -1015,7 +1015,7 @@ function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         triggerHistoryToast("Clipboard is empty");
       }
     } catch (e) {
-      console.error("Clipboard paste error:", e);
+      
       triggerHistoryToast("Clipboard access blocked. Please tap the input box and paste manually.");
     }
   };
