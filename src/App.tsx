@@ -1450,15 +1450,15 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       }
     }
     switch(id) {
-      case 'youtube': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#8B6464_0%,#4A3434_50vh,#000000_100vh)]';
-      case 'instagram': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#836A87_0%,#483A4C_50vh,#000000_100vh)]';
-      case 'tiktok': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#728489_0%,#445155_50vh,#000000_100vh)]';
-      case 'facebook': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#656C80_0%,#3C404D_50vh,#000000_100vh)]';
-      case 'reddit': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#856C64_0%,#4B3C37_50vh,#000000_100vh)]';
-      case 'pinterest': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#8C646A_0%,#4D3539_50vh,#000000_100vh)]';
-      case 'x': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#76787B_0%,#444547_50vh,#000000_100vh)]';
-      case 'linkedin': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#64748B_0%,#334155_50vh,#000000_100vh)]';
-      default: return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#737373_0%,#404040_50vh,#000000_100vh)]';
+      case 'youtube': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#8B6464_0%,#4A3434_70%,#000000_100%)]';
+      case 'instagram': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#836A87_0%,#483A4C_70%,#000000_100%)]';
+      case 'tiktok': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#728489_0%,#445155_70%,#000000_100%)]';
+      case 'facebook': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#656C80_0%,#3C404D_70%,#000000_100%)]';
+      case 'reddit': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#856C64_0%,#4B3C37_70%,#000000_100%)]';
+      case 'pinterest': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#8C646A_0%,#4D3539_70%,#000000_100%)]';
+      case 'x': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#76787B_0%,#444547_70%,#000000_100%)]';
+      case 'linkedin': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#64748B_0%,#334155_70%,#000000_100%)]';
+      default: return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#737373_0%,#404040_70%,#000000_100%)]';
     }
   };
 
@@ -1550,6 +1550,22 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           </a>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Install Button */}
+          {deferredPrompt && (
+            <button
+              onClick={handleInstallClick}
+              className={clsx(
+                "px-3 sm:px-4 h-11 rounded-full flex items-center justify-center transition-all border shadow-md font-bold text-xs sm:text-sm gap-2 uppercase tracking-wide cursor-pointer",
+                isLight 
+                   ? "bg-white border-neutral-200 text-blue-600 hover:text-blue-700 hover:bg-neutral-100" 
+                   : "bg-blue-500 border border-blue-400 text-white hover:bg-blue-600"
+              )}
+              title="Install App"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Install App</span>
+            </button>
+          )}
           {/* Settings Button */}
           <button 
             onClick={() => setShowSettings(true)}

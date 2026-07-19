@@ -1,0 +1,1 @@
+{"success":false,"message":"Extraction failed: Twitter blocked our server IP for unauthenticated requests. Add your RAPIDAPI_KEY to AI Studio Secrets and subscribe to 'Twitter135' on RapidAPI, OR set your TWITTER_AUTH_TOKEN."}

@@ -1097,6 +1097,133 @@ async function getBtch() {
 }
 
 
+
+async function extractPinterestNative(url: string) {
+  try {
+    if (url.includes('pin.it')) {
+      const resp = await fetch(url, { redirect: 'manual' });
+      if (resp.status >= 300 && resp.status < 400) {
+        url = resp.headers.get('location') || url;
+        if (url.includes('api.pinterest.com/url_shortener')) {
+           const redirectResp = await fetch(url, { redirect: 'manual' });
+           if (redirectResp.status >= 300 && redirectResp.status < 400) {
+              url = redirectResp.headers.get('location') || url;
+           }
+        }
+      }
+    }
+    
+    if (!url.includes('/pin/')) return null;
+
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+      }
+    });
+    const html = await res.text();
+    
+    let videoUrl = "";
+    let imageUrl = "";
+    let title = "Pinterest Video";
+    
+    const match = html.match(/<script data-relay-response="[^"]+" type="application\/json">([\s\S]*?)<\/script>/g);
+    if (match) {
+        for (const m of match) {
+            const jsonMatch = m.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+            if (jsonMatch) {
+                try {
+                    const data = JSON.parse(jsonMatch[1]);
+                    const strData = JSON.stringify(data);
+                    
+                    const mp4Regex = /"(https:\/\/[^"]+\.mp4[^"]*)"/g;
+                    let mUrl;
+                    while ((mUrl = mp4Regex.exec(strData)) !== null) {
+                        if (mUrl[1] && !mUrl[1].includes('trailer') && !mUrl[1].includes('hls')) {
+                            videoUrl = mUrl[1];
+                        }
+                    }
+                    if (!videoUrl && strData.includes('.m3u8')) {
+                       const m3u8Regex = /"(https:\/\/[^"]+\.m3u8[^"]*)"/g;
+                       const mm = m3u8Regex.exec(strData);
+                       if (mm) videoUrl = mm[1];
+                    }
+                    
+                    const titleRegex = /"title":"([^"]+)"/;
+                    const tMatch = titleRegex.exec(strData);
+                    if (tMatch && tMatch[1]) title = tMatch[1];
+                    
+                    const imgRegex = /"imageLargeUrl":"([^"]+)"/;
+                    const iMatch = imgRegex.exec(strData);
+                    if (iMatch && iMatch[1]) imageUrl = iMatch[1];
+                } catch(e) {}
+            }
+        }
+    }
+    
+    if (!videoUrl) {
+       const pwsMatch = html.match(/<script id="__PWS_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+       if (pwsMatch) {
+          try {
+              const data = JSON.parse(pwsMatch[1]);
+              const strData = JSON.stringify(data);
+              const mp4Regex = /"(https:\/\/[^"]+\.mp4[^"]*)"/g;
+              let mUrl;
+              while ((mUrl = mp4Regex.exec(strData)) !== null) {
+                  if (mUrl[1] && !mUrl[1].includes('trailer') && !mUrl[1].includes('hls')) {
+                      videoUrl = mUrl[1];
+                  }
+              }
+              
+              if (!imageUrl) {
+                 const imgRegex = /"imageLargeUrl":"([^"]+)"/;
+                 const iMatch = imgRegex.exec(strData);
+                 if (iMatch && iMatch[1]) imageUrl = iMatch[1];
+              }
+          } catch(e) {}
+       }
+    }
+    
+    if (!videoUrl) {
+       const vMatch = html.match(/<meta\s+property="og:video:url"\s+content="([^"]+)"/i) || 
+                      html.match(/<meta\s+name="og:video"\s+content="([^"]+)"/i);
+       if (vMatch && vMatch[1]) videoUrl = vMatch[1].replace(/&amp;/g, '&');
+    }
+    if (!imageUrl) {
+       const imgMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i) ||
+                        html.match(/<meta\s+name="og:image"\s+content="([^"]+)"/i);
+       if (imgMatch && imgMatch[1]) imageUrl = imgMatch[1].replace(/&amp;/g, '&');
+    }
+    
+    if (videoUrl) {
+        return {
+           success: true,
+           title: title || "Pinterest Video",
+           thumbnail: imageUrl || "",
+           url: videoUrl,
+           mediaType: "video",
+           qualities: getFallbackQualities(videoUrl, "video"),
+           media: [{ type: "video", url: videoUrl, thumbnail: imageUrl || "" }]
+        };
+    } else if (imageUrl) {
+        return {
+           success: true,
+           title: title || "Pinterest Image",
+           thumbnail: imageUrl || "",
+           url: imageUrl,
+           mediaType: "image",
+           media: [{ type: "image", url: imageUrl, thumbnail: imageUrl || "" }]
+        };
+    }
+    
+    return null;
+  } catch (err) {
+    console.log("extractPinterestNative error:", err);
+    return null;
+  }
+}
+
 async function extractPinterestBtch(url: string) {
   console.log("Trying btch-downloader for Pinterest...");
   try {
@@ -1520,14 +1647,123 @@ async function extractInstagramRepoBackend(url: string) {
 
 
   
+
+const sizeCache = new Map<string, string>();
+
+function formatBytes(bytes: number) {
+    if (bytes === 0) return "0 MB";
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+async function fetchFileSize(url: string): Promise<string> {
+    if (sizeCache.has(url)) return sizeCache.get(url)!;
+    
+    if (url.includes('m3u8')) return "Unknown Size";
+    let targetUrl = url;
+    if (url.startsWith('/api/proxy-download') || url.includes('/api/proxy-download')) {
+        const match = url.match(/[?&]url=([^&]+)/);
+        if (match) {
+             targetUrl = decodeURIComponent(match[1]);
+        }
+    } else if (url.startsWith('/api/')) {
+        return "Unknown Size";
+    }
+
+    try {
+        const parsed = new URL(targetUrl);
+        const client = parsed.protocol === 'https:' ? require('https') : require('http');
+        
+        const size: number | null = await new Promise((resolve) => {
+            const req = client.request(targetUrl, { method: 'HEAD', timeout: 3000, headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            } }, (res: any) => {
+                if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                    let redirectUrl = res.headers.location;
+                    if (!redirectUrl.startsWith('http')) {
+                         redirectUrl = parsed.origin + (redirectUrl.startsWith('/') ? '' : '/') + redirectUrl;
+                    }
+                    const redirParsed = new URL(redirectUrl);
+                    const redirClient = redirParsed.protocol === 'https:' ? require('https') : require('http');
+                    const redirReq = redirClient.request(redirParsed, { method: 'HEAD', timeout: 3000, headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                    } }, (redirRes: any) => {
+                        if (redirRes.headers['content-length']) {
+                            resolve(parseInt(redirRes.headers['content-length'], 10));
+                        } else {
+                            resolve(null);
+                        }
+                    });
+                    redirReq.on('error', () => resolve(null));
+                    redirReq.on('timeout', () => { redirReq.destroy(); resolve(null); });
+                    redirReq.end();
+                } else if (res.headers['content-length']) {
+                    resolve(parseInt(res.headers['content-length'], 10));
+                } else {
+                    resolve(null);
+                }
+            });
+            req.on('error', () => resolve(null));
+            req.on('timeout', () => { req.destroy(); resolve(null); });
+            req.end();
+        });
+        
+        const formatted = size ? formatBytes(size) : "Unknown Size";
+        sizeCache.set(url, formatted);
+        return formatted;
+    } catch(e) {
+        return "Unknown Size";
+    }
+}
+
+async function enrichResultSizes(result: any) {
+    if (!result || !result.qualities || !Array.isArray(result.qualities)) return result;
+    
+    const fetchPromises = result.qualities.map(async (q: any) => {
+        if (!q.url) return;
+        const sizeStr = String(q.size || "");
+        
+        let needsFetch = false;
+        if (!q.size || q.size === 'Unknown' || sizeStr === '0 MB' || sizeStr === '~ 0 MB' || sizeStr.match(/^[a-zA-Z\s]+$/)) {
+            needsFetch = true;
+        }
+
+        if (needsFetch) {
+            const realSize = await fetchFileSize(q.url);
+            q.size = realSize;
+        } else {
+            // Keep existing valid size like "~ 12 MB"
+        }
+    });
+    
+    await Promise.allSettled(fetchPromises);
+    return result;
+}
+
 app.post("/api/download", async (req, res) => {
+    const originalJson = res.json.bind(res);
+    res.json = function(body) {
+        if (body && body.success) {
+            enrichResultSizes(body).then(enriched => {
+                originalJson(enriched);
+            }).catch(e => {
+                originalJson(body);
+            });
+        } else {
+            originalJson(body);
+        }
+        return this;
+    };
+
     const { url } = req.body;
     if (!url) {
       return res.status(400).json({ success: false, message: "URL is required" });
     }
     
     try {
-      const trimmedUrl = url.trim();
+      let trimmedUrl = url.trim();
       const lowerUrl = trimmedUrl.toLowerCase();
       const { platform, type } = classifyUrl(trimmedUrl);
       const isProfile = type === 'profile';
@@ -1575,7 +1811,31 @@ app.post("/api/download", async (req, res) => {
       }
       } else {
         if (platform === 'pinterest') {
-            console.log("Trying yt-dlp for Pinterest (prioritizing videos)...");
+            console.log("Trying native extractor for Pinterest...");
+            
+            // Resolve pin.it URLs first so fallbacks can use the real URL
+            let resolvedUrl = trimmedUrl;
+            if (trimmedUrl.includes('pin.it')) {
+                try {
+                    const resp = await fetch(trimmedUrl, { redirect: 'manual' });
+                    if (resp.status >= 300 && resp.status < 400) {
+                        resolvedUrl = resp.headers.get('location') || resolvedUrl;
+                        if (resolvedUrl.includes('api.pinterest.com/url_shortener')) {
+                           const redirectResp = await fetch(resolvedUrl, { redirect: 'manual' });
+                           if (redirectResp.status >= 300 && redirectResp.status < 400) {
+                              resolvedUrl = redirectResp.headers.get('location') || resolvedUrl;
+                           }
+                        }
+                    }
+                } catch(e) {}
+            }
+            trimmedUrl = resolvedUrl;
+            
+            const nativeResult = await extractPinterestNative(trimmedUrl);
+            if (nativeResult && nativeResult.success && nativeResult.mediaType === 'video') {
+                return res.json(nativeResult);
+            }
+            console.log("Trying yt-dlp for Pinterest...");
             const ytResult = await extractWithYtDlp(trimmedUrl);
             if (ytResult && ytResult.success && ytResult.mediaType === 'video') {
                 return res.json(ytResult);
@@ -1583,11 +1843,13 @@ app.post("/api/download", async (req, res) => {
             console.log("yt-dlp failed or not a video, falling back to btch-downloader for Pinterest...");
             const pinResult = await extractPinterestBtch(trimmedUrl);
             if (pinResult && pinResult.success) {
-                // if btch thinks it's an image but yt-dlp thought it was an image too, we can just return what we have
                 return res.json(pinResult);
             }
             if (ytResult && ytResult.success) {
                 return res.json(ytResult);
+            }
+            if (nativeResult && nativeResult.success) {
+                return res.json(nativeResult);
             }
         }
         
