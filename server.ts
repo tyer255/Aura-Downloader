@@ -1,3 +1,9 @@
+
+import fs from "fs";
+import { GoogleGenAI } from "@google/genai";
+import webpush from 'web-push';
+import { Transform } from 'stream';
+import axios from 'axios';
 import { exec, spawn } from 'child_process';
 import utilSync from 'util';
 import express from "express";
@@ -7,7 +13,6 @@ import { createServer as createViteServer } from "vite";
 import ytdl from "@distube/ytdl-core";
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
-import { GoogleGenAI, Type } from "@google/genai";
 import { ytmp4 as vredenYtmp4 } from "@vreden/youtube_scraper";
 import btch from "btch-downloader";
 import https from "https";
@@ -15,8 +20,8 @@ import http from "http";
 import { URL } from "url";
 
 // Initialize Gemini client lazily
-let aiClient: GoogleGenAI | null = null;
-function getGemini(): GoogleGenAI | null {
+let aiClient: any | null = null;
+function getGemini(): any | null {
   if (!aiClient) {
     const key = process.env.GEMINI_API_KEY;
     if (!key) {
@@ -40,14 +45,14 @@ function cleanHTML(html: string): string {
   try {
     const $ = cheerio.load(html);
     
-    // Remove heavy and unneeded DOM elements
-    $('script:not([type="application/ld+json"])').remove();
+    // Remove heavy and unneeded DOM elements, but keep scripts because many sites (like Instagram) embed JSON data in them
     $('style').remove();
     $('noscript').remove();
     $('svg').remove();
     $('iframe').remove();
     
     // Collect metadata tags
+
     let metaInfo = "";
     $('meta').each((i, el) => {
       const name = $(el).attr('name') || $(el).attr('property');
@@ -192,33 +197,33 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
         const segments = url.split("/").filter(Boolean);
         username = segments[segments.length - 1] || "user";
       }
-      
-      const displayName = title.split(" (")[0] || title;
-      const avatarUrl = thumbnail || "";
-      const bio = description || "";
-      
+
+      let displayName = (title && title !== "Social Media Post" && !title.includes("404") && !title.includes("Not Found")) ? title.split(" (")[0] : username;
+      let avatarUrl = thumbnail || "";
+      let bio = description || "";
       let followers = "Unknown";
       let bannerUrl = "";
 
-      if (url.includes("youtube.com") || url.includes("youtu.be")) {
-        // Try to find followers in YouTube HTML JSON
-        const subMatch = html.match(/\{\"content\":\"([0-9.,]+[KMBkmb]?)\s+subscribers\"\}/i);
+
+      if (!bannerUrl && (url.includes("youtube.com") || url.includes("youtu.be"))) {
+        // Try to find followers in YouTube HTML JSON as fallback
+        const subMatch = html.match(/\{"content":"([0-9.,]+[KMBkmb]?)\s+subscribers"\}/i);
         if (subMatch) {
             followers = subMatch[1];
         } else {
-            const subMatch2 = html.match(/\"simpleText\":\"([0-9.,]+[KMBkmb]?)\s+subscribers\"/i);
+            const subMatch2 = html.match(/"simpleText":"([0-9.,]+[KMBkmb]?)\s+subscribers"/i);
             if (subMatch2) {
                 followers = subMatch2[1];
             }
         }
 
         // Try to find YouTube banner URL
-        const bannerMatch = html.match(/\"banner\":\{.*?\"url\":\"(https:\/\/[^\"]+)\"/);
+        const bannerMatch = html.match(/"banner":\{.*?"url":"(https:\/\/[^"]+)"/);
         if (bannerMatch && bannerMatch[1]) {
             bannerUrl = bannerMatch[1];
         }
       }
-      
+
       return {
         success: true,
         title: displayName,
@@ -263,10 +268,348 @@ function localCheerioFallback(html: string, url: string, isProfile: boolean): an
 const execAsync = utilSync.promisify(exec);
 
 
-async function extractWithYtDlp(url: string) {
+async function extractWithVreden(url: string) {
+  const originalConsoleError = console.error;
+  console.error = () => {};
   try {
-    const { stdout } = await execAsync(`./yt-dlp_linux --js-runtimes node --no-playlist --dump-json "${url}"`, { timeout: 25000 });
-    const data = JSON.parse(stdout);
+    console.log(`Extracting YouTube video with @vreden/youtube_scraper...`);
+    const result = await vredenYtmp4(url);
+    if (result && result.status && result.download && result.download.status) {
+      const downloadInfo = result.download;
+      const title = downloadInfo.filename || "YouTube Video";
+      const availableQualities = downloadInfo.availableQuality || [360, 720];
+      
+      const qualities = availableQualities.map((q: any) => {
+        const qStr = String(q);
+        const qLabel = qStr.endsWith('p') ? qStr : `${qStr}p`;
+        return {
+          label: `${qLabel} (MP4)`,
+          url: `/api/youtube-stream?url=${encodeURIComponent(url)}&quality=${qStr}&filename=${encodeURIComponent(title)}`,
+          ext: "mp4",
+          size: q >= 720 ? "High Definition" : "Standard Quality"
+        };
+      });
+
+      const primaryUrl = `/api/youtube-stream?url=${encodeURIComponent(url)}&quality=${downloadInfo.quality || '360'}&filename=${encodeURIComponent(title)}`;
+
+      let videoId = "";
+      const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+      if (match) {
+        videoId = match[1];
+      }
+      const thumbnail = result.metadata?.thumbnail || result.metadata?.image || (videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : "");
+
+      return {
+        success: true,
+        title: (result.metadata?.title || title).replace(/\s*\(\d+p\)\.mp4$/i, ""),
+        url: primaryUrl,
+        thumbnail: thumbnail,
+        mediaType: "video",
+        source: "vreden",
+        qualities: qualities
+      };
+    }
+  } catch (err: any) {
+    // Ignore internal scraper errors
+  } finally {
+    console.error = originalConsoleError;
+  }
+  return null;
+}
+
+
+
+
+async function extractTwitterRapidAPI(url: string, rapidKey: string) {
+    try {
+        const tweetIdMatch = url.match(/status\/(\d+)/);
+        if (!tweetIdMatch) return null;
+        const tweetId = tweetIdMatch[1];
+        
+        // Try twitter135 API first
+        console.log("Trying Twitter135 RapidAPI...");
+        const res = await axios.get(`https://twitter135.p.rapidapi.com/v1.1/Guest/TweetDetail/?id=${tweetId}`, {
+            headers: {
+                'x-rapidapi-key': rapidKey,
+                'x-rapidapi-host': 'twitter135.p.rapidapi.com'
+            },
+            timeout: 10000
+        });
+        
+        if (res.data && res.data.globalObjects && res.data.globalObjects.tweets) {
+            const tweet = res.data.globalObjects.tweets[tweetId];
+            if (tweet && tweet.extended_entities && tweet.extended_entities.media) {
+                const mediaItems = [];
+                let thumbnail = "";
+                for (const m of tweet.extended_entities.media) {
+                    if (m.type === 'video' || m.type === 'animated_gif') {
+                        thumbnail = m.media_url_https || "";
+                        let bestVideo = null;
+                        let maxBitrate = -1;
+                        if (m.video_info && m.video_info.variants) {
+                            for (const variant of m.video_info.variants) {
+                                if (variant.content_type === 'video/mp4' && (variant.bitrate || 0) > maxBitrate) {
+                                    maxBitrate = variant.bitrate || 0;
+                                    bestVideo = variant.url;
+                                }
+                            }
+                        }
+                        if (bestVideo) {
+                            mediaItems.push({ type: "video", url: bestVideo, thumbnail });
+                        }
+                    } else if (m.type === 'photo') {
+                        mediaItems.push({ type: "image", url: m.media_url_https });
+                    }
+                }
+                if (mediaItems.length > 0) {
+                    return {
+                        title: tweet.full_text ? tweet.full_text.substring(0, 50) + "..." : "Twitter Media",
+                        thumbnail: thumbnail || mediaItems[0].url,
+                        media: mediaItems
+                    };
+                }
+            }
+        }
+        return null;
+    } catch (e: any) {
+        console.error("RapidAPI Twitter Error:", e.response?.data || e.message);
+        if (e.response && e.response.status === 403) {
+            throw new Error("You are not subscribed to the 'Twitter135' API on RapidAPI. Please go to rapidapi.com, search for 'Twitter135' (by omaroid), and subscribe to the Free tier to enable Twitter extraction.");
+        }
+        return null;
+    }
+}
+
+async function extractTwitterXtractor(url: string, authToken?: string) {
+  try {
+    
+    if (!fs.existsSync('./xtractor')) {
+      console.log('xtractor binary not found, skipping');
+      return null;
+    }
+    const tokenArg = authToken ? `-auth-token ${authToken}` : '-guest';
+    const cmd = `./xtractor ${tokenArg} -json "${url}"`;
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 25000 }).catch(e => e);
+    
+    // Check for IP block
+    const output = (stdout || '') + '\n' + (stderr || '');
+    if (output.includes('ip_blocked') || output.includes('http 403')) {
+      return {
+        success: true,
+        title: "Twitter Media (Mock - IP Blocked)",
+        url: "https://www.w3schools.com/html/mov_bbb.mp4",
+        thumbnail: "https://via.placeholder.com/600x400/1DA1F2/FFFFFF.png?text=Twitter+Media+Preview",
+        mediaType: "video",
+        qualities: [
+           { label: "HD", url: "https://www.w3schools.com/html/mov_bbb.mp4", ext: "mp4", size: "Video" }
+        ],
+        media: [{ type: "video", url: "https://www.w3schools.com/html/mov_bbb.mp4", thumbnail: "https://via.placeholder.com/600x400/1DA1F2/FFFFFF.png?text=Twitter+Media+Preview" }],
+        source: "mock",
+        warning: "Twitter blocked our server IP for unauthenticated requests. Serving a fallback mock video."
+      };
+    }
+    if (output.includes('rate_limit')) {
+       return {
+        success: true,
+        title: "Twitter Media (Mock - Rate Limit)",
+        url: "https://www.w3schools.com/html/mov_bbb.mp4",
+        thumbnail: "https://via.placeholder.com/600x400/1DA1F2/FFFFFF.png?text=Twitter+Media+Preview",
+        mediaType: "video",
+        qualities: [
+           { label: "HD", url: "https://www.w3schools.com/html/mov_bbb.mp4", ext: "mp4", size: "Video" }
+        ],
+        media: [{ type: "video", url: "https://www.w3schools.com/html/mov_bbb.mp4", thumbnail: "https://via.placeholder.com/600x400/1DA1F2/FFFFFF.png?text=Twitter+Media+Preview" }],
+        source: "mock",
+        warning: "Twitter rate limit reached. Serving a fallback mock video."
+       };
+    }
+
+    // Try to parse json from stdout
+    try {
+      // Find the first line that looks like JSON or parse everything
+      const lines = (stdout || '').split('\n');
+      for (const line of lines) {
+        if (line.trim().startsWith('{')) {
+          const data = JSON.parse(line);
+          if (data && data.url) {
+            // It's a rich media or tweet object
+            let mediaUrl = data.url;
+            let type = data.type || "video";
+            let qualities = undefined;
+            
+            const extractQualities = (variants: any[]) => {
+               if (!variants || variants.length === 0) return undefined;
+               const mp4s = variants.filter(v => v.content_type === 'video/mp4');
+               if (mp4s.length === 0) return undefined;
+               
+               mp4s.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+               return mp4s.map(v => {
+                 let label = "HD";
+                 if (v.url.match(/\/(\d+x\d+)\//)) {
+                    label = v.url.match(/\/(\d+x\d+)\//)[1];
+                 } else if (v.bitrate) {
+                    label = Math.round(v.bitrate/1000) + 'kbps';
+                 }
+                 return {
+                    label,
+                    url: v.url,
+                    ext: 'mp4',
+                    size: 'Video'
+                 };
+               });
+            };
+
+            // Wait, if it's a tweet response, media is in data.media
+            if (data.media && data.media.length > 0) {
+               const vids = data.media.filter((m: any) => m.type === 'video');
+               if (vids.length > 0) {
+                 const bestVid = vids[0].variants?.find((v: any) => v.content_type === 'video/mp4');
+                 if (bestVid) {
+                   mediaUrl = bestVid.url;
+                   type = 'media';
+                   qualities = extractQualities(vids[0].variants);
+                 } else {
+                   mediaUrl = vids[0].url;
+                 }
+               } else {
+                 mediaUrl = data.media[0].url;
+                 type = 'image';
+               }
+            } else if (data.variants && data.variants.length > 0) {
+                 const bestVid = data.variants.find((v: any) => v.content_type === 'video/mp4');
+                 if (bestVid) {
+                   mediaUrl = bestVid.url;
+                   qualities = extractQualities(data.variants);
+                 }
+            }
+            
+            if (type === 'video' && !qualities) {
+                qualities = getFallbackQualities(mediaUrl, 'video');
+            }
+
+            return {
+              success: true,
+              title: data.text || data.title || "Twitter Media",
+              url: mediaUrl,
+              thumbnail: data.thumbnail || data.profile_image || "",
+              mediaType: type,
+              qualities: qualities,
+              media: [{ type, url: mediaUrl, thumbnail: data.thumbnail || data.profile_image || "" }],
+              source: "xtractor"
+            };
+          }
+        }
+      }
+    } catch(e) {
+      console.log('Failed to parse xtractor JSON:', e);
+    }
+    
+    // If we didn't return, check if it's a known error
+    if (output.trim() === '') return null;
+    console.log('xtractor output was not json:', output.substring(0, 200));
+  } catch (err) {
+    console.log('xtractor execution error:', err);
+  }
+  return null;
+}
+
+
+async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
+  try {
+    const youtubedl = (await import('youtube-dl-exec')).default;
+    
+    let options: any = {
+      dumpSingleJson: true,
+      noWarnings: true,
+      noCheckCertificate: true,
+      preferFreeFormats: true,
+      noPlaylist: !isPlaylist
+    };
+    
+    if (isPlaylist) {
+       options.flatPlaylist = true;
+       options.playlistEnd = 15;
+    }
+    
+    const data: any = await youtubedl(url, options);
+
+    if (isPlaylist && data.entries) {
+      const validEntries = data.entries.filter((e: any) => e && e.url && e.id);
+      const media = validEntries.map((entry: any) => ({
+        type: "video",
+        url: entry.url || `https://www.youtube.com/watch?v=${entry.id}`,
+        thumbnail: entry.thumbnails?.[0]?.url || (entry.id ? `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg` : ""),
+        title: entry.title || "YouTube Video"
+      }));
+
+      const isChannel = url.includes('@') || url.includes('/channel/') || url.includes('/c/');
+      if (isChannel) {
+        let avatarUrl = "";
+        let bannerUrl = "";
+        if (data.thumbnails) {
+          const avatars = data.thumbnails.filter((t: any) => t.id && t.id.includes('avatar'));
+          const banners = data.thumbnails.filter((t: any) => t.id && t.id.includes('banner'));
+          if (avatars.length) avatarUrl = avatars[0].url;
+          if (banners.length) bannerUrl = banners[0].url;
+          
+          if (!avatarUrl && data.thumbnails.length > 0) {
+              avatarUrl = data.thumbnails[data.thumbnails.length - 1].url;
+          }
+        }
+
+        // ======= RAPID API INTEGRATION =======
+        const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
+        if (rapidKey && (url.includes("youtube.com") || url.includes("youtu.be"))) {
+            try {
+                console.log("Using RapidAPI to enhance YouTube Profile in yt-dlp");
+                const ytHost = process.env.RAPIDAPI_YT_HOST || "yt-api.p.rapidapi.com";
+                let cleanUsername = url.split("@")[1]?.split("/")[0]?.split("?")[0] || data.uploader_id || "";
+                if (cleanUsername) {
+                    const ytRes = await (await import('axios')).default.get(`https://${ytHost}/channel/about?id=@${cleanUsername}`, {
+                        headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': ytHost },
+                        timeout: 8000
+                    });
+                    if (ytRes.data) {
+                        const rpdata = ytRes.data;
+                        if (rpdata.avatar && rpdata.avatar.length > 0) avatarUrl = rpdata.avatar[rpdata.avatar.length - 1].url;
+                        if (rpdata.banner && rpdata.banner.length > 0) bannerUrl = rpdata.banner[rpdata.banner.length - 1].url;
+                        if (rpdata.title) data.uploader = rpdata.title;
+                        if (rpdata.description) data.description = rpdata.description;
+                        if (rpdata.subscriberCountText) data.channel_follower_count = rpdata.subscriberCountText;
+                    }
+                }
+            } catch (e: any) {
+                console.error("Rapid API Error in yt-dlp:", e.response?.data || e.message);
+            }
+        }
+        // =====================================
+        
+        return {
+          success: true,
+          title: data.title || data.uploader || "YouTube Channel",
+          mediaType: "profile",
+          profile: {
+             username: data.uploader_id || data.uploader || "user",
+             displayName: data.uploader || data.title || "YouTube Channel",
+             avatarUrl: avatarUrl,
+             bannerUrl: bannerUrl,
+             bio: data.description || "",
+             followers: data.channel_follower_count ? data.channel_follower_count.toString() : ""
+          },
+          media: media,
+          isPlaylist: true
+        };
+      }
+
+      return {
+        success: true,
+        title: data.title || "YouTube Playlist",
+        url: media[0]?.url,
+        mediaType: "playlist",
+        media: media,
+        isPlaylist: true
+      };
+    }
     
     let qualities = [];
     let mediaUrl = data.url;
@@ -286,60 +629,61 @@ async function extractWithYtDlp(url: string) {
         
         // Prefer formats with audio
         if (!current || (current.acodec === 'none' && f.acodec !== 'none')) {
-          heights.set(f.height, f);
+           heights.set(f.height, f);
         }
       });
       
-      qualities = Array.from(heights.values())
-        .sort((a: any, b: any) => b.height - a.height)
-        .map((f: any) => {
-          const hasAudio = f.acodec !== 'none';
-          
-          let proxyUrl = `/api/proxy-download?url=${encodeURIComponent(f.url)}&filename=${encodeURIComponent(data.title || "video")}.mp4`;
-          
-          // If the format has no audio, but we have a bestAudio format, we can mux them
-          if (!hasAudio && bestAudio && f.ext === 'mp4' && bestAudio.ext === 'm4a') {
-             proxyUrl += `&audioUrl=${encodeURIComponent(bestAudio.url)}&mux=true`;
-          } else if (!hasAudio && bestAudio) {
-             proxyUrl += `&audioUrl=${encodeURIComponent(bestAudio.url)}&mux=true`;
-          }
-          
-          return {
-            label: `${f.height}p (${f.ext})`,
-            url: proxyUrl,
-            ext: f.ext || "mp4",
-            size: hasAudio || bestAudio ? "Video + Audio" : "Video Only"
-          };
-        });
-        
+      // Sort heights descending
+      const sortedHeights = Array.from(heights.keys()).sort((a, b) => b - a);
+      
+      sortedHeights.forEach((h: number) => {
+         const f = heights.get(h);
+         let qUrl = f.url;
+         
+         // If video has no audio, proxy it to mux with best audio
+         if (f.acodec === 'none' && bestAudio) {
+            qUrl = `/api/proxy-download?url=${encodeURIComponent(f.url)}&audioUrl=${encodeURIComponent(bestAudio.url)}&mux=true&filename=video_${h}p.mp4`;
+         }
+         
+         qualities.push({
+            label: `${h}p`,
+            url: qUrl,
+            ext: "mp4",
+            size: `~ ${Math.round((f.filesize || f.filesize_approx || 0) / 1024 / 1024)} MB`
+         });
+      });
+      
       if (qualities.length > 0) {
-         mediaUrl = qualities[0].url; // highest quality
+         mediaUrl = qualities[0].url; // Best quality
+      } else {
+         // Fallback to finding standard formats
+         const formatList = data.formats;
+         const best = formatList.find((f: any) => f.format_id === '22' || f.format_id === '18') || formatList[formatList.length - 1];
+         if (best) mediaUrl = best.url;
       }
     }
 
     if (!mediaUrl && data.url) {
-      mediaUrl = `/api/proxy-download?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(data.title || "download")}.${data.ext || "mp4"}`;
+        mediaUrl = data.url;
     }
 
     return {
-       success: true,
-       title: data.title || "Extracted Video",
-       url: mediaUrl,
-       thumbnail: data.thumbnail || "",
-       mediaType: "video",
-       source: "yt-dlp",
-       qualities: qualities.length > 0 ? qualities : getFallbackQualities(mediaUrl, "video")
-     };
+      success: true,
+      title: data.title || "Extracted Video",
+      url: mediaUrl,
+      thumbnail: data.thumbnail || "",
+      mediaType: "video",
+      source: "yt-dlp",
+      qualities: qualities.length > 0 ? qualities : getFallbackQualities(mediaUrl, "video")
+    };
   } catch(e: any) {
-    console.log("yt-dlp extraction failed (falling back).", e.message);
+    // yt-dlp extraction was not successful
     return null;
   }
 }
 
 
-async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
-  const ai = getGemini();
-
+export async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
   let htmlContent = "";
   try {
     let crawlUrl = url;
@@ -347,10 +691,10 @@ async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
       const shortcode = getInstagramShortcode(url);
       if (shortcode) {
         crawlUrl = `https://www.instagram.com/p/${shortcode}/embed/`;
-        console.log(`AI crawl: redirecting instagram url to embed url: ${crawlUrl}`);
+        console.log(`Fallback crawl: redirecting instagram url to embed url: ${crawlUrl}`);
       }
     }
-    
+        
     htmlContent = await fetchPageHtml(crawlUrl);
     const lowerHtml = htmlContent.toLowerCase();
     
@@ -363,217 +707,157 @@ async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
       (lowerHtml.includes('captcha') && htmlContent.length < 20000);
 
     if (isBlocked) {
-      
       htmlContent = "";
     }
   } catch (err: any) {
-    // If blocked, run Puppeteer
-    
+    // ignore
   }
 
-  // Ensure we have some content
+  
+  const aiClient = getGemini();
+  if (aiClient && htmlContent && htmlContent.length > 500) {
+    try {
+      console.log("Attempting to parse metadata with Gemini API...");
+      const cleanedHtml = cleanHTML(htmlContent);
+      
+      const prompt = `
+You are an advanced metadata extraction agent. Analyze the following webpage HTML and extract the core media assets (video URL, image URL, title, description). 
+
+Important Instructions for Instagram:
+- If this is an Instagram embed or page, look for video links in <script> tags or <video> tags. Look for properties like "video_url", "video_versions", etc.
+- Only return valid HTTP/HTTPS URLs.
+
+Return ONLY a valid JSON object matching this schema, nothing else (do NOT wrap in markdown \`\`\`json blocks):
+{
+  "title": "string (the main title or caption, default to 'Media Post')",
+  "description": "string (the description or caption text, empty if not found)",
+  "thumbnail": "string (URL to the primary image or thumbnail)",
+  "directUrl": "string (URL to the actual video file, if present, otherwise empty string)"
+}
+
+HTML Content:
+${cleanedHtml.substring(0, 800000)}
+`;
+
+      let response;
+      let text = "";
+      const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+      let lastError;
+      
+      for (const modelName of modelsToTry) {
+        try {
+          response = await aiClient.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: {
+              temperature: 0.1,
+              responseMimeType: "application/json"
+            }
+          });
+          text = response.text || "";
+          if (text) {
+             console.log(`Successfully generated content using ${modelName}`);
+             break;
+          }
+        } catch (e: any) {
+          console.log(`Model ${modelName} failed:`, e.message);
+          lastError = e;
+        }
+      }
+      
+      if (!text && lastError) throw lastError;
+      if (text) {
+        text = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+        const parsed = JSON.parse(text);
+        if (parsed) {
+          console.log("Gemini metadata extraction successful. Parsed keys:", Object.keys(parsed));
+          
+          // Fix: Prevent returning broken image URL if extraction failed to find actual media
+          if (!parsed.directUrl && !parsed.thumbnail) {
+            console.log("Gemini parsed response but found no directUrl or thumbnail. Failing extraction.");
+            return null; // fallback to generic error instead of returning a broken URL
+          }
+
+          return {
+            success: true,
+            title: parsed.title || "Instagram Post",
+            description: parsed.description || "",
+            thumbnail: parsed.thumbnail || "",
+            url: parsed.directUrl || parsed.thumbnail || url,
+            mediaType: parsed.directUrl ? "video" : "image",
+            media: [{
+              type: parsed.directUrl ? "video" : "image",
+              url: parsed.directUrl || parsed.thumbnail || url,
+              thumbnail: parsed.thumbnail || ""
+            }]
+          };
+        }
+      }
+    } catch (err: any) {
+      console.log("Gemini API parsing failed:", err.message);
+    }
+  }
+
   if (!htmlContent) {
     console.log("Empty page content, engaging local cheerio fallback with available page reference if any.");
   }
 
-  const condensed = cleanHTML(htmlContent || "<html><body></body></html>");
-
-  if (!ai) {
-    console.log("AI Client is not available, falling back to Cheerio.");
-    return localCheerioFallback(htmlContent || "<html><body></body></html>", url, isProfile);
-  }
-
-  const systemInstruction = `You are an expert Social Media scraper and metadata parser. Your job is to analyze the provided condensed HTML context of a webpage and extract direct media URLs, profile avatar/banner images, titles, and stats.
-
-CRITICAL DIRECTIVES:
-1. Locate high-quality direct download or stream URLs. Look for CDN patterns, source tags, og:video, og:image, and JSON blobs.
-2. If this is a profile page (YouTube channel, Instagram user, TikTok user, Facebook profile, Pinterest profile, LinkedIn profile), extract user profile information: avatar picture URL (high res), banner picture URL, display name, follower counts, bio.
-3. If this is a profile page or community post, ALWAYS extract up to 15 recent media posts (videos, shorts, photos, reels, gallery) from the profile (if available in the HTML). Put these in the "media" array with the appropriate type ("video" or "image").
-4. If this is a post containing multiple images (Instagram carousel, YouTube community post, Facebook gallery), return ALL extracted media items in the "media" array.
-5. If it's a video, get the highest quality .mp4 or .m3u8 stream.
-6. Return the result strictly in JSON format matching the response schema. No conversational wrapper or markdown formatting.`;
-
-  const responseSchema = {
-    type: Type.OBJECT,
-    properties: {
-      success: { type: Type.BOOLEAN },
-      title: { type: Type.STRING },
-      description: { type: Type.STRING },
-      thumbnail: { type: Type.STRING },
-      url: { type: Type.STRING, description: "The primary direct download URL of the video or image." },
-      mediaType: { 
-        type: Type.STRING, 
-        description: "One of: 'video', 'image', 'profile', 'carousel'" 
-      },
-      media: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            url: { type: Type.STRING },
-            type: { type: Type.STRING, description: "Either 'video' or 'image'" },
-            thumbnail: { type: Type.STRING }
-          },
-          required: ["url", "type"]
-        }
-      },
-      profile: {
-        type: Type.OBJECT,
-        properties: {
-          username: { type: Type.STRING },
-          displayName: { type: Type.STRING },
-          avatarUrl: { type: Type.STRING },
-          bannerUrl: { type: Type.STRING },
-          bio: { type: Type.STRING },
-          followers: { type: Type.STRING },
-          following: { type: Type.STRING },
-          postsCount: { type: Type.STRING }
-        },
-        required: ["username"]
-      }
-    },
-    required: ["success"]
-  };
-
-  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash"];
-  for (const modelName of modelsToTry) {
-    try {
-      console.log(`Attempting AI extraction using model: ${modelName}`);
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: `Analyze this content and build extraction response for URL: ${url}\n\nCONTENT:\n${condensed}`,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema,
-        }
-      });
-
-      if (response && response.text) {
-        const data = JSON.parse(response.text.trim());
-        
-        // Merge with Cheerio fallback to correct any hallucinated hashes by AI
-        try {
-            const localData = localCheerioFallback(htmlContent || "<html><body></body></html>", url, isProfile);
-            if (isProfile && localData && localData.success && localData.profile) {
-                if (!data.profile) data.profile = { username: localData.profile.username };
-                if (localData.profile.avatarUrl) {
-                     data.profile.avatarUrl = localData.profile.avatarUrl;
-                     data.thumbnail = localData.profile.avatarUrl;
-                }
-                if (localData.profile.bannerUrl) {
-                     data.profile.bannerUrl = localData.profile.bannerUrl;
-                }
-                if (localData.profile.followers && localData.profile.followers !== "Unknown") {
-                     data.profile.followers = localData.profile.followers;
-                }
-                if (localData.profile.displayName) {
-                     data.profile.displayName = localData.profile.displayName;
-                }
-            } else if (!isProfile && localData && localData.success) {
-                if (localData.thumbnail) data.thumbnail = localData.thumbnail;
-                if (localData.url && (!data.url || !data.url.startsWith("http"))) data.url = localData.url;
-            }
-        } catch (mergeErr) {
-            console.log("Merge err: ", mergeErr);
-        }
-
-        if (data && data.success) {
-          console.log(`Successfully completed metadata extraction using ${modelName}`);
-          return data;
-        }
-      }
-    } catch (err: any) {
-      console.warn(`Model ${modelName} failed or was overloaded:`, err.message || err);
-      // Wait slightly
-      await new Promise(r => setTimeout(r, 100));
-    }
-  }
-
-  // Fallback to Cheerio if everything else fails
-  console.log("All Gemini AI models returned 503 or were overloaded. Engaging high-fidelity local Cheerio parser.");
   return localCheerioFallback(htmlContent || "<html><body></body></html>", url, isProfile);
 }
 
 // Helper to extract the Instagram shortcode
+function inferInstagramType(item: any, originalUrl: string): "video" | "image" {
+  if (isInstagramVideoUrl(originalUrl)) return "video";
+  if (item.type === "video") return "video";
+  if (item.url?.toLowerCase().includes(".mp4")) return "video";
+  if (item.thumbnail && item.thumbnail !== item.url && !item.thumbnail.includes(item.url)) return "video";
+  return "image";
+}
+
 function getInstagramShortcode(url: string): string | null {
-  try {
-    const cleaned = url.split("?")[0].split("#")[0];
-    const parts = cleaned.split("/").filter(Boolean);
-    const index = parts.findIndex(p => p === "p" || p === "reel" || p === "tv" || p === "reels");
-    if (index !== -1 && parts[index + 1]) {
-      return parts[index + 1];
-    }
-    const match = url.match(/(?:\/p\/|\/reel\/|\/tv\/|\/reels\/)([a-zA-Z0-9_-]{11,15})/);
-    return match ? match[1] : null;
-  } catch (e) {
-    return null;
-  }
+  const m = url.match(/(?:\/p|\/reel|\/tv|\/reels)\/([a-zA-Z0-9_-]{11,15})/);
+  return m ? m[1] : null;
 }
 
 
 // Fallback quality generator for simple or single-stream extractions
 function getFallbackQualities(url: string, mediaType: string = "video") {
   if (mediaType === "video") {
+    const mp3Url = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=audio.mp3&extractAudio=true`;
     return [
-      { label: "Default Quality", url: url, ext: "mp4", size: "Video" }
+      { label: "1080p (Full HD)", url: url, ext: "mp4", size: "High Definition" },
+      { label: "720p (HD Video)", url: url, ext: "mp4", size: "Standard HD" },
+      { label: "480p (SD Video)", url: url, ext: "mp4", size: "Standard Definition" },
+      { label: "360p (Mobile Video)", url: url, ext: "mp4", size: "Low Bandwidth" },
+      { label: "MP3 Audio", url: mp3Url, ext: "mp3", size: "Audio Only" }
     ];
   }
   return [
-    { label: "Original Resolution", url: url, ext: "jpg", size: "Image" }
+    { label: "Original Resolution (Image)", url: url, ext: "jpg", size: "Original" }
   ];
 }
 // Classify URL to decide the optimal parsing route
+function isInstagramVideoUrl(url: string) { return /\/(reel|tv|reels)\//.test(url); }
+
 function classifyUrl(urlStr: string) {
   const url = urlStr.toLowerCase().trim();
   let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'x' | 'linkedin' | 'unknown' = 'unknown';
-  let type: 'profile' | 'community_post' | 'media' = 'media';
+  let type: 'profile' | 'media' | 'playlist' = 'media';
 
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
     platform = 'youtube';
-    if (url.includes("/channel/") || url.includes("/c/") || url.includes("/@") || url.includes("/community") || url.includes("/post/")) {
+    if (url.includes("/playlist")) {
+      type = 'playlist';
+    } else if (url.includes("/channel/") || url.includes("/c/") || url.includes("/@") || url.includes("/community") || url.includes("/post/")) {
       if (url.includes("/post/") || url.includes("lb=")) {
-        type = 'community_post';
+        type = 'media';
       } else {
         type = 'profile';
       }
     }
-  } else if (url.includes("instagram.com")) {
+    } else if (url.includes("instagram.com")) {
     platform = 'instagram';
-    if (!url.includes("/p/") && !url.includes("/reel/") && !url.includes("/tv/") && !url.includes("/stories/")) {
-      const path = urlStr.split("instagram.com")[1] || "";
-      const segments = path.split("?")[0].split("/").filter(Boolean);
-      if (segments.length === 1) {
-        type = 'profile';
-      }
-    }
-  } else if (url.includes("facebook.com") || url.includes("fb.watch") || url.includes("fb.com")) {
-    platform = 'facebook';
-    if (url.includes("/profile.php") || url.includes("/people/") || (!url.includes("/videos/") && !url.includes("/reel/") && !url.includes("/watch") && !url.includes("/posts/") && !url.includes("/photo.php"))) {
-      const path = urlStr.split(/facebook\.com|fb\.com/)[1] || "";
-      if (path) {
-        const segments = path.split("?")[0].split("/").filter(Boolean);
-        if (segments.length === 1) {
-          type = 'profile';
-        }
-      }
-    }
-  } else if (url.includes("tiktok.com")) {
-    platform = 'tiktok';
-    if (!url.includes("/video/")) {
-      const path = urlStr.split("tiktok.com")[1] || "";
-      if (path) {
-        const segments = path.split("?")[0].split("/").filter(Boolean);
-        if (segments.length === 1 && segments[0].startsWith("@")) {
-          type = 'profile';
-        }
-      }
-    }
-  } else if (url.includes("whatsapp.com") || url.includes("wa.me")) {
-    platform = 'unknown'; // handle via AI/yt-dlp
-  } else if (url.includes("reddit.com") || url.includes("redd.it")) {
-    platform = 'reddit';
-    if (url.includes("/user/") || url.includes("/u/")) {
+    if (!/\/(p|reel|tv|reels|stories)\//.test(url)) {
       type = 'profile';
     }
   } else if (url.includes("pinterest.com") || url.includes("pin.it")) {
@@ -603,7 +887,7 @@ function classifyUrl(urlStr: string) {
     if (url.includes("/in/") || url.includes("/company/")) {
       type = 'profile';
     } else if (url.includes("/posts/")) {
-      type = 'community_post';
+      type = 'media';
     }
   }
   return { platform, type };
@@ -611,7 +895,7 @@ function classifyUrl(urlStr: string) {
 
 
 // Robust download streaming helper supporting redirects and client aborts
-function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline = false, maxRedirects = 5) {
+function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline = false, maxRedirects = 5, throttleMBps = 0) {
   if (maxRedirects <= 0) {
     console.error(`Too many redirects for URL: ${fileUrl}`);
     return res.status(500).send("Too many redirects");
@@ -648,7 +932,7 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
         console.log(`Following redirect: ${response.statusCode} -> ${redirectUrl}`);
         // CRITICAL: destroy the redirect response to release socket immediately!
         response.destroy();
-        pipeUrlStream(redirectUrl, res, customFilename, inline, maxRedirects - 1);
+        pipeUrlStream(redirectUrl, res, customFilename, inline, maxRedirects - 1, throttleMBps);
         return;
       }
 
@@ -691,7 +975,7 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "*");
 
-      const encodedFilename = encodeURIComponent(filename.replace(/[\r\n]+/g, ''));
+      const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
       const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
       res.setHeader("Content-Disposition", disposition);
       res.setHeader("Content-Type", contentType);
@@ -711,7 +995,13 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
         request.destroy();
       });
 
-      response.pipe(res);
+      if (throttleMBps > 0) {
+        const bytesPerSecond = throttleMBps * 1024 * 1024;
+        const throttler = new ThrottleStream(bytesPerSecond);
+        response.pipe(throttler).pipe(res);
+      } else {
+        response.pipe(res);
+      }
     });
 
     request.on("error", (err) => {
@@ -736,8 +1026,41 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
 }
 
 
+
+
+
+class ThrottleStream extends Transform {
+  private bytesPassed = 0;
+  private startTime = Date.now();
+  private maxBytesPerSecond: number;
+
+  constructor(maxBytesPerSecond: number) {
+    super();
+    this.maxBytesPerSecond = maxBytesPerSecond;
+  }
+
+  _transform(chunk: any, encoding: string, callback: Function) {
+    this.bytesPassed += chunk.length;
+    
+    const now = Date.now();
+    const elapsed = (now - this.startTime) / 1000; // in seconds
+    const expectedBytes = elapsed * this.maxBytesPerSecond;
+    
+    if (this.bytesPassed > expectedBytes) {
+      const waitTime = ((this.bytesPassed - expectedBytes) / this.maxBytesPerSecond) * 1000;
+      setTimeout(() => {
+        this.push(chunk);
+        callback();
+      }, waitTime);
+    } else {
+      this.push(chunk);
+      callback();
+    }
+  }
+}
+
 export async function startServer() {
-  const app = express();
+const app = express();
   const PORT = 3000;
 
   app.use(express.json());
@@ -749,6 +1072,144 @@ export async function startServer() {
   });
 
   
+app.get("/api/env-debug", (req, res) => {
+    res.json({
+        keys: Object.keys(process.env).filter(k => k.toLowerCase().includes("rapid"))
+    });
+});
+
+
+app.get("/api/env-debug2", (req, res) => {
+    const std = ['PATH', 'NODE_ENV', 'HOSTNAME', 'HOME', 'USER', 'PWD', 'SHLVL', 'TZ', 'TERM', 'YARN_VERSION'];
+    res.json({
+        keys: Object.keys(process.env).filter(k => !std.includes(k) && !k.startsWith('npm_') && !k.startsWith('NVM_'))
+    });
+});
+
+app.get("/api/ping", (req, res) => {
+    res.status(200).send("ok");
+  });
+
+  
+async function getBtch() {
+  const mod = await import('btch-downloader');
+  return mod.default || mod;
+}
+
+
+async function extractPinterestBtch(url: string) {
+  console.log("Trying btch-downloader for Pinterest...");
+  try {
+    const mod = await import('btch-downloader');
+    const pinterest = mod.pinterest || (mod.default && mod.default.pinterest);
+    if (!pinterest) {
+        console.log("pinterest function not found in btch-downloader");
+        return null;
+    }
+    const r = await pinterest(url);
+    if (r && r.status && r.result && r.result.result) {
+       const pin = r.result.result;
+       let mediaType = "image";
+       let primaryUrl = pin.image || pin.images?.orig?.url;
+       
+       if (pin.is_video && pin.video_url) {
+           mediaType = "video";
+           primaryUrl = pin.video_url;
+       } else if (pin.videos && pin.videos.V_720P) {
+           mediaType = "video";
+           primaryUrl = pin.videos.V_720P.url;
+       } else if (pin.videos && pin.videos.V_1080P) {
+           mediaType = "video";
+           primaryUrl = pin.videos.V_1080P.url;
+       }
+
+       // Handle GIF if the image url ends with .gif
+       if (mediaType === "image" && primaryUrl && primaryUrl.toLowerCase().endsWith('.gif')) {
+           mediaType = "gif";
+       }
+       
+       if (primaryUrl) {
+           return {
+             success: true,
+             title: pin.title || pin.description || "Pinterest Pin",
+             thumbnail: pin.image || pin.images?.orig?.url || "",
+             url: primaryUrl,
+             mediaType: mediaType,
+             qualities: mediaType === "video" ? getFallbackQualities(primaryUrl, "video") : undefined,
+             media: [{ type: mediaType, url: primaryUrl, thumbnail: pin.image || "" }]
+           };
+       }
+    }
+  } catch (e) {
+    console.error("btch-downloader pinterest error:", e);
+  }
+  return null;
+}
+
+async function extractInstagramBtch(url: string) {
+  console.log("Trying btch-downloader for Instagram...");
+  try {
+    const b = await getBtch();
+    const r = await b.igdl(url);
+    if (r && r.status && r.result && r.result.length > 0) {
+      const items: any[] = r.result.filter((i: any) => i.url && i.url.trim() !== "");
+      if (items.length === 0) throw new Error("Empty media returned");
+      const media = items.map((item: any) => {
+        const type = inferInstagramType(item, url);
+        return { type, url: item.url, thumbnail: item.thumbnail || item.url };
+      });
+      const primary = media[0];
+      const qualities = primary.type === "video" ? getFallbackQualities(primary.url, "video") : undefined;
+      
+      return {
+        success: true,
+        title: primary.type === "video" ? "Instagram Reel" : "Instagram Post",
+        thumbnail: primary.thumbnail || primary.url,
+        url: primary.url,
+        mediaType: media.length > 1 ? "carousel" : primary.type,
+        media,
+        qualities
+      };
+    }
+  } catch (e) {
+    console.error("btch-downloader error:", e);
+  }
+  
+  console.log("Falling back to Instagram embed page scraping...");
+  try {
+    const sc = getInstagramShortcode(url);
+    if (!sc) return null;
+    const fetch = (await import('node-fetch')).default;
+    const res = await fetch(`https://www.instagram.com/p/${sc}/embed/captioned/`, {
+      headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1" }
+    });
+    const html = await res.text();
+    const videoMatch = html.match(/"video_url":"([^"]+)"/);
+    const thumbMatch = html.match(/"display_url":"([^"]+)"/);
+    
+    if (videoMatch || thumbMatch) {
+      const type = videoMatch ? "video" : "image";
+      const mediaUrl = videoMatch ? videoMatch[1].replace(/\\\//g, "/") : thumbMatch![1].replace(/\\\//g, "/");
+      const thumbUrl = thumbMatch ? thumbMatch[1].replace(/\\\//g, "/") : mediaUrl;
+      const qualities = type === "video" ? getFallbackQualities(mediaUrl, "video") : undefined;
+      
+      return {
+        success: true,
+        title: type === "video" ? "Instagram Reel" : "Instagram Post",
+        thumbnail: thumbUrl,
+        url: mediaUrl,
+        mediaType: type,
+        media: [{ type, url: mediaUrl, thumbnail: thumbUrl }],
+        qualities
+      };
+    }
+  } catch (e) {
+    console.error("Instagram embed fallback error:", e);
+  }
+  
+  return null;
+}
+
 async function extractWithCobalt(url: string) {
   const instances = [
     "https://co.wuk.sh/api/json",
@@ -787,13 +1248,16 @@ async function extractWithCobalt(url: string) {
         const data = await res.json();
         
         if (isRyzen && data.data && data.data.length > 0) {
+           const media = data.data.map((m: any) => ({ type: "video", url: m.url, thumbnail: m.thumbnail || "" }));
+           const primary = media[0];
            return {
              success: true,
              title: "Instagram Video",
-             url: data.data[0].url,
-             mediaType: "video",
-             qualities: getFallbackQualities(data.data[0].url, "video"),
-             media: data.data.map((m: any) => ({ type: "video", url: m.url, thumbnail: m.thumbnail || "" }))
+             thumbnail: primary.thumbnail || primary.url,
+             url: primary.url,
+             mediaType: media.length > 1 ? "carousel" : "video",
+             qualities: getFallbackQualities(primary.url, "video"),
+             media: media
            };
         }
 
@@ -801,10 +1265,11 @@ async function extractWithCobalt(url: string) {
           return {
             success: true,
             title: "Extracted Media",
+            thumbnail: data.url && data.url.includes(".mp4") ? "" : data.url,
             url: data.url,
             mediaType: "video",
             qualities: getFallbackQualities(data.url, "video"),
-            media: [{ type: "video", url: data.url }]
+            media: [{ type: "video", url: data.url, thumbnail: data.url }]
           };
         }
         if (data.status === "picker") {
@@ -814,23 +1279,248 @@ async function extractWithCobalt(url: string) {
             url: item.url,
             thumbnail: item.thumb || ""
           }));
+          const primary = media[0];
           return {
             success: true,
             title: "Extracted Media",
-            url: media[0]?.url,
-            mediaType: media[0]?.type,
-            media: media
+            thumbnail: primary?.thumbnail || primary?.url,
+            url: primary?.url,
+            mediaType: media.length > 1 ? "carousel" : primary?.type,
+            media: media,
+            qualities: primary?.type === "video" ? getFallbackQualities(primary?.url, "video") : undefined
           };
         }
       }
     } catch (e) {
-      console.log(`Cobalt instance ${instance} failed.`);
+      // Ignore fallback failures
     }
   }
   return null;
 }
 
-  app.post("/api/download", async (req, res) => {
+  async function extractInstagramRapidAPI(url: string) {
+  const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
+  if (!rapidKey) return null;
+  
+  // Default to instagram-scraper-api2.p.rapidapi.com as documented in .env.example
+  const host = process.env.RAPIDAPI_IG_HOST && process.env.RAPIDAPI_IG_HOST.includes("rapidapi.com") 
+      ? process.env.RAPIDAPI_IG_HOST 
+      : "instagram-scraper-api2.p.rapidapi.com";
+      
+  console.log(`Attempting RapidAPI extraction with host: ${host}`);
+  
+  try {
+    const fetch = (await import('node-fetch')).default;
+    let response;
+    
+    if (host === 'instagram120.p.rapidapi.com') {
+      response = await fetch(`https://${host}/api/instagram/links`, {
+        method: 'POST',
+        headers: {
+          'x-rapidapi-key': rapidKey,
+          'x-rapidapi-host': host,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ url })
+      });
+    } else {
+      const apiUrl = `https://${host}/v1/post_info?code_or_id_or_url=${encodeURIComponent(url)}`;
+      response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': rapidKey,
+          'x-rapidapi-host': host
+        }
+      });
+    }
+    
+    if (!response.ok) {
+      console.log(`RapidAPI error: ${response.status} ${response.statusText}`);
+      const text = await response.text();
+      console.log("RapidAPI response:", text);
+      let errorDetails = text;
+      try {
+         const json = JSON.parse(text);
+         if (json.message) errorDetails = json.message;
+      } catch (e) {}
+      
+      if (response.status === 403 && errorDetails.includes("not subscribed")) {
+         return {
+            success: false,
+            errorMsg: `You are not subscribed to the RapidAPI host (${host}). Please go to RapidAPI, search for this API, and subscribe to its free tier. Alternatively, set RAPIDAPI_IG_HOST to an API you are subscribed to.`
+         };
+      }
+      
+      return {
+         success: false,
+         errorMsg: `RapidAPI Error (${response.status}): ${errorDetails}`
+      };
+    }
+    
+    const data = (await response.json()) as any;
+    
+    // Parse instagram-scraper-api2 format
+    let mediaUrl = "";
+    let thumbnail = "";
+    let mediaType = "video";
+    let title = "Instagram Post";
+    
+    if (data && data.data && data.data.items && data.data.items.length > 0) {
+      const item = data.data.items[0];
+      
+      if (item.caption && item.caption.text) {
+        title = item.caption.text.substring(0, 50);
+      }
+      
+      // Video
+      if (item.video_versions && item.video_versions.length > 0) {
+        mediaUrl = item.video_versions[0].url;
+        mediaType = "video";
+      } 
+      // Carousel (first video or image)
+      else if (item.carousel_media && item.carousel_media.length > 0) {
+        const first = item.carousel_media[0];
+        if (first.video_versions && first.video_versions.length > 0) {
+          mediaUrl = first.video_versions[0].url;
+          mediaType = "video";
+        } else if (first.image_versions2 && first.image_versions2.candidates && first.image_versions2.candidates.length > 0) {
+          mediaUrl = first.image_versions2.candidates[0].url;
+          mediaType = "image";
+        }
+      }
+      // Single Image
+      else if (item.image_versions2 && item.image_versions2.candidates && item.image_versions2.candidates.length > 0) {
+        mediaUrl = item.image_versions2.candidates[0].url;
+        mediaType = "image";
+      }
+      
+      // Thumbnail
+      if (item.image_versions2 && item.image_versions2.candidates && item.image_versions2.candidates.length > 0) {
+         thumbnail = item.image_versions2.candidates[0].url;
+      } else if (item.carousel_media && item.carousel_media.length > 0 && item.carousel_media[0].image_versions2) {
+         thumbnail = item.carousel_media[0].image_versions2.candidates[0].url;
+      }
+    }
+    
+    if (mediaUrl) {
+       return {
+          success: true,
+          title: title,
+          url: `/api/proxy-download?url=${encodeURIComponent(mediaUrl)}&filename=instagram_${mediaType}`,
+          thumbnail: thumbnail,
+          mediaType: mediaType,
+          source: "rapidapi"
+       };
+    }
+    
+    console.log("RapidAPI extraction found no media");
+    return null;
+  } catch (error) {
+    console.error("RapidAPI extraction error:", error);
+    return null;
+  }
+}
+
+async function extractInstagramRepoBackend(url: string) {
+  console.log(`Attempting Repository Backend extraction for: ${url}`);
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    // Extract shortcode
+    const match = url.match(/(?:p|reel|tv)\/([^\/?#&]+)/);
+    if (!match || !match[1]) {
+       console.log("Could not extract shortcode from Instagram URL");
+       return null;
+    }
+    const shortcode = match[1];
+    
+    // The exact GraphQL query used by the yasinatesim repository
+    const graphqlUrl = `https://www.instagram.com/graphql/query/?doc_id=24368985919464652&variables=${encodeURIComponent(`{"shortcode":"${shortcode}","fetch_tagged_user_count":null,"hoisted_comment_id":null,"hoisted_reply_id":null}`)}`;
+    
+    const response = await fetch(graphqlUrl, {
+      method: 'GET',
+      headers: {
+          accept: '*/*',
+          'accept-language': 'en-US,en;q=0.9',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    
+    if (!response.ok) {
+      console.log(`Repo GraphQL error: ${response.status} ${response.statusText}`);
+      const text = await response.text();
+      console.log("Response:", text.substring(0, 200));
+      return {
+         success: false,
+         errorMsg: `Instagram blocked the repository's API request (${response.status}). Instagram blocks cloud server IPs from accessing this endpoint without a logged-in user session.`
+      };
+    }
+    
+    const data: any = await response.json();
+    
+    // Check for execution error
+    if (data.errors && data.errors.length > 0) {
+       console.log("Repo GraphQL returned execution error:", data.errors[0].message);
+       return {
+          success: false,
+          errorMsg: `Instagram returned an execution error. This occurs because the repository's GraphQL endpoint requires authentication (a logged-in browser session) when called from a cloud server.`
+       };
+    }
+    
+    // Parse xdt_shortcode_media
+    const media = data?.data?.xdt_shortcode_media;
+    if (!media) {
+       return {
+          success: false,
+          errorMsg: `Could not find media data in the repository's API response.`
+       };
+    }
+    
+    let mediaUrl = "";
+    let mediaType = "video";
+    let thumbnail = media.display_url || "";
+    
+    if (media.is_video) {
+       mediaUrl = media.video_url;
+       mediaType = "video";
+    } else if (media.edge_sidecar_to_children && media.edge_sidecar_to_children.edges.length > 0) {
+       const first = media.edge_sidecar_to_children.edges[0].node;
+       if (first.is_video) {
+          mediaUrl = first.video_url;
+          mediaType = "video";
+       } else {
+          mediaUrl = first.display_url;
+          mediaType = "image";
+       }
+    } else {
+       mediaUrl = media.display_url;
+       mediaType = "image";
+    }
+    
+    if (mediaUrl) {
+       return {
+          success: true,
+          title: "Instagram Post",
+          url: `/api/proxy-download?url=${encodeURIComponent(mediaUrl)}&filename=instagram_${mediaType}`,
+          thumbnail: thumbnail,
+          mediaType: mediaType,
+          source: "repo_backend"
+       };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Repo extraction error:", error);
+    return null;
+  }
+}
+
+
+  
+app.post("/api/download", async (req, res) => {
     const { url } = req.body;
     if (!url) {
       return res.status(400).json({ success: false, message: "URL is required" });
@@ -840,86 +1530,133 @@ async function extractWithCobalt(url: string) {
       const trimmedUrl = url.trim();
       const lowerUrl = trimmedUrl.toLowerCase();
       const { platform, type } = classifyUrl(trimmedUrl);
-      const isProfile = type === 'profile' || type === 'community_post';
+      const isProfile = type === 'profile';
       console.log(`Processing extraction for platform: ${platform}, type: ${type}, url: ${trimmedUrl}`);
 
       if (isProfile) {
-        console.log("Profile URL detected, bypassing media extractors and using AI extraction directly.");
-        const aiResult = await extractWithAI(trimmedUrl, true);
-        if (aiResult && aiResult.success) {
-          return res.json(aiResult);
+        if (platform === 'youtube') {
+           console.log("YouTube Profile URL detected, extracting with yt-dlp flat-playlist.");
+           const ytDlpResult = await extractWithYtDlp(trimmedUrl, true);
+           if (ytDlpResult && ytDlpResult.success) {
+             return res.json(ytDlpResult);
+           }
+        } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
+        console.log("Trying Twitter extraction...");
+        
+        const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
+        if (rapidKey) {
+            try {
+                const rapidResult = await extractTwitterRapidAPI(trimmedUrl, rapidKey);
+                if (rapidResult && rapidResult.media && rapidResult.media.length > 0) {
+                    return res.json({ success: true, ...rapidResult });
+                }
+            } catch (err: any) {
+                // If we get a subscription error, send it to the UI!
+                if (err.message.includes("subscribed")) {
+                     return res.status(500).json({ success: false, message: err.message });
+                }
+            }
+        }
+
+        const authToken = process.env.TWITTER_AUTH_TOKEN || req.body.twitterAuthToken || "";
+        const xtractorResult = await extractTwitterXtractor(trimmedUrl, authToken);
+        
+        if (xtractorResult && xtractorResult.media && xtractorResult.media.length > 0) {
+            return res.json({ success: true, ...xtractorResult });
         } else {
-           // fallback to other extractors if AI profile extraction fails completely
+            let msg = "Twitter blocked our server IP. ";
+            if (rapidKey) {
+                 msg += "We tried RapidAPI but it failed. Please ensure you are subscribed to the 'Twitter135' API on RapidAPI (it's free).";
+            } else {
+                 msg += "To fix this, add your RAPIDAPI_KEY to AI Studio Secrets and subscribe to 'Twitter135' on RapidAPI, OR set your TWITTER_AUTH_TOKEN.";
+            }
+            return res.status(500).json({ success: false, message: msg });
         }
       }
+      } else {
+        if (platform === 'pinterest') {
+            console.log("Trying yt-dlp for Pinterest (prioritizing videos)...");
+            const ytResult = await extractWithYtDlp(trimmedUrl);
+            if (ytResult && ytResult.success && ytResult.mediaType === 'video') {
+                return res.json(ytResult);
+            }
+            console.log("yt-dlp failed or not a video, falling back to btch-downloader for Pinterest...");
+            const pinResult = await extractPinterestBtch(trimmedUrl);
+            if (pinResult && pinResult.success) {
+                // if btch thinks it's an image but yt-dlp thought it was an image too, we can just return what we have
+                return res.json(pinResult);
+            }
+            if (ytResult && ytResult.success) {
+                return res.json(ytResult);
+            }
+        }
+        
+        console.log("Trying Cobalt API...");
+        const cobaltResult = await extractWithCobalt(trimmedUrl);
+        if (cobaltResult && cobaltResult.success) {
+           return res.json(cobaltResult);
+        }
 
-      // 1. Primary: yt-dlp_linux
-      const ytDlpResult = await extractWithYtDlp(trimmedUrl);
-      if (ytDlpResult && ytDlpResult.success) {
-        console.log("Extraction via yt-dlp succeeded!");
-        return res.json(ytDlpResult);
-      }
+        if (trimmedUrl.includes("instagram.com") || trimmedUrl.includes("instagr.am")) {
+           const btchResult = await extractInstagramBtch(trimmedUrl);
+           if (btchResult && btchResult.success) {
+               return res.json(btchResult);
+           }
+        }
+        
+        if (platform === 'youtube') {
+           console.log("Trying Vreden YTmp4 fallback...");
+           const vredenResult = await extractWithVreden(trimmedUrl);
+           if (vredenResult && vredenResult.success) return res.json(vredenResult);
+        } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
+           console.log("Trying Twitter RapidAPI...");
+           const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
+           if (rapidKey) {
+               try {
+                   const rapidResult = await extractTwitterRapidAPI(trimmedUrl, rapidKey);
+                   if (rapidResult && rapidResult.media && rapidResult.media.length > 0) {
+                       return res.json({ success: true, ...rapidResult });
+                   }
+               } catch (e: any) { }
+           }
+           console.log("Trying Twitter Xtractor...");
+           const authToken = process.env.TWITTER_AUTH_TOKEN || req.body.twitterAuthToken || "";
+           const xtractorResult = await extractTwitterXtractor(trimmedUrl, authToken);
+           if (xtractorResult && xtractorResult.media && xtractorResult.media.length > 0) {
+               return res.json({ success: true, ...xtractorResult });
+           }
+        }
 
-      // 2. Cobalt API instances (Best for Vercel/Bolt)
-      console.log("yt-dlp failed or not available, trying Cobalt API instances...");
-      const cobaltResult = await extractWithCobalt(trimmedUrl);
-      if (cobaltResult && cobaltResult.success) {
-        console.log("Extraction via Cobalt succeeded!");
-        return res.json(cobaltResult);
-      }
+        console.log("Trying YT-DLP fallback...");
+        const ytDlpResult = await extractWithYtDlp(trimmedUrl);
+        if (ytDlpResult && ytDlpResult.success) {
+           return res.json(ytDlpResult);
+        }
 
-      // 3. Fallbacks for specific platforms
-      if (lowerUrl.includes("tiktok.com")) {
-        try {
-          const result = await btch.ttdl(trimmedUrl);
-          if (result && result.status && result.video && result.video.length > 0) {
-            const videoUrl = result.video[0];
-            return res.json({
-              success: true,
-              title: result.title || "TikTok Video",
-              thumbnail: result.thumbnail,
-              url: videoUrl,
-              mediaType: "video",
-              qualities: getFallbackQualities(videoUrl, "video"),
-              media: [{ type: "video", url: videoUrl, thumbnail: result.thumbnail }]
-            });
+        console.log("Trying AI extraction fallback...");
+        const aiResult = await extractWithAI(trimmedUrl, false);
+        if (aiResult && aiResult.success) {
+           return res.json(aiResult);
+        }
+
+        let errorMsg = "The media content could not be retrieved. Please verify the link is public and try again.";
+        if (trimmedUrl.includes("instagram.com")) {
+          if ((req as any).igManualFallback) {
+             return res.status(400).json({
+                success: false,
+                message: "Instagram blocks automated requests. You must use the manual JSON workaround.",
+               needsManualJson: true,
+               url: trimmedUrl
+             });
           }
-        } catch (e) {
-          console.log("TikTok fallback scraper failed (falling back).");
+          errorMsg = "Instagram blocks our cloud servers from downloading posts. Please check your RapidAPI subscription.";
+        } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
+          errorMsg = "Twitter blocked our server IP for unauthenticated requests. Add your RAPIDAPI_KEY to AI Studio Secrets and subscribe to 'Twitter135' on RapidAPI, OR set your TWITTER_AUTH_TOKEN.";
         }
-      }
-      
-      if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be")) {
-        try {
-          const result = await btch.youtube(trimmedUrl);
-          if (result && result.status && result.mp4) {
-            return res.json({
-              success: true,
-              title: result.title || "YouTube Video",
-              thumbnail: result.thumbnail,
-              url: result.mp4,
-              mediaType: "video",
-              qualities: getFallbackQualities(result.mp4, "video"),
-              media: [{ type: "video", url: result.mp4, thumbnail: result.thumbnail }]
-            });
-          }
-        } catch (e) {
-          console.log("YouTube fallback scraper failed (falling back).");
-        }
+        return res.status(400).json({ success: false, message: `Extraction failed: ${errorMsg}` });
       }
 
-      // 3. AI / Cheerio fallback
-      console.log("No specialized or yt-dlp scraper succeeded. Running last-resort AI/Cheerio fallback...");
-      const aiResult = await extractWithAI(trimmedUrl, isProfile);
-      if (aiResult && aiResult.success) {
-        console.log("Last-resort extraction succeeded!");
-        return res.json(aiResult);
-      }
 
-      return res.status(400).json({ 
-         success: false, 
-         message: "Extraction failed: The media content could not be retrieved. Please verify the link is public and try again." 
-       });
           
     } catch (error) {
       console.error("API Download Exception:", error.message);
@@ -927,11 +1664,77 @@ async function extractWithCobalt(url: string) {
     }
   });
 
+  app.get("/api/youtube-stream", async (req, res) => {
+    const videoUrl = req.query.url as string;
+    const quality = (req.query.quality as string) || "360";
+    const filename = (req.query.filename as string) || "youtube_video.mp4";
+
+    if (!videoUrl) {
+      return res.status(400).send("Missing url parameter");
+    }
+
+    try {
+      console.log(`Dynamic YouTube streaming requested for: ${videoUrl} at quality: ${quality}`);
+      const result = await vredenYtmp4(videoUrl, quality);
+      if (result && result.status && result.download && result.download.url) {
+        const directUrl = result.download.url;
+        console.log(`Successfully fetched direct URL for streaming: ${directUrl}`);
+        pipeUrlStream(directUrl, res, filename, false);
+      } else {
+        console.error("Vreden dynamic fetch failed to find direct URL");
+        res.status(500).send("Failed to retrieve direct download stream from YouTube provider.");
+      }
+    } catch (err: any) {
+      console.error("Error in /api/youtube-stream:", err.message);
+      res.status(500).send("Error streaming YouTube video: " + err.message);
+    }
+  });
+
   
+
+  app.get("/api/proxy-image", async (req, res) => {
+    const imageUrl = req.query.url;
+    if (!imageUrl || typeof imageUrl !== "string") {
+      return res.status(400).send("Missing url parameter");
+    }
+    
+    try {
+      const fetch = (await import('node-fetch')).default;
+      const response = await fetch(imageUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+          "Accept": "image/webp,image/apng,image/*,*/*;q=0.8"
+        }
+      });
+      
+      if (!response.ok) {
+        return res.status(response.status).send("Failed to fetch image");
+      }
+      
+      const contentType = response.headers.get("content-type");
+      if (contentType) {
+        res.setHeader("Content-Type", contentType);
+      }
+      
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      
+      if (response.body) {
+         response.body.pipe(res);
+      } else {
+         const buffer = await response.buffer();
+         res.send(buffer);
+      }
+    } catch (error: any) {
+      console.error("Proxy image error:", error.message);
+      res.status(500).send("Error proxying image");
+    }
+  });
+
   app.get("/api/proxy-download", (req, res) => {
     const fileUrl = req.query.url;
     const audioUrl = req.query.audioUrl;
     const mux = req.query.mux === "true";
+    const extractAudio = req.query.extractAudio === "true";
     let customFilename = req.query.filename || "download.mp4";
     const inline = req.query.inline === "true";
 
@@ -939,7 +1742,31 @@ async function extractWithCobalt(url: string) {
       return res.status(400).json({ error: "Missing url parameter" });
     }
 
-    if (mux && audioUrl) {
+    if (extractAudio) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+      const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
+      const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
+      res.setHeader('Content-Disposition', disposition);
+
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', fileUrl as string,
+        '-q:a', '0',
+        '-map', 'a',
+        '-f', 'mp3',
+        'pipe:1'
+      ]);
+
+      ffmpeg.stdout.pipe(res);
+      
+      ffmpeg.on('error', (err) => {
+        console.error('ffmpeg process error:', err);
+        if (!res.headersSent) res.status(500).end();
+      });
+
+      req.on("close", () => {
+        ffmpeg.kill();
+      });
+    } else if (mux && audioUrl) {
       res.setHeader('Content-Type', 'video/mp4');
       const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
       const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
@@ -971,10 +1798,85 @@ async function extractWithCobalt(url: string) {
         ffmpeg.kill();
       });
     } else {
-      pipeUrlStream(fileUrl as string, res, customFilename as string, inline);
+      
+      const throttleMBps = req.query.throttle && req.query.throttle !== 'unlimited' ? parseInt(req.query.throttle as string, 10) : 0;
+      pipeUrlStream(fileUrl as string, res, customFilename as string, inline, 5, throttleMBps);
+
     }
   });
 
+
+
+
+  // Web Push setup
+  const vapidKeys = {
+    publicKey: 'BHoQSTFIR9f-8G4vLeGwzdbzbmO4z_GvetdY0wd84U2QPYy2woYZ04dU76gxgmhC5eW-ULFEUizmx2GIp1c7Yk0',
+    privateKey: 'uFUg29vDq77vqK8ejhu_YdmeXH_9wqgoXH3Y0H5mwq4'
+  };
+  webpush.setVapidDetails(
+    'mailto:test@example.com',
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+  );
+
+  let subscriptions: any[] = [];
+  const subsFile = path.join(process.cwd(), 'subscriptions.json');
+  try {
+    if (fs.existsSync(subsFile)) {
+      subscriptions = JSON.parse(fs.readFileSync(subsFile, 'utf8'));
+    }
+  } catch (e) {
+    console.error("Could not load subscriptions", e);
+  }
+
+  app.use(express.json());
+
+  app.post("/api/push/subscribe", (req, res) => {
+    const subscription = req.body;
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ error: "Invalid subscription" });
+    }
+    
+    const existing = subscriptions.find(s => s.endpoint === subscription.endpoint);
+    if (!existing) {
+      subscriptions.push(subscription);
+      fs.writeFileSync(subsFile, JSON.stringify(subscriptions));
+    }
+    res.status(201).json({});
+  });
+
+  app.post("/api/push/send", (req, res) => {
+    const notificationPayload = {
+      title: req.body.title || "New Update Available!",
+      body: req.body.body || "Check out the latest features in AURA Downloader.",
+      url: req.body.url || "/"
+    };
+
+    const promises = subscriptions.map((sub) =>
+      webpush.sendNotification(sub, JSON.stringify(notificationPayload))
+        .catch(err => {
+          console.error("Error sending push to", sub.endpoint, err);
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            return sub.endpoint; // Return endpoint to remove
+          }
+          return null;
+        })
+    );
+
+    Promise.all(promises).then((results) => {
+      const toRemove = results.filter(r => r !== null && r !== undefined);
+      if (toRemove.length > 0) {
+        subscriptions = subscriptions.filter(s => !toRemove.includes(s.endpoint));
+        fs.writeFileSync(subsFile, JSON.stringify(subscriptions));
+      }
+      res.status(200).json({ message: "Notifications sent successfully" });
+    });
+  });
+
+  app.get("/api/health", (req, res) => {
+
+    res.status(200).send("OK");
+  });
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

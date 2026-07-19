@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://aura-downloader-yg40.onrender.com/sitemap.xml

@@ -11,7 +11,7 @@ export interface DownloadResult {
     title?: string;
     description?: string;
     thumbnail?: string;
-    mediaType?: 'video' | 'image' | 'profile' | 'carousel';
+    mediaType?: 'video' | 'image' | 'profile' | 'carousel' | 'playlist';
     qualities?: MediaQuality[];
     media?: Array<{
         url: string;
