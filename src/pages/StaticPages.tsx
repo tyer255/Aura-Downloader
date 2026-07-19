@@ -29,7 +29,7 @@ export function PrivacyPolicy() {
   return (
     <StaticPageView title="Privacy Policy" {...theme}>
       <h2 className="text-xl font-bold mb-4 mt-6">1. Introduction</h2>
-      <p className="mb-4">Welcome to Social Downloader. We respect your privacy and are committed to protecting your personal data. This privacy policy will inform you as to how we look after your personal data when you visit our website.</p>
+      <p className="mb-4">Welcome to Aura Downloader. We respect your privacy and are committed to protecting your personal data. This privacy policy will inform you as to how we look after your personal data when you visit our website.</p>
       
       <h2 className="text-xl font-bold mb-4 mt-6">2. Data We Collect</h2>
       <p className="mb-4">We do not collect any personal data or store any videos you download through our service. The service acts merely as a proxy to fetch public content from supported platforms. All downloads are processed temporarily and are not retained on our servers.</p>
@@ -57,7 +57,7 @@ export function TermsConditions() {
       <p className="mb-4">This tool is designed to allow users to download content for personal, non-commercial use only. You are solely responsible for ensuring you have the right to download and use the media you process through this site.</p>
       
       <h2 className="text-xl font-bold mb-4 mt-6">3. Disclaimer</h2>
-      <p className="mb-4">The materials on Social Downloader are provided on an 'as is' basis. We make no warranties, expressed or implied, and hereby disclaim and negate all other warranties including, without limitation, implied warranties or conditions of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.</p>
+      <p className="mb-4">The materials on Aura Downloader are provided on an 'as is' basis. We make no warranties, expressed or implied, and hereby disclaim and negate all other warranties including, without limitation, implied warranties or conditions of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.</p>
       
       <h2 className="text-xl font-bold mb-4 mt-6">4. User Responsibilities</h2>
       <p className="mb-4">Users must comply with the Terms of Service of the platform they are downloading from (YouTube, Instagram, Pinterest, TikTok, etc.). Users must not use the service to download, redistribute, or commercially exploit copyrighted material without permission from the rights holder.</p>
@@ -82,11 +82,11 @@ export function DMCA() {
   return (
     <StaticPageView title="DMCA Policy" {...theme}>
       <h2 className="text-xl font-bold mb-4 mt-6">Digital Millennium Copyright Act Notice</h2>
-      <p className="mb-4">Social Downloader respects the intellectual property rights of others. We do not host any copyrighted media on our servers. Our tool simply extracts direct links to media files already hosted on public servers of third-party platforms.</p>
+      <p className="mb-4">Aura Downloader respects the intellectual property rights of others. We do not host any copyrighted media on our servers. Our tool simply extracts direct links to media files already hosted on public servers of third-party platforms.</p>
       
       <p className="mb-4">If you are a copyright owner and believe that any content accessed through our service infringes upon your copyrights, please note that we cannot remove content from third-party platforms (like YouTube, TikTok, Instagram, etc.). You must contact the respective platform to have the content removed at the source.</p>
       
-      <p className="mb-4">However, if you wish to block our tool from processing URLs leading to your copyrighted material, you may send a DMCA notice to our legal/DMCA email address at <strong>legal@aura-downloader-yg40.onrender.com</strong>, and we will implement filters to prevent downloading from those specific URLs. Please include: identification of the copyrighted work, the specific URL(s) processed through the tool, your contact information, and a good-faith statement.</p>
+      <p className="mb-4">However, if you wish to block our tool from processing URLs leading to your copyrighted material, you may send a DMCA notice to our legal/DMCA email address at <strong>legal@aura-downloader.com</strong>, and we will implement filters to prevent downloading from those specific URLs. Please include: identification of the copyrighted work, the specific URL(s) processed through the tool, your contact information, and a good-faith statement.</p>
     </StaticPageView>
   );
 }
@@ -95,7 +95,7 @@ export function About() {
   const theme = useThemeState();
   return (
     <StaticPageView title="About Us" {...theme}>
-      <p className="mb-4 text-lg">Social Downloader is a premium, fast, and secure media downloading utility.</p>
+      <p className="mb-4 text-lg">Aura Downloader is a premium, fast, and secure media downloading utility.</p>
       <p className="mb-4">Our mission is to provide users with a simple and reliable way to save their favorite videos, photos, and audio clips from various social media platforms directly to their devices for offline viewing.</p>
       <p className="mb-4">Built with modern web technologies, our downloader ensures the highest quality media extraction without requiring any software installation or user registration.</p>
     </StaticPageView>
@@ -114,8 +114,8 @@ export function Contact() {
           Visit Our YouTube Channel
         </a>
         <h3 className="font-bold text-lg mb-2">Email Contact</h3>
-        <p className="mb-2">Email: <a href="mailto:support@aura-downloader-yg40.onrender.com" className="text-blue-500 hover:underline">support@aura-downloader-yg40.onrender.com</a></p>
-        <p>Legal / DMCA inquiries: <a href="mailto:legal@aura-downloader-yg40.onrender.com" className="text-blue-500 hover:underline">legal@aura-downloader-yg40.onrender.com</a></p>
+        <p className="mb-2">Email: <a href="mailto:support@aura-downloader.com" className="text-blue-500 hover:underline">support@aura-downloader.com</a></p>
+        <p>Legal / DMCA inquiries: <a href="mailto:legal@aura-downloader.com" className="text-blue-500 hover:underline">legal@aura-downloader.com</a></p>
       </div>
     </StaticPageView>
   );
@@ -128,7 +128,7 @@ export function FAQ() {
       <div className="space-y-6">
         <div>
           <h3 className="font-bold text-lg mb-1">Is this service free to use?</h3>
-          <p className="opacity-80">Yes, Social Downloader is 100% free to use with no hidden fees or subscriptions.</p>
+          <p className="opacity-80">Yes, Aura Downloader is 100% free to use with no hidden fees or subscriptions.</p>
         </div>
         <div>
           <h3 className="font-bold text-lg mb-1">Are there any download limits?</h3>

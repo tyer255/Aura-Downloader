@@ -27,7 +27,7 @@ export function StaticPageView({ title, children, isLight, setIsLight }: { title
   return (
     <>
       <Helmet>
-        <title>{title} | Social Downloader</title>
+        <title>{title} | Aura Downloader</title>
       </Helmet>
       <LazyMotion features={domMax}>
         <div className={clsx(
