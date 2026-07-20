@@ -16,6 +16,29 @@ import "driver.js/dist/driver.css";
 
 import { requestNotificationPermission, showNotification } from './lib/notifications';
 
+function getThumbnailQualities(thumbnailUrl?: string) {
+  if (!thumbnailUrl || /\.(mp4|webm|mkv|mov|avi)(\?|$)/i.test(thumbnailUrl)) return [];
+  
+  // Check if it's a YouTube thumbnail
+  if (thumbnailUrl.includes('ytimg.com/vi/')) {
+      const videoIdMatch = thumbnailUrl.match(/\/vi\/([^\/]+)\//);
+      if (videoIdMatch && videoIdMatch[1]) {
+          const videoId = videoIdMatch[1];
+          return [
+              { label: "4K / Original (Highest Quality)", url: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`, ext: "jpg" },
+              { label: "Full HD (1080p)", url: `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`, ext: "jpg" },
+              { label: "HD (720p)", url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, ext: "jpg" },
+              { label: "SD (480p)", url: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`, ext: "jpg" }
+          ];
+      }
+  }
+  
+  // For other platforms, just return the original URL
+  return [
+      { label: "Original (Highest Quality)", url: thumbnailUrl, ext: "jpg" }
+  ];
+}
+
 const getProxiedUrl = (url?: string, inline = true) => {
   if (!url) return `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2EzYTNhMyIgc3Ryb2tlPSJub25lIj4KICA8cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCAzYzEuNjYgMCAzIDEuMzQgMyAzcy0xLjM0IDMtMyAzLTMtMS4zNC0zLTMgMS4zNC0zIDMtM3ptMCAxNC4yYy0yLjUgMC00LjcxLTEuMjgtNi0zLjIyLjAzLTEuOTkgNC0zLjA4IDYtMy4wOCAxLjk5IDAgNS45NyAxLjA5IDYgMy4wOC0xLjI5IDEuOTQtMy41IDMuMjItNiAzLjIyeiIvPgo8L3N2Zz4=`;
   if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) {
@@ -3304,6 +3327,65 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             </div>
                           );
                         })() : null}
+                        
+                        {/* Thumbnail Download Section */}
+                        {result.thumbnail && getThumbnailQualities(result.thumbnail).length > 0 && (
+                          <div className={clsx("mt-6 border-t pt-4 transition-colors w-full", isLight ? "border-neutral-200" : "border-white/10")}>
+                            <div className="flex flex-col sm:flex-row gap-4">
+                              <div className="w-full sm:w-1/3 flex-shrink-0">
+                                <div className="aspect-video rounded-xl overflow-hidden bg-black/10 border border-white/10 relative">
+                                  <img 
+                                    src={getProxiedUrl(result.thumbnail)} 
+                                    alt="Thumbnail preview" 
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                  />
+                                </div>
+                              </div>
+                              <div className="w-full sm:w-2/3 flex flex-col gap-3">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs uppercase tracking-widest text-blue-500 font-bold">
+                                    Download Thumbnail:
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                              {getThumbnailQualities(result.thumbnail).map((q, idx) => {
+                                const filename = (result.title || "thumbnail").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_").replace(/\//g, "-") + "." + (q.ext || "jpg");
+                                return (
+                                  <div key={idx} className="flex items-center gap-2 w-full">
+                                    <button type="button"
+                                      onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, filename); }}
+                                      className={clsx(
+                                        "flex-1 flex items-center justify-between p-3 rounded-xl transition-all border group/quality cursor-pointer",
+                                        isLight 
+                                          ? "bg-white hover:bg-blue-600 hover:text-white border-neutral-200" 
+                                          : "bg-white/5 hover:bg-blue-600 hover:text-white border-white/10"
+                                      )}
+                                    >
+                                      <div className="flex flex-col text-left">
+                                        <span className={clsx(
+                                          "font-bold text-sm transition-colors",
+                                          isLight ? "text-neutral-800 group-hover/quality:text-white" : "text-white group-hover/quality:text-white",
+                                        )}>
+                                          {q.label}
+                                        </span>
+                                      </div>
+                                      <div className={clsx(
+                                        "p-2 rounded-lg transition-colors",
+                                        isLight ? "bg-neutral-100 group-hover/quality:bg-white/20" : "bg-white/10 group-hover/quality:bg-white/20"
+                                      )}>
+                                        <Download className="w-4 h-4 text-blue-500 group-hover/quality:text-white" />
+                                      </div>
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          </div>
+                          </div>
+                        )}
+
                       </div>
                     </div>
                   )}
@@ -3651,11 +3733,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       <AnimatePresence>
         {Object.keys(activeDownloads).length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 50 }} // Slide up from bottom
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
+            initial={{ opacity: 0, y: 50, x: "-50%" }} // Slide up from bottom
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: 50, x: "-50%" }}
             className={clsx(
-              "fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md border rounded-2xl p-4 shadow-2xl z-50 flex flex-col space-y-4",
+              "fixed bottom-6 left-1/2 w-[90%] max-w-md border rounded-2xl p-4 shadow-2xl z-50 flex flex-col space-y-4",
               isLight ? "bg-white border-neutral-200" : "bg-[#1a1a1a] border-white/10"
             )}
           >

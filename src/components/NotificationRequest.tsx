@@ -42,12 +42,13 @@ export default function NotificationRequest({ isLight }: { isLight: boolean }) {
   return (
     <AnimatePresence>
       {show && (
+        <div className="fixed top-20 inset-x-0 z-[100] flex justify-center px-4 pointer-events-none">
         <motion.div
           initial={{ opacity: 0, y: -50, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -50, scale: 0.95 }}
           transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-          className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] max-w-sm w-full px-4"
+          className="w-full max-w-sm pointer-events-auto"
         >
           <div className={clsx(
             "p-4 rounded-2xl shadow-2xl border backdrop-blur-xl flex items-center justify-between gap-4",
@@ -86,6 +87,7 @@ export default function NotificationRequest({ isLight }: { isLight: boolean }) {
             </div>
           </div>
         </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );

@@ -1,0 +1,29 @@
+async function test() {
+    const instances = [
+    "https://co.wuk.sh/api/json",
+    "https://cobalt.q0.is/api/json",
+    "https://api.cobalt.bckc.rs/api/json",
+    "https://cobalt.kwiatekit.com/api/json",
+    "https://cobalt.shiron.dev/api/json"
+    ];
+    for (const inst of instances) {
+        try {
+            const res = await fetch(inst, {
+                method: "POST",
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                    aFormat: "best",
+                    vQuality: "max"
+                })
+            });
+            const data = await res.json();
+            console.log(inst, data);
+            break;
+        } catch(e) {}
+    }
+}
+test();
