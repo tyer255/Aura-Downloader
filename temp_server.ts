@@ -1190,35 +1190,12 @@ async function extractPinterestNative(url: string) {
                       html.match(/<meta\s+name="og:video"\s+content="([^"]+)"/i);
        if (vMatch && vMatch[1]) videoUrl = vMatch[1].replace(/&amp;/g, '&');
     }
-
-    if (!videoUrl) {
-        const mp4Regex = /"(https:\/\/[^"]+\.mp4[^"]*)"/g;
-        let mUrl;
-        while ((mUrl = mp4Regex.exec(html)) !== null) {
-            if (mUrl[1] && !mUrl[1].includes('trailer') && !mUrl[1].includes('hls')) {
-                videoUrl = mUrl[1];
-            }
-        }
-    }
-    
-    if (!videoUrl) {
-        const m3u8Regex = /"(https:\/\/[^"]+\.m3u8[^"]*)"/g;
-        let mUrl;
-        while ((mUrl = m3u8Regex.exec(html)) !== null) {
-            if (mUrl[1]) {
-                videoUrl = mUrl[1];
-                break;
-            }
-        }
-    }
-
     if (!imageUrl) {
        const imgMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i) ||
-                        html.match(/<meta\s+name="og:image"\s+content="([^"]+)"/i) || html.match(/"(https:\/\/i\.pinimg\.com\/originals\/[^"]+\.jpg)"/i);
+                        html.match(/<meta\s+name="og:image"\s+content="([^"]+)"/i);
        if (imgMatch && imgMatch[1]) imageUrl = imgMatch[1].replace(/&amp;/g, '&');
     }
     
-    if (!title) { const tMatch = html.match(/<title>([^<]+)<\/title>/i); if (tMatch && tMatch[1]) title = tMatch[1].split("|")[0].trim(); }
     if (videoUrl) {
         return {
            success: true,
@@ -1842,32 +1819,16 @@ app.post("/api/download", async (req, res) => {
             let resolvedUrl = trimmedUrl;
             if (trimmedUrl.includes('pin.it')) {
                 try {
-                    const resp = await fetch(trimmedUrl); // Follows redirects natively if possible
-                    let finalUrl = resp.url;
-                    
-                    if (finalUrl === trimmedUrl) {
-                        // Might be a meta refresh
-                        const text = await resp.text();
-                        const metaMatch = text.match(/<meta\s+http-equiv="refresh"\s+content="\d+;\s*url=([^"]+)"/i) || 
-                                          text.match(/href="([^"]+api\.pinterest\.com\/url_shortener[^"]+)"/i);
-                        if (metaMatch && metaMatch[1]) {
-                            finalUrl = metaMatch[1];
+                    const resp = await fetch(trimmedUrl, { redirect: 'manual' });
+                    if (resp.status >= 300 && resp.status < 400) {
+                        resolvedUrl = resp.headers.get('location') || resolvedUrl;
+                        if (resolvedUrl.includes('api.pinterest.com/url_shortener')) {
+                           const redirectResp = await fetch(resolvedUrl, { redirect: 'manual' });
+                           if (redirectResp.status >= 300 && redirectResp.status < 400) {
+                              resolvedUrl = redirectResp.headers.get('location') || resolvedUrl;
+                           }
                         }
                     }
-                    
-                    if (finalUrl.includes('api.pinterest.com/url_shortener')) {
-                         const redirectResp = await fetch(finalUrl, { redirect: 'manual' });
-                         if (redirectResp.status >= 300 && redirectResp.status < 400) {
-                            finalUrl = redirectResp.headers.get('location') || finalUrl;
-                         } else {
-                            // If it's a 200, maybe another meta refresh
-                            const text = await redirectResp.text();
-                            const metaMatch = text.match(/<meta\s+http-equiv="refresh"\s+content="\d+;\s*url=([^"]+)"/i);
-                            if (metaMatch && metaMatch[1]) finalUrl = metaMatch[1];
-                         }
-                    }
-                    
-                    resolvedUrl = finalUrl;
                 } catch(e) {}
             }
             trimmedUrl = resolvedUrl;
@@ -2204,3 +2165,6 @@ app.post("/api/download", async (req, res) => {
 }
 
 startServer();
+
+
+extractWithYtDlp("https://www.pinterest.com/pin/1014224778608158640/").then(r => console.log(JSON.stringify(r, null, 2)));

@@ -895,7 +895,21 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const startTour = () => {
     const driverObj = driver({
       showProgress: true,
-      allowClose: false,
+      allowClose: true,
+      onPopoverRender: (popover, { driver }) => {
+        if (!popover.footerButtons.querySelector('.driver-skip-btn')) {
+          const skipBtn = document.createElement('button');
+          skipBtn.className = 'driver-skip-btn';
+          skipBtn.innerText = 'Skip Tour';
+          skipBtn.style.cssText = 'background: none; border: none; font-size: 13px; font-weight: 500; cursor: pointer; margin-right: auto; padding: 5px 10px; color: #6b7280; border-radius: 6px; transition: background 0.2s;';
+          skipBtn.onmouseover = () => skipBtn.style.background = '#f3f4f6';
+          skipBtn.onmouseout = () => skipBtn.style.background = 'none';
+          skipBtn.onclick = () => {
+            driver.destroy();
+          };
+          popover.footerButtons.insertBefore(skipBtn, popover.footerButtons.firstChild);
+        }
+      },
       steps: [
         { element: '#tour-tabs', popover: { title: 'Select Platform', description: 'First, choose the platform you want to download from (e.g., Pinterest).', side: "bottom", align: 'start' } },
         { element: '#tour-input', popover: { title: 'Paste Link', description: 'Paste the link of the video or image you want to download.', side: "bottom", align: 'start' } },
@@ -2450,6 +2464,14 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             >
               {result.success ? (
                 <div className="space-y-6">
+                  {result.message && (
+                    <div className={clsx("p-4 rounded-xl border text-sm font-medium shadow-sm flex items-start gap-3", 
+                      isLight ? "bg-amber-50 text-amber-900 border-amber-200" : "bg-amber-500/10 text-amber-200 border-amber-500/20"
+                    )}>
+                      <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                      <div>{result.message}</div>
+                    </div>
+                  )}
                   
                   {/* PROFILE TEMPLATE */}
                   {result.mediaType === 'profile' && result.profile && (
