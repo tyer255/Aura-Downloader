@@ -26,18 +26,117 @@ function getThumbnailQualities(thumbnailUrl?: string) {
       if (videoIdMatch && videoIdMatch[1]) {
           const videoId = videoIdMatch[1];
           return [
-              { label: "4K / Original (Highest Quality)", url: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`, ext: "jpg" },
-              { label: "Full HD (1080p)", url: `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`, ext: "jpg" },
-              { label: "HD (720p)", url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, ext: "jpg" },
-              { label: "SD (480p)", url: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`, ext: "jpg" }
+              { label: "HD Cover (Max Resolution)", url: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`, ext: "jpg" },
+              { label: "Standard Cover", url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, ext: "jpg" }
           ];
       }
   }
   
   // For other platforms, just return the original URL
   return [
-      { label: "Original (Highest Quality)", url: thumbnailUrl, ext: "jpg" }
+      { label: "Original Cover", url: thumbnailUrl, ext: "jpg" }
   ];
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || isNaN(bytes) || bytes <= 0) return '';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function cleanSizeLabel(size?: string): string {
+  if (!size) return '';
+  const s = String(size).trim();
+  const lower = s.toLowerCase();
+  if (
+    lower.includes('unknown') ||
+    lower.includes('high definition') ||
+    lower.includes('standard hd') ||
+    lower.includes('standard definition') ||
+    lower.includes('low bandwidth') ||
+    lower.includes('audio only') ||
+    lower === '0 mb' ||
+    lower === '~ 0 mb' ||
+    lower === 'original'
+  ) {
+    return '';
+  }
+  return s;
+}
+
+export interface ProcessedQuality {
+  label: string;
+  url: string;
+  ext: string;
+  size?: string;
+  isAudio?: boolean;
+}
+
+function sanitizeQualities(qualities?: any[], fallbackUrl?: string): ProcessedQuality[] {
+  if (!qualities || qualities.length === 0) {
+    if (fallbackUrl) {
+      return [{
+        label: "Original Quality",
+        url: fallbackUrl,
+        ext: "mp4",
+        size: ""
+      }];
+    }
+    return [];
+  }
+
+  const validQualities = qualities.filter(q => q && q.url);
+  const videoQualities = validQualities.filter(q => q.ext !== 'mp3' && !q.label?.toLowerCase().includes('mp3'));
+  const audioQualities = validQualities.filter(q => q.ext === 'mp3' || q.label?.toLowerCase().includes('mp3'));
+
+  const uniqueVideoUrls = new Set(videoQualities.map(q => q.url));
+
+  let finalVideos: ProcessedQuality[] = [];
+
+  if (videoQualities.length > 1 && uniqueVideoUrls.size === 1) {
+    const first = videoQualities[0];
+    const realSize = cleanSizeLabel(first.size);
+    finalVideos = [{
+      label: "Original Quality",
+      url: first.url,
+      ext: first.ext || "mp4",
+      size: realSize
+    }];
+  } else {
+    const seenUrls = new Set<string>();
+    videoQualities.forEach(q => {
+      if (!seenUrls.has(q.url)) {
+        seenUrls.add(q.url);
+        let label = q.label || "Original Quality";
+        if (label.includes("(Full HD)")) label = "1080p";
+        else if (label.includes("(HD Video)")) label = "720p";
+        else if (label.includes("(SD Video)")) label = "480p";
+        else if (label.includes("(Mobile Video)")) label = "360p";
+
+        finalVideos.push({
+          label: label,
+          url: q.url,
+          ext: q.ext || "mp4",
+          size: cleanSizeLabel(q.size)
+        });
+      }
+    });
+  }
+
+  let finalAudios: ProcessedQuality[] = [];
+  audioQualities.forEach(q => {
+    finalAudios.push({
+      label: "MP3 Audio",
+      url: q.url,
+      ext: "mp3",
+      size: cleanSizeLabel(q.size),
+      isAudio: true
+    });
+  });
+
+  return [...finalVideos, ...finalAudios];
 }
 
 const getProxiedUrl = (url?: string, inline = true) => {
@@ -513,9 +612,10 @@ function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }
           setLoading(false);
           setFetched(true);
           if (data.success && data.qualities) {
-            setQualities(data.qualities);
-            if (data.qualities.length > 0) {
-              setSelectedQuality(data.qualities[0].url);
+            const sanitized = sanitizeQualities(data.qualities, item.url);
+            setQualities(sanitized);
+            if (sanitized.length > 0) {
+              setSelectedQuality(sanitized[0].url);
             }
           }
         })
@@ -548,7 +648,7 @@ function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }
                 onChange={e => setSelectedQuality(e.target.value)}
               >
                 {qualities.map((q, i) => (
-                   <option key={i} value={q.url}>{q.label} {q.size && q.size !== 'Original' && q.size !== 'Unknown' ? `(${q.size})` : ''}</option>
+                   <option key={i} value={q.url}>{q.label} {q.size ? `(${q.size})` : ''}</option>
                 ))}
               </select>
             ) : fetched ? (
@@ -558,7 +658,11 @@ function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }
        </div>
        <button
          disabled={loading || !qualities || qualities.length === 0 || (activeDownload && activeDownload.status !== 'failed')}
-         onClick={() => onDownloadQueue(selectedQuality, (item.title || "video").slice(0, 30).trim() + ".mp4")}
+         onClick={() => {
+           const qObj = qualities?.find((q: any) => q.url === selectedQuality);
+           const ext = qObj?.ext || (selectedQuality.includes('extractAudio=true') ? 'mp3' : 'mp4');
+           onDownloadQueue(selectedQuality, (item.title || "video").slice(0, 30).trim() + "." + ext);
+         }}
          className={clsx(
            "w-full sm:w-auto px-5 py-2.5 rounded-full font-bold text-xs uppercase tracking-wider shrink-0 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md", 
            activeDownload && activeDownload.status === 'complete' 
@@ -873,6 +977,52 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   
   const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<DownloadResult | null>(null);
+  const [fetchedSizes, setFetchedSizes] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!result) return;
+    const list = sanitizeQualities(result.qualities, result.url);
+    list.forEach(q => {
+      if (q.url && !q.size && !fetchedSizes[q.url]) {
+        const proxyUrl = q.url.startsWith('/api/') ? q.url : `/api/proxy-download?url=${encodeURIComponent(q.url)}&filename=media`;
+        fetch(proxyUrl, { method: 'HEAD' })
+          .then(res => {
+            const len = res.headers.get('content-length') || res.headers.get('estimated-content-length');
+            if (len) {
+              const bytes = parseInt(len, 10);
+              if (bytes > 0) {
+                const formatted = formatBytes(bytes);
+                if (formatted) {
+                  setFetchedSizes(prev => ({ ...prev, [q.url]: formatted }));
+                }
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    });
+    if (result.media && Array.isArray(result.media)) {
+      result.media.forEach((item: any) => {
+        if (item.url && !fetchedSizes[item.url]) {
+          const proxyUrl = item.url.startsWith('/api/') ? item.url : `/api/proxy-download?url=${encodeURIComponent(item.url)}&filename=media`;
+          fetch(proxyUrl, { method: 'HEAD' })
+            .then(res => {
+              const len = res.headers.get('content-length') || res.headers.get('estimated-content-length');
+              if (len) {
+                const bytes = parseInt(len, 10);
+                if (bytes > 0) {
+                  const formatted = formatBytes(bytes);
+                  if (formatted) {
+                    setFetchedSizes(prev => ({ ...prev, [item.url]: formatted }));
+                  }
+                }
+              }
+            })
+            .catch(() => {});
+        }
+      });
+    }
+  }, [result]);
   const [showHistory, setShowHistory] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -915,8 +1065,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   };
 
   const [isHistorySpinning, setIsHistorySpinning] = useState(false);
+  const [isTourActive, setIsTourActive] = useState(false);
   
   const startTour = () => {
+    setIsTourActive(true);
     const driverObj = driver({
       showProgress: true,
       allowClose: true,
@@ -945,9 +1097,19 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   { label: "HD Video", url: "https://example.com/video.mp4", ext: "mp4", size: "10 MB" }
                 ]
               });
-              setTimeout(() => {
-                driverObj.moveNext();
-              }, 300);
+              
+              // Poll for theresults element to mount before moving to next step
+              let attempts = 0;
+              const checkInterval = setInterval(() => {
+                attempts++;
+                const el = document.getElementById('tour-results');
+                if (el || attempts > 25) {
+                  clearInterval(checkInterval);
+                  setTimeout(() => {
+                    driverObj.moveNext();
+                  }, 150);
+                }
+              }, 50);
             }
           } 
         },
@@ -959,6 +1121,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         localStorage.setItem('hasSeenTour', 'true');
         setResult(null);
         driverObj.destroy();
+        setIsTourActive(false);
         
         // After tour completes, show terms modal if they haven't accepted
         if (!localStorage.getItem('termsAccepted')) {
@@ -1271,7 +1434,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           platform: detectedPlatform,
           favorite: false,
           thumbnail: data.thumbnail || (data.media && data.media.length > 0 ? (data.media[0].thumbnail || data.media[0].url) : undefined) || data.profile?.avatarUrl,
-          appName: TABS.find(t => t.id === detectedPlatform)?.name || 'Unknown'
+          appName: TABS.find(t => t.id === detectedPlatform)?.name || 'Aura Downloader'
         };
         const newHistory = [newEntry, ...history.filter(h => h.url !== url.trim())].slice(0, 50);
         setHistory(newHistory);
@@ -2017,6 +2180,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         )}
       </AnimatePresence>
       <div
+        id="tour-tabs"
         ref={tabsListRef}
         className={clsx(
           "w-full max-w-2xl border rounded-2xl p-2 flex items-center overflow-x-auto no-scrollbar mb-8 shadow-2xl relative z-10 transition-colors",
@@ -2933,7 +3097,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               {(() => {
                                 const activeDlItem = activeDownloads[item.url];
                                 return item.type === 'video' ? (
-                                  <div className="space-y-1.5">
+                                  <div className="space-y-2">
                                     <button 
                                       type="button"                                     
                                       onClick={(e) => { e.preventDefault(); downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item.mp4"); }}
@@ -2969,6 +3133,48 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                         </>
                                       )}
                                     </button>
+
+                                    {(() => {
+                                      const mp3Url = `/api/proxy-download?url=${encodeURIComponent(item.url)}&filename=${encodeURIComponent((result.title || "media").slice(0, 30).trim() + "_audio.mp3")}&extractAudio=true`;
+                                      const activeDlMp3 = activeDownloads[mp3Url];
+                                      return (
+                                        <button 
+                                          type="button"                                     
+                                          onClick={(e) => { e.preventDefault(); downloadFileClientSide(mp3Url, (result.title || "media").slice(0, 30).trim() + "_audio.mp3"); }}
+                                          disabled={!!activeDlMp3 && activeDlMp3.status !== "complete" && activeDlMp3.status !== "failed"}
+                                          className={clsx(
+                                            "w-full inline-flex items-center justify-center gap-2 border px-3 py-2.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wider disabled:cursor-not-allowed",
+                                            isLight 
+                                              ? activeDlMp3?.status === "complete" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white hover:bg-emerald-50 hover:text-emerald-600 border-neutral-200" 
+                                              : activeDlMp3?.status === "complete" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white/5 hover:bg-white hover:text-black border-white/10",
+                                            activeDlMp3 && "bg-emerald-600 border-emerald-600 text-white"
+                                          )}
+                                        >
+                                          {activeDlMp3 ? (
+                                            activeDlMp3.status === "preparing" || activeDlMp3.status === "downloading" ? (
+                                              <>
+                                                <Loader2 className="w-4 h-4 animate-spin text-current" />
+                                                {activeDlMp3.status === "preparing" ? "Preparing MP3..." : "Downloading MP3..."}
+                                              </>
+                                            ) : activeDlMp3.status === "complete" ? (
+                                              <>
+                                                <AnimatedCheckMark className="w-4 h-4 text-white" />
+                                                MP3 Saved!
+                                              </>
+                                            ) : (
+                                              <>
+                                                <AlertCircle className="w-4 h-4 text-rose-300" />
+                                                MP3 Failed
+                                              </>
+                                            )
+                                          ) : (
+                                            <>
+                                              <Music className="w-4 h-4" /> Download MP3 Audio
+                                            </>
+                                          )}
+                                        </button>
+                                      );
+                                    })()}
                                   </div>
                                 ) : (
                                   <button 
@@ -3188,108 +3394,117 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             {result.description}
                           </p>
                         )}
-                        {result.qualities && result.qualities.length > 0 ? (
-                          <div className="flex flex-col gap-4 w-full">
-                            <div className={clsx("border-t pt-4 mt-1 transition-colors", isLight ? "border-neutral-200" : "border-white/10")}>
-                              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                                <span className="text-xs uppercase tracking-widest text-emerald-500 font-bold">
-                                  Available Video Quality Formats:
-                                </span>
-                                <span className="text-[10px] opacity-60 flex items-center gap-1 font-medium">
-                                  <Sparkles className="w-3 h-3 text-emerald-500" /> Click 
-                                  <ExternalLink className="w-2.5 h-2.5 inline mx-0.5" /> for instant browser download
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                                {result.qualities.map((q, idx) => {
-                                  const activeDl = activeDownloads[q.url];
-                                  const filename = (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + "." + (q.ext || "mp4");
-                                  return (
-                                    <div key={idx} className="flex items-center gap-2 w-full">
-                                      <button type="button"
-                                        id={idx === 0 ? "tour-regular-download" : undefined}
-                                        onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, filename); }}
-                                        disabled={!!activeDl && activeDl.status !== "complete" && activeDl.status !== "failed"}
-                                        className={clsx(
-                                          "flex-1 flex items-center justify-between p-3 rounded-xl transition-all border group/quality cursor-pointer disabled:cursor-not-allowed",
-                                          isLight 
-                                            ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" 
-                                            : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10",
-                                          activeDl && "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-500/10"
-                                        )}
-                                      >
-                                        <div className="flex flex-col text-left">
-                                          <span className={clsx(
-                                            "font-bold text-sm transition-colors",
-                                            isLight ? "text-neutral-800 group-hover/quality:text-white" : "text-white group-hover/quality:text-white",
-                                            activeDl?.status === "complete" && "text-emerald-500",
-                                            activeDl?.status === "failed" && "text-rose-500"
-                                          )}>
-                                            {q.label}
-                                          </span>
-                                          <span className={clsx(
-                                            "text-xs transition-colors",
-                                            isLight ? "text-neutral-500 group-hover/quality:text-white/80" : "text-neutral-400 group-hover/quality:text-white/80",
-                                            activeDl && "text-emerald-600 dark:text-emerald-400 font-medium"
-                                          )}>
-                                            {activeDl 
-                                              ? activeDl.status === "preparing"
-                                                ? "Preparing stream (fetching URL)..."
-                                                : activeDl.status === "downloading"
-                                                  ? activeDl.progress !== null ? `Downloading in background (${activeDl.progress}%)` : "Downloading stream..."
-                                                  : activeDl.status === "complete"
-                                                    ? "Saved successfully!"
-                                                    : "Extraction failed"
-                                              : q.size || "Standard Quality"
-                                            }
-                                          </span>
+                        {(result.qualities && result.qualities.length > 0) ? (() => {
+                          const sanitized = sanitizeQualities(result.qualities, result.url);
+                          if (sanitized.length > 0) {
+                            const videoOptions = sanitized.filter(q => !q.isAudio);
+                            const sectionHeader = videoOptions.length > 1 ? "Available Video Quality Formats:" : "Download Media File:";
+                            return (
+                              <div className="flex flex-col gap-4 w-full">
+                                <div className={clsx("border-t pt-4 mt-1 transition-colors", isLight ? "border-neutral-200" : "border-white/10")}>
+                                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                    <span className="text-xs uppercase tracking-widest text-emerald-500 font-bold">
+                                      {sectionHeader}
+                                    </span>
+                                    <span className="text-[10px] opacity-60 flex items-center gap-1 font-medium">
+                                      <Sparkles className="w-3 h-3 text-emerald-500" /> Click 
+                                      <ExternalLink className="w-2.5 h-2.5 inline mx-0.5" /> for instant browser download
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {sanitized.map((q, idx) => {
+                                      const activeDl = activeDownloads[q.url];
+                                      const filename = (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + "." + (q.ext || "mp4");
+                                      const sizeDisplay = q.size || fetchedSizes[q.url] || (q.isAudio ? "MP3 Audio" : "Original Quality");
+                                      return (
+                                        <div key={idx} className="flex items-center gap-2 w-full">
+                                          <button type="button"
+                                            id={idx === 0 ? "tour-regular-download" : undefined}
+                                            onClick={(e) => { e.preventDefault(); downloadFileClientSide(q.url, filename); }}
+                                            disabled={!!activeDl && activeDl.status !== "complete" && activeDl.status !== "failed"}
+                                            className={clsx(
+                                              "flex-1 flex items-center justify-between p-3 rounded-xl transition-all border group/quality cursor-pointer disabled:cursor-not-allowed",
+                                              isLight 
+                                                ? "bg-white hover:bg-[#ff1e42] hover:text-white border-neutral-200" 
+                                                : "bg-white/5 hover:bg-[#ff1e42] hover:text-white border-white/10",
+                                              activeDl && "border-emerald-500/50 bg-emerald-500/5 dark:bg-emerald-500/10"
+                                            )}
+                                          >
+                                            <div className="flex flex-col text-left">
+                                              <span className={clsx(
+                                                "font-bold text-sm transition-colors",
+                                                isLight ? "text-neutral-800 group-hover/quality:text-white" : "text-white group-hover/quality:text-white",
+                                                activeDl?.status === "complete" && "text-emerald-500",
+                                                activeDl?.status === "failed" && "text-rose-500"
+                                              )}>
+                                                {q.label}
+                                              </span>
+                                              <span className={clsx(
+                                                "text-xs transition-colors",
+                                                isLight ? "text-neutral-500 group-hover/quality:text-white/80" : "text-neutral-400 group-hover/quality:text-white/80",
+                                                activeDl && "text-emerald-600 dark:text-emerald-400 font-medium"
+                                              )}>
+                                                {activeDl 
+                                                  ? activeDl.status === "preparing"
+                                                    ? "Preparing stream (fetching URL)..."
+                                                    : activeDl.status === "downloading"
+                                                      ? activeDl.progress !== null ? `Downloading in background (${activeDl.progress}%)` : "Downloading stream..."
+                                                      : activeDl.status === "complete"
+                                                        ? "Saved successfully!"
+                                                        : "Extraction failed"
+                                                  : sizeDisplay
+                                                }
+                                              </span>
+                                            </div>
+                                            <div className={clsx(
+                                              "p-2 rounded-lg transition-colors",
+                                              isLight ? "bg-neutral-100 group-hover/quality:bg-white/20" : "bg-white/10 group-hover/quality:bg-white/20",
+                                              activeDl && "bg-emerald-500/20"
+                                            )}>
+                                              {activeDl ? (
+                                                activeDl.status === "preparing" || activeDl.status === "downloading" ? (
+                                                  <Loader2 className="w-4 h-4 text-emerald-500 animate-spin group-hover/quality:text-white" />
+                                                ) : activeDl.status === "complete" ? (
+                                                  <AnimatedCheckMark className="w-4 h-4 text-emerald-500" />
+                                                ) : (
+                                                  <AlertCircle className="w-4 h-4 text-rose-500" />
+                                                )
+                                              ) : (
+                                                <Download className="w-4 h-4 text-emerald-500 group-hover/quality:text-white" />
+                                              )}
+                                            </div>
+                                          </button>
+                                          
+                                          {/* Direct instant download button */}
+                                          <button type="button"
+                                            id={idx === 0 ? "tour-direct-download" : undefined}
+                                            onClick={(e) => { e.preventDefault(); downloadFileDirect(q.url, filename); }}
+                                            title="Direct Instant Download (Bypasses local memory cache)"
+                                            className={clsx(
+                                              "p-3.5 rounded-xl transition-all border flex items-center justify-center cursor-pointer",
+                                              isLight 
+                                                ? "bg-neutral-50 border-neutral-200 text-neutral-500 hover:text-white hover:bg-[#ff1e42]" 
+                                                : "bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-[#ff1e42]"
+                                            )}
+                                          >
+                                            <ExternalLink className="w-4 h-4" />
+                                          </button>
                                         </div>
-                                        <div className={clsx(
-                                          "p-2 rounded-lg transition-colors",
-                                          isLight ? "bg-neutral-100 group-hover/quality:bg-white/20" : "bg-white/10 group-hover/quality:bg-white/20",
-                                          activeDl && "bg-emerald-500/20"
-                                        )}>
-                                          {activeDl ? (
-                                            activeDl.status === "preparing" || activeDl.status === "downloading" ? (
-                                              <Loader2 className="w-4 h-4 text-emerald-500 animate-spin group-hover/quality:text-white" />
-                                            ) : activeDl.status === "complete" ? (
-                                              <AnimatedCheckMark className="w-4 h-4 text-emerald-500" />
-                                            ) : (
-                                              <AlertCircle className="w-4 h-4 text-rose-500" />
-                                            )
-                                          ) : (
-                                            <Download className="w-4 h-4 text-emerald-500 group-hover/quality:text-white" />
-                                          )}
-                                        </div>
-                                      </button>
-                                      
-                                      {/* Direct instant download button */}
-                                      <button type="button"
-                                        id={idx === 0 ? "tour-direct-download" : undefined}
-                                        onClick={(e) => { e.preventDefault(); downloadFileDirect(q.url, filename); }}
-                                        title="Direct Instant Download (Bypasses local memory cache)"
-                                        className={clsx(
-                                          "p-3.5 rounded-xl transition-all border flex items-center justify-center cursor-pointer",
-                                          isLight 
-                                            ? "bg-neutral-50 border-neutral-200 text-neutral-500 hover:text-white hover:bg-[#ff1e42]" 
-                                            : "bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-[#ff1e42]"
-                                        )}
-                                      >
-                                        <ExternalLink className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  );
-                                })}
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                {result.url && (
+                                  <div className={clsx("flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center mt-2 border-t pt-4 transition-colors w-full", isLight ? "border-neutral-200" : "border-white/5")}>
+                                    <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
+                                    <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                            {result.url && (
-                              <div className={clsx("flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center mt-2 border-t pt-4 transition-colors w-full", isLight ? "border-neutral-200" : "border-white/5")}>
-                                <CopyButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
-                                <QRCodeButton url={result.url} isLight={isLight} className="w-full sm:w-auto px-6 py-3 rounded-full text-xs" />
-                              </div>
-                            )}
-                          </div>
-                        ) : result.url ? (() => {
+                            );
+                          }
+                          return null;
+                        })() : result.url ? (() => {
                           const activeDl = activeDownloads[result.url];
                           const filename = (result.title || "download") + (result.mediaType === "image" ? ".jpg" : ".mp4");
                           return (

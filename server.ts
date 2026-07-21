@@ -523,7 +523,11 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
       noWarnings: true,
       noCheckCertificate: true,
       preferFreeFormats: true,
-      noPlaylist: !isPlaylist
+      noPlaylist: !isPlaylist,
+      youtubeSkipDashManifest: true,
+      youtubeSkipHlsManifest: true,
+      noCheckFormats: true,
+      checkFormats: "no"
     };
     
     if (isPlaylist) {
@@ -1892,6 +1896,18 @@ app.post("/api/download", async (req, res) => {
             if (nativeResult && nativeResult.success) {
                 return res.json(nativeResult);
             }
+        } else if (platform === 'youtube') {
+            console.log("YouTube direct extraction requested.");
+            const vredenResult = await extractWithVreden(trimmedUrl);
+            if (vredenResult && vredenResult.success) {
+                return res.json(vredenResult);
+            }
+            console.log("Vreden extraction failed, trying local YT-DLP...");
+            const ytDlpResult = await extractWithYtDlp(trimmedUrl);
+            if (ytDlpResult && ytDlpResult.success) {
+                return res.json(ytDlpResult);
+            }
+            console.log("YouTube specialized extractors failed, continuing to fallbacks...");
         }
         
         console.log("Trying Cobalt API...");
