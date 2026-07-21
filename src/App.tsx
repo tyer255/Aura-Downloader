@@ -15,6 +15,7 @@ import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 
 import { requestNotificationPermission, showNotification } from './lib/notifications';
+import { TermsModal } from './components/TermsModal';
 
 function getThumbnailQualities(thumbnailUrl?: string) {
   if (!thumbnailUrl || /\.(mp4|webm|mkv|mov|avi)(\?|$)/i.test(thumbnailUrl)) return [];
@@ -919,20 +920,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     const driverObj = driver({
       showProgress: true,
       allowClose: true,
-      onPopoverRender: (popover, { driver }) => {
-        if (!popover.footerButtons.querySelector('.driver-skip-btn')) {
-          const skipBtn = document.createElement('button');
-          skipBtn.className = 'driver-skip-btn';
-          skipBtn.innerText = 'Skip Tour';
-          skipBtn.style.cssText = 'background: none; border: none; font-size: 13px; font-weight: 500; cursor: pointer; margin-right: auto; padding: 5px 10px; color: #6b7280; border-radius: 6px; transition: background 0.2s;';
-          skipBtn.onmouseover = () => skipBtn.style.background = '#f3f4f6';
-          skipBtn.onmouseout = () => skipBtn.style.background = 'none';
-          skipBtn.onclick = () => {
-            driver.destroy();
-          };
-          popover.footerButtons.insertBefore(skipBtn, popover.footerButtons.firstChild);
-        }
-      },
+      doneBtnText: 'Finish',
+      nextBtnText: 'Next',
+      prevBtnText: 'Prev',
+      showButtons: ['next', 'previous', 'close'],
       steps: [
         { element: '#tour-tabs', popover: { title: 'Select Platform', description: 'First, choose the platform you want to download from (e.g., Pinterest).', side: "bottom", align: 'start' } },
         { element: '#tour-input', popover: { title: 'Paste Link', description: 'Paste the link of the video or image you want to download.', side: "bottom", align: 'start' } },
@@ -968,6 +959,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         localStorage.setItem('hasSeenTour', 'true');
         setResult(null);
         driverObj.destroy();
+        
+        // After tour completes, show terms modal if they haven't accepted
+        if (!localStorage.getItem('termsAccepted')) {
+          setShowTermsModal(true);
+        }
       }
     });
     driverObj.drive();
@@ -979,6 +975,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       setTimeout(() => {
         startTour();
       }, 1000);
+    } else {
+      // If they have already seen the tour but haven't accepted terms (returning user before this feature was added)
+      if (!localStorage.getItem('termsAccepted')) {
+        setShowTermsModal(true);
+      }
     }
   }, []);
   const [history, setHistory] = useState<{ url: string; title: string; timestamp: number; platform?: Tab; favorite?: boolean; thumbnail?: string; appName?: string }[]>([]);
@@ -1087,6 +1088,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [lightboxMediaList, setLightboxMediaList] = useState<{ url: string; type: "video" | "image"; title?: string; thumbnail?: string }[]>([]);
 
   const [isLight, setIsLight] = useState<boolean>(false);
+  const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState<boolean>(() => {
+    return localStorage.getItem('termsAccepted') === 'true';
+  });
 
   // Save theme selection
   React.useEffect(() => {
@@ -1204,6 +1209,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const handleDownload = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!hasAcceptedTerms) {
+      setShowTermsModal(true);
+      return;
+    }
+    
     if (!navigator.onLine) {
       alert("PLEASE CONNECT YOUR NETWORK FIRST THAN RETRY");
       return;
@@ -1285,6 +1295,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
 
   const downloadFileClientSide = async (url: string, filename: string) => {
+    if (!hasAcceptedTerms) {
+      setShowTermsModal(true);
+      return;
+    }
     try {
       requestNotificationPermission();
       setDownloadProgress(0);
@@ -1402,6 +1416,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   };
 
   const downloadFileDirect = (url: string, filename: string) => {
+    if (!hasAcceptedTerms) {
+      setShowTermsModal(true);
+      return;
+    }
     try {
       requestNotificationPermission();
       setHistoryToast("Direct download started instantly...");
@@ -1437,6 +1455,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   };
 
   const handleDownloadAll = () => {
+    if (!hasAcceptedTerms) {
+      setShowTermsModal(true);
+      return;
+    }
     if (!result || !result.media) return;
     result.media.forEach((item, index) => {
       setTimeout(() => {
@@ -1447,6 +1469,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
   const [downloadingPlaylist, setDownloadingPlaylist] = useState(false);
   const handleDownloadAllPlaylists = async () => {
+    if (!hasAcceptedTerms) {
+      setShowTermsModal(true);
+      return;
+    }
     if (!result || result.mediaType !== 'playlist' || !result.media) return;
     setDownloadingPlaylist(true);
     triggerHistoryToast("Fetching best qualities and downloading...");
@@ -3563,7 +3589,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             "text-sm font-medium transition-colors text-center mt-2 leading-relaxed px-4",
             isLight ? "text-neutral-500" : "text-neutral-500"
           )}>
-            all right reserved by @Mridul-Downloader-app made by = Mridul ❤️
+            All right reserved by @AURA-DOWNLOADER-APP<br/>MADE BY = MRIDUL ❤️
           </p>
         </div>
       </footer>
@@ -3826,6 +3852,18 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       </AnimatePresence>
       <ReloadPrompt isLight={isLight} />
       <NotificationRequest isLight={isLight} />
+      <TermsModal 
+        isOpen={showTermsModal} 
+        isLight={isLight}
+        onAccept={() => {
+          localStorage.setItem('termsAccepted', 'true');
+          setHasAcceptedTerms(true);
+          setShowTermsModal(false);
+        }}
+        onDecline={() => {
+          window.location.href = "about:blank";
+        }}
+      />
 
     </LazyMotion>
 

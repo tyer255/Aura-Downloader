@@ -115,7 +115,7 @@ export function StaticPageView({ title, children, isLight, setIsLight }: { title
                 "text-sm font-medium transition-colors",
                 isLight ? "text-neutral-500" : "text-neutral-500"
               )}>
-                all right reserved by @Mridul-Downloader-app made by = Mridul ❤️
+                All right reserved by @AURA-DOWNLOADER-APP<br/>MADE BY = MRIDUL ❤️
               </p>
             </div>
           </footer>

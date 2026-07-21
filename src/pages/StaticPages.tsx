@@ -86,7 +86,7 @@ export function DMCA() {
       
       <p className="mb-4">If you are a copyright owner and believe that any content accessed through our service infringes upon your copyrights, please note that we cannot remove content from third-party platforms (like YouTube, TikTok, Instagram, etc.). You must contact the respective platform to have the content removed at the source.</p>
       
-      <p className="mb-4">However, if you wish to block our tool from processing URLs leading to your copyrighted material, you may send a DMCA notice to our legal/DMCA email address at <strong>legal@aura-downloader.com</strong>, and we will implement filters to prevent downloading from those specific URLs. Please include: identification of the copyrighted work, the specific URL(s) processed through the tool, your contact information, and a good-faith statement.</p>
+      <p className="mb-4">However, if you wish to block our tool from processing URLs leading to your copyrighted material, you may send a DMCA notice to our legal/DMCA email address at <strong>mridulnareda56@gmail.com</strong>, and we will implement filters to prevent downloading from those specific URLs. Please include: identification of the copyrighted work, the specific URL(s) processed through the tool, your contact information, and a good-faith statement.</p>
     </StaticPageView>
   );
 }
@@ -114,8 +114,8 @@ export function Contact() {
           Visit Our YouTube Channel
         </a>
         <h3 className="font-bold text-lg mb-2">Email Contact</h3>
-        <p className="mb-2">Email: <a href="mailto:support@aura-downloader.com" className="text-blue-500 hover:underline">support@aura-downloader.com</a></p>
-        <p>Legal / DMCA inquiries: <a href="mailto:legal@aura-downloader.com" className="text-blue-500 hover:underline">legal@aura-downloader.com</a></p>
+        <p className="mb-2">Email: <a href="mailto:mridulnareda56@gmail.com" className="text-blue-500 hover:underline">mridulnareda56@gmail.com</a></p>
+        <p>Legal / DMCA inquiries: <a href="mailto:mridulnareda56@gmail.com" className="text-blue-500 hover:underline">mridulnareda56@gmail.com</a></p>
       </div>
     </StaticPageView>
   );
