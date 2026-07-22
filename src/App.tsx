@@ -11,8 +11,6 @@ import { subscribeUserToPush } from './push';
 
 import { DownloadResult } from './types';
 import clsx from 'clsx';
-import { driver } from "driver.js";
-import "driver.js/dist/driver.css";
 
 import { requestNotificationPermission, showNotification } from './lib/notifications';
 import { TermsModal } from './components/TermsModal';
@@ -72,6 +70,86 @@ export interface ProcessedQuality {
   ext: string;
   size?: string;
   isAudio?: boolean;
+}
+
+function getMediaKey(item: any): string | null {
+  if (!item || typeof item !== 'object') return null;
+
+  // 1. Specific unique media item ID (mediaId, id, child_id, pk, media_id, nodeId)
+  const directId = item.mediaId || item.id || item.child_id || item.pk || item.media_id || item.nodeId || item.node_id;
+  if (directId !== undefined && directId !== null) {
+    const idStr = String(directId).trim();
+    if (idStr) return `id:${idStr}`;
+  }
+
+  // 2. Shortcode + position/index for carousel slides
+  const idx = item.index ?? item.position;
+  if (item.shortcode && idx !== undefined && idx !== null) {
+    const scStr = String(item.shortcode).trim();
+    if (scStr) return `shortcode_idx:${scStr}_${idx}`;
+  }
+
+  // 3. Exact download / media / display / url string
+  const rawUrl = item.downloadUrl || item.mediaUrl || item.displayUrl || item.url;
+  if (rawUrl && typeof rawUrl === 'string') {
+    let cleanUrl = rawUrl.trim();
+    if (cleanUrl.includes('/api/proxy-download')) {
+      try {
+        const match = cleanUrl.match(/[?&]url=([^&]+)/);
+        if (match && match[1]) {
+          cleanUrl = decodeURIComponent(match[1]);
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+    if (cleanUrl) return `url:${cleanUrl}`;
+  }
+
+  // 4. Exact thumbnail URL
+  const rawThumb = item.thumbnailUrl || item.thumbnail;
+  if (rawThumb && typeof rawThumb === 'string') {
+    let cleanThumb = rawThumb.trim();
+    if (cleanThumb.includes('/api/proxy-download')) {
+      try {
+        const match = cleanThumb.match(/[?&]url=([^&]+)/);
+        if (match && match[1]) {
+          cleanThumb = decodeURIComponent(match[1]);
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+    if (cleanThumb) return `thumb:${cleanThumb}`;
+  }
+
+  // NEVER collapse items based on shortcode alone or parent post URL
+  return null;
+}
+
+export function deduplicateMediaItems<T = any>(items: T[]): T[] {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const seenKeys = new Set<string>();
+  const uniqueItems: T[] = [];
+
+  for (const item of items) {
+    if (!item) continue;
+
+    const key = getMediaKey(item);
+
+    if (!key) {
+      uniqueItems.push(item);
+      continue;
+    }
+
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      uniqueItems.push(item);
+    }
+  }
+
+  return uniqueItems;
 }
 
 function sanitizeQualities(qualities?: any[], fallbackUrl?: string): ProcessedQuality[] {
@@ -634,8 +712,10 @@ function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }
   }, [fetched, loading, item.url]);
 
   return (
-    <div ref={containerRef} className={clsx("p-4 rounded-xl flex flex-col sm:flex-row gap-4 items-center shadow border transition-all", isLight ? "bg-white border-neutral-200" : "bg-white/5 border-white/10")}>
-       <img src={item.thumbnail} alt="thumbnail" className="w-24 h-16 sm:w-32 sm:h-20 object-cover rounded-lg shrink-0 bg-black" />
+    <div ref={containerRef} className={clsx("p-4 rounded-xl flex flex-col sm:flex-row gap-4 items-center shadow border transition-all group", isLight ? "bg-white border-neutral-200 hover:border-blue-400/50" : "bg-white/5 border-white/10 hover:border-blue-500/50")}>
+       <div className="w-24 h-16 sm:w-32 sm:h-20 shrink-0 overflow-hidden rounded-lg bg-black">
+         <img src={item.thumbnail} alt="thumbnail" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+       </div>
        <div className="flex-1 min-w-0 w-full text-left">
          <h4 className={clsx("font-bold truncate text-sm sm:text-base", isLight ? "text-neutral-900" : "text-white")} title={item.title}>{item.title}</h4>
          <div className="mt-2 flex items-center gap-2">
@@ -1065,84 +1145,13 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   };
 
   const [isHistorySpinning, setIsHistorySpinning] = useState(false);
-  const [isTourActive, setIsTourActive] = useState(false);
   
-  const startTour = () => {
-    setIsTourActive(true);
-    const driverObj = driver({
-      showProgress: true,
-      allowClose: true,
-      doneBtnText: 'Finish',
-      nextBtnText: 'Next',
-      prevBtnText: 'Prev',
-      showButtons: ['next', 'previous', 'close'],
-      steps: [
-        { element: '#tour-tabs', popover: { title: 'Select Platform', description: 'First, choose the platform you want to download from (e.g., Pinterest).', side: "bottom", align: 'start' } },
-        { element: '#tour-input', popover: { title: 'Paste Link', description: 'Paste the link of the video or image you want to download.', side: "bottom", align: 'start' } },
-        { 
-          element: '#tour-search-button', 
-          popover: { 
-            title: 'Search', 
-            description: 'Click the search button to fetch the media.', 
-            side: "bottom", align: 'start',
-            onNextClick: () => {
-              // Mock a result to show the next steps
-              setResult({
-                success: true,
-                title: "Example Media Result",
-                mediaType: "video",
-                url: "https://example.com/video.mp4",
-                thumbnail: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500",
-                qualities: [
-                  { label: "HD Video", url: "https://example.com/video.mp4", ext: "mp4", size: "10 MB" }
-                ]
-              });
-              
-              // Poll for theresults element to mount before moving to next step
-              let attempts = 0;
-              const checkInterval = setInterval(() => {
-                attempts++;
-                const el = document.getElementById('tour-results');
-                if (el || attempts > 25) {
-                  clearInterval(checkInterval);
-                  setTimeout(() => {
-                    driverObj.moveNext();
-                  }, 150);
-                }
-              }, 50);
-            }
-          } 
-        },
-        { element: '#tour-results', popover: { title: 'Check Results', description: 'Check the results at the bottom.', side: "top", align: 'start' } },
-        { element: '#tour-direct-download', popover: { title: 'Direct Download', description: 'Click this button for an instant direct download from the source.', side: "top", align: 'start' } },
-        { element: '#tour-regular-download', popover: { title: 'Wait a bit', description: 'Click this button to download through our secure server if the direct download fails.', side: "top", align: 'start' } },
-      ],
-      onDestroyStarted: () => {
-        localStorage.setItem('hasSeenTour', 'true');
-        setResult(null);
-        driverObj.destroy();
-        setIsTourActive(false);
-        
-        // After tour completes, show terms modal if they haven't accepted
-        if (!localStorage.getItem('termsAccepted')) {
-          setShowTermsModal(true);
-        }
-      }
-    });
-    driverObj.drive();
-  };
-
   useEffect(() => {
-    const hasSeenTour = localStorage.getItem('hasSeenTour');
-    if (!hasSeenTour) {
+    // Show terms modal on load if they haven't accepted yet
+    if (!localStorage.getItem('termsAccepted')) {
       setTimeout(() => {
-        startTour();
-      }, 1000);
-    } else {
-      // If they have already seen the tour but haven't accepted terms (returning user before this feature was added)
-      if (!localStorage.getItem('termsAccepted')) {
         setShowTermsModal(true);
-      }
+      }, 1000);
     }
   }, []);
   const [history, setHistory] = useState<{ url: string; title: string; timestamp: number; platform?: Tab; favorite?: boolean; thumbnail?: string; appName?: string }[]>([]);
@@ -1414,6 +1423,26 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       });
       const data = await res.json();
       
+      // Filter out duplicate media items before updating state or history
+      if (data && data.media && Array.isArray(data.media)) {
+        console.log("Raw API Items:", data.media.length);
+        const originalLength = data.media.length;
+        data.media = deduplicateMediaItems(data.media);
+        console.log("Parsed Items:", originalLength);
+        console.log("After Deduplication:", data.media.length);
+        console.log("Rendered Items:", data.media.length);
+        
+        if (data.media.length === 1) {
+          const firstItem = data.media[0];
+          if (firstItem) {
+            if (firstItem.url && !data.url) data.url = firstItem.url;
+            if ((firstItem.thumbnail || firstItem.url) && !data.thumbnail) {
+              data.thumbnail = firstItem.thumbnail || firstItem.url;
+            }
+          }
+        }
+      }
+      
       // Override for broken profiles to prevent ugly empty UI without touching backend logic
       if (data.mediaType === 'profile' && !data.profile?.avatarUrl && !data.profile?.bannerUrl && (!data.profile?.displayName || data.profile?.displayName === "Social Media Post" || data.profile?.displayName.includes("404") || data.profile?.displayName.includes("Not Found"))) {
         data.success = false;
@@ -1623,7 +1652,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       return;
     }
     if (!result || !result.media) return;
-    result.media.forEach((item, index) => {
+    const mediaList = deduplicateMediaItems(result.media);
+    mediaList.forEach((item, index) => {
       setTimeout(() => {
         downloadFileClientSide(item.url, (result.title || "media").slice(0, 30).trim() + "_item_" + (index + 1) + (item.type === "video" ? ".mp4" : ".jpg"));
       }, index * 600); // delay to prevent overwhelming
@@ -1639,8 +1669,9 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     if (!result || result.mediaType !== 'playlist' || !result.media) return;
     setDownloadingPlaylist(true);
     triggerHistoryToast("Fetching best qualities and downloading...");
-    for (let i = 0; i < result.media.length; i++) {
-      const item = result.media[i];
+    const playlistMedia = deduplicateMediaItems(result.media);
+    for (let i = 0; i < playlistMedia.length; i++) {
+      const item = playlistMedia[i];
       try {
         const res = await fetch('/api/download', {
           method: 'POST',
@@ -2951,122 +2982,127 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   )}
 
                   {/* PLAYLIST TEMPLATE */}
-                  {result.mediaType === 'playlist' && result.media && result.media.length > 0 && (
-                    <div className="space-y-6">
-                      <div className={clsx(
-                        "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-3xl backdrop-blur-md border transition-colors",
-                        isLight ? "bg-white border-neutral-200 shadow-md" : "bg-white/5 border border-white/10"
-                      )}>
-                        <div>
-                          <div className="flex items-center gap-2 text-emerald-400 mb-1">
-                            <CheckCircle2 className="w-5 h-5" />
-                            <span className="font-semibold text-sm tracking-wide">PLAYLIST READY</span>
+                  {result.mediaType === 'playlist' && result.media && result.media.length > 0 && (() => {
+                    const uniquePlaylistMedia = deduplicateMediaItems(result.media);
+                    if (uniquePlaylistMedia.length === 0) return null;
+                    return (
+                      <div className="space-y-6">
+                        <div className={clsx(
+                          "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-3xl backdrop-blur-md border transition-colors",
+                          isLight ? "bg-white border-neutral-200 shadow-md" : "bg-white/5 border border-white/10"
+                        )}>
+                          <div>
+                            <div className="flex items-center gap-2 text-emerald-400 mb-1">
+                              <CheckCircle2 className="w-5 h-5" />
+                              <span className="font-semibold text-sm tracking-wide">PLAYLIST READY</span>
+                            </div>
+                            <h3 className={clsx("text-xl font-bold line-clamp-1 transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                              {result.title || "YouTube Playlist"}
+                            </h3>
+                            <p className={clsx("text-xs transition-colors mt-1", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                              {uniquePlaylistMedia.length} videos extracted
+                            </p>
                           </div>
-                          <h3 className={clsx("text-xl font-bold line-clamp-1 transition-colors", isLight ? "text-neutral-900" : "text-white")}>
-                            {result.title || "YouTube Playlist"}
-                          </h3>
-                          <p className={clsx("text-xs transition-colors mt-1", isLight ? "text-neutral-500" : "text-neutral-400")}>
-                            {result.media.length} videos extracted
-                          </p>
-                        </div>
-                        <button 
-                          onClick={handleDownloadAllPlaylists}
-                          disabled={downloadingPlaylist}
-                          className={clsx(
-                            "px-6 py-3 rounded-full font-bold transition-all shadow-lg flex items-center gap-2 text-sm shrink-0 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed",
-                            isLight ? "bg-neutral-950 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black shadow-white/10"
-                          )}
-                        >
-                          {downloadingPlaylist ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} 
-                          {downloadingPlaylist ? "Downloading..." : "Download All Playlists"}
-                        </button>
-                      </div>
-
-                      <div className="flex flex-col gap-4">
-                        {result.media.map((item, index) => (
-                          <PlaylistItem 
-                            key={index}
-                            item={item}
-                            index={index}
-                            isLight={isLight}
-                            onDownloadQueue={(url: string, filename: string) => {
-                               downloadFileClientSide(url, filename);
-                            }}
-                            activeDownloads={activeDownloads} 
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CAROUSEL / COMMUNITY MULTI-PHOTO TEMPLATE */}
-                  {result.mediaType === 'carousel' && result.media && result.media.length > 0 && (
-                    <div className="space-y-6">
-                      
-                      {/* Top Action Control Panel */}
-                      <div className={clsx(
-                        "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-3xl backdrop-blur-md border transition-colors",
-                        isLight ? "bg-white border-neutral-200 shadow-md" : "bg-white/5 border border-white/10"
-                      )}>
-                        <div>
-                          <div className="flex items-center gap-2 text-emerald-400 mb-1">
-                            <CheckCircle2 className="w-5 h-5" />
-                            <span className="font-semibold text-sm tracking-wide">CAROUSEL ASSETS READY</span>
-                          </div>
-                          <h3 className={clsx("text-xl font-bold line-clamp-1 transition-colors", isLight ? "text-neutral-900" : "text-white")}>
-                            {result.title || "Multi-File Album"}
-                          </h3>
-                          <p className={clsx("text-xs transition-colors mt-1", isLight ? "text-neutral-500" : "text-neutral-400")}>
-                            {result.media.length} items extracted from URL link
-                          </p>
-                        </div>
-                        <button 
-                          onClick={handleDownloadAll}
-                          className={clsx(
-                            "px-6 py-3 rounded-full font-bold transition-all shadow-lg flex items-center gap-2 text-sm shrink-0 uppercase tracking-wider cursor-pointer",
-                            isLight ? "bg-neutral-950 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black shadow-white/10"
-                          )}
-                        >
-                          <Download className="w-4 h-4" /> Download All
-                        </button>
-                      </div>
-
-                      {/* Photo/Video Grid List */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                        {result.media.map((item, index) => (
-                          <div 
-                            key={index} 
+                          <button 
+                            onClick={handleDownloadAllPlaylists}
+                            disabled={downloadingPlaylist}
                             className={clsx(
-                              "border rounded-2xl overflow-hidden shadow-xl flex flex-col group hover:scale-[1.02] transition-all",
-                              isLight ? "bg-white border-neutral-200" : "bg-white/[0.03] border-white/10 backdrop-blur-xl"
+                              "px-6 py-3 rounded-full font-bold transition-all shadow-lg flex items-center gap-2 text-sm shrink-0 uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed",
+                              isLight ? "bg-neutral-950 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black shadow-white/10"
                             )}
                           >
-                            
-                            {/* Card Display Container */}
+                            {downloadingPlaylist ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} 
+                            {downloadingPlaylist ? "Downloading..." : "Download All Playlists"}
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col gap-4">
+                          {uniquePlaylistMedia.map((item, index) => (
+                            <PlaylistItem 
+                              key={index}
+                              item={item}
+                              index={index}
+                              isLight={isLight}
+                              onDownloadQueue={(url: string, filename: string) => {
+                                 downloadFileClientSide(url, filename);
+                              }}
+                              activeDownloads={activeDownloads} 
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* CAROUSEL / COMMUNITY MULTI-PHOTO TEMPLATE */}
+                  {result.mediaType === 'carousel' && result.media && result.media.length > 0 && (() => {
+                    const uniqueCarouselMedia = deduplicateMediaItems(result.media);
+                    if (uniqueCarouselMedia.length === 0) return null;
+                    return (
+                      <div className="space-y-6">
+                        
+                        {/* Top Action Control Panel */}
+                        <div className={clsx(
+                          "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-3xl backdrop-blur-md border transition-colors",
+                          isLight ? "bg-white border-neutral-200 shadow-md" : "bg-white/5 border border-white/10"
+                        )}>
+                          <div>
+                            <div className="flex items-center gap-2 text-emerald-400 mb-1">
+                              <CheckCircle2 className="w-5 h-5" />
+                              <span className="font-semibold text-sm tracking-wide">CAROUSEL ASSETS READY</span>
+                            </div>
+                            <h3 className={clsx("text-xl font-bold line-clamp-1 transition-colors", isLight ? "text-neutral-900" : "text-white")}>
+                              {result.title || "Multi-File Album"}
+                            </h3>
+                            <p className={clsx("text-xs transition-colors mt-1", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                              {uniqueCarouselMedia.length} items extracted from URL link
+                            </p>
+                          </div>
+                          <button 
+                            onClick={handleDownloadAll}
+                            className={clsx(
+                              "px-6 py-3 rounded-full font-bold transition-all shadow-lg flex items-center gap-2 text-sm shrink-0 uppercase tracking-wider cursor-pointer",
+                              isLight ? "bg-neutral-950 hover:bg-neutral-800 text-white" : "bg-white hover:bg-neutral-200 text-black shadow-white/10"
+                            )}
+                          >
+                            <Download className="w-4 h-4" /> Download All
+                          </button>
+                        </div>
+
+                        {/* Photo/Video Grid List */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                          {uniqueCarouselMedia.map((item, index) => (
                             <div 
-                              className="aspect-square bg-black relative overflow-hidden flex items-center justify-center cursor-zoom-in group-hover:opacity-90 transition-opacity"
-                              onClick={() => {
-                                if (result.media) {
-                                  const list = result.media.map((m, i) => ({
+                              key={index} 
+                              className={clsx(
+                                "border rounded-2xl overflow-hidden shadow-xl flex flex-col group hover:scale-[1.02] transition-all",
+                                isLight ? "bg-white border-neutral-200" : "bg-white/[0.03] border-white/10 backdrop-blur-xl"
+                              )}
+                            >
+                              
+                              {/* Card Display Container */}
+                              <div 
+                                className="aspect-square bg-black relative overflow-hidden flex items-center justify-center cursor-zoom-in group-hover:opacity-90 transition-opacity"
+                                onClick={() => {
+                                  const list = uniqueCarouselMedia.map((m, i) => ({
                                     url: m.url,
                                     type: m.type,
                                     title: `${result.title || 'Media'} - Item #${i + 1}`
                                   }));
                                   setLightboxMediaList(list);
                                   setLightboxIndex(index);
-                                }
-                              }}
-                            >
+                                }}
+                              >
                               {item.type === 'video' ? (
-                                <div className="w-full h-full relative">
+                                <div className="w-full h-full relative group/img">
                                   {item.thumbnail ? (
-                                    <img src={getProxiedUrl(item.thumbnail)} alt={`Video slide ${index + 1}`} className="w-full h-full object-cover opacity-80"  loading="lazy" decoding="async" width="400" height="400" />
+                                    <img src={getProxiedUrl(item.thumbnail)} alt={`Video slide ${index + 1}`} className="w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform duration-500"  loading="lazy" decoding="async" width="400" height="400" />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center bg-neutral-900">
                                       <Film className="w-10 h-10 text-neutral-600" />
                                     </div>
                                   )}
-                                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
                                     <Tv className="w-8 h-8 text-white/80 animate-pulse animate-duration-1000" />
                                   </div>
                                 </div>
@@ -3074,7 +3110,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                 <img 
                                   src={getProxiedUrl(item.url)} 
                                   alt={`Image slide ${index + 1}`} 
-                                  className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
+                                  className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
                                   referrerPolicy="no-referrer"
                                   onError={(e) => {
                                     (e.target as HTMLImageElement).src = "";
@@ -3225,7 +3261,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       </div>
 
                     </div>
-                  )}
+                  );
+                })()}
 
                   {/* STANDARD SINGLE FILE TEMPLATE */}
                   {result.mediaType !== 'profile' && result.mediaType !== 'carousel' && (
@@ -3335,7 +3372,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           <img 
                             src={getProxiedUrl(result.thumbnail)} 
                             alt="Media thumbnail" 
-                            className="w-full h-full object-cover opacity-90 group-hover/thumb:scale-105 group-hover/thumb:opacity-100 transition-all duration-300"
+                            className="w-full h-full object-cover opacity-90 group-hover/thumb:scale-105 group-hover/thumb:opacity-100 transition-transform duration-500 ease-out"
                             referrerPolicy="no-referrer"
                             onError={(e) => {
                               (e.target as HTMLImageElement).src = "";
@@ -3574,11 +3611,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           <div className={clsx("mt-6 border-t pt-4 transition-colors w-full", isLight ? "border-neutral-200" : "border-white/10")}>
                             <div className="flex flex-col sm:flex-row gap-4">
                               <div className="w-full sm:w-1/3 flex-shrink-0">
-                                <div className="aspect-video rounded-xl overflow-hidden bg-black/10 border border-white/10 relative">
+                                <div className="aspect-video rounded-xl overflow-hidden bg-black/10 border border-white/10 relative group/thumb">
                                   <img 
                                     src={getProxiedUrl(result.thumbnail)} 
                                     alt="Thumbnail preview" 
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-110"
                                     loading="lazy"
                                   />
                                 </div>
@@ -3648,11 +3685,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     </p>
                     {(result.thumbnail || result.title) && (
                       <div className={clsx(
-                        "mt-4 p-4 rounded-xl border flex gap-4 items-center bg-black/20",
+                        "mt-4 p-4 rounded-xl border flex gap-4 items-center bg-black/20 group",
                         isLight ? "border-red-200" : "border-red-500/20"
                       )}>
                         {result.thumbnail && (
-                          <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10">
+                          <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 group-hover:scale-110 transition-transform">
                             <img src={getProxiedUrl(result.thumbnail)} alt="Thumbnail" className="w-full h-full object-cover"  loading="lazy" decoding="async" width="400" height="400" />
                           </div>
                         )}

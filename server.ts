@@ -270,9 +270,10 @@ const execAsync = utilSync.promisify(exec);
 
 async function extractWithVreden(url: string) {
   const originalConsoleError = console.error;
+  const originalConsoleLog = console.log;
   console.error = () => {};
+  console.log = () => {};
   try {
-    console.log(`Extracting YouTube video with @vreden/youtube_scraper...`);
     const result = await vredenYtmp4(url);
     if (result && result.status && result.download && result.download.status) {
       const downloadInfo = result.download;
@@ -313,6 +314,7 @@ async function extractWithVreden(url: string) {
     // Ignore internal scraper errors
   } finally {
     console.error = originalConsoleError;
+    console.log = originalConsoleLog;
   }
   return null;
 }
@@ -1528,22 +1530,51 @@ async function extractWithCobalt(url: string) {
         title = item.caption.text.substring(0, 50);
       }
       
+      if (item.carousel_media && item.carousel_media.length > 0) {
+        const items = item.carousel_media.map((child: any) => {
+          let url = "";
+          let type = "image";
+          let thumb = "";
+          
+          if (child.video_versions && child.video_versions.length > 0) {
+             url = child.video_versions[0].url;
+             type = "video";
+          } else if (child.image_versions2 && child.image_versions2.candidates && child.image_versions2.candidates.length > 0) {
+             url = child.image_versions2.candidates[0].url;
+          }
+          
+          if (child.image_versions2 && child.image_versions2.candidates && child.image_versions2.candidates.length > 0) {
+             thumb = child.image_versions2.candidates[0].url;
+          } else {
+             thumb = url;
+          }
+          
+          return {
+             type: type,
+             url: `/api/proxy-download?url=${encodeURIComponent(url)}&filename=instagram_${type}`,
+             thumbnail: thumb,
+             id: child.id || child.pk
+          };
+        });
+        
+        if (items.length > 0 && items[0].url) {
+           return {
+              success: true,
+              title: title || "Instagram Carousel",
+              url: items[0].url,
+              thumbnail: items[0].thumbnail,
+              mediaType: "carousel",
+              media: items,
+              source: "rapidapi"
+           };
+        }
+      }
+      
       // Video
       if (item.video_versions && item.video_versions.length > 0) {
         mediaUrl = item.video_versions[0].url;
         mediaType = "video";
       } 
-      // Carousel (first video or image)
-      else if (item.carousel_media && item.carousel_media.length > 0) {
-        const first = item.carousel_media[0];
-        if (first.video_versions && first.video_versions.length > 0) {
-          mediaUrl = first.video_versions[0].url;
-          mediaType = "video";
-        } else if (first.image_versions2 && first.image_versions2.candidates && first.image_versions2.candidates.length > 0) {
-          mediaUrl = first.image_versions2.candidates[0].url;
-          mediaType = "image";
-        }
-      }
       // Single Image
       else if (item.image_versions2 && item.image_versions2.candidates && item.image_versions2.candidates.length > 0) {
         mediaUrl = item.image_versions2.candidates[0].url;
@@ -1553,8 +1584,6 @@ async function extractWithCobalt(url: string) {
       // Thumbnail
       if (item.image_versions2 && item.image_versions2.candidates && item.image_versions2.candidates.length > 0) {
          thumbnail = item.image_versions2.candidates[0].url;
-      } else if (item.carousel_media && item.carousel_media.length > 0 && item.carousel_media[0].image_versions2) {
-         thumbnail = item.carousel_media[0].image_versions2.candidates[0].url;
       }
     }
     
@@ -1635,6 +1664,34 @@ async function extractInstagramRepoBackend(url: string) {
        };
     }
     
+    if (media.edge_sidecar_to_children && media.edge_sidecar_to_children.edges.length > 0) {
+       const children = media.edge_sidecar_to_children.edges.map((e: any) => e.node);
+       const items = children.map((child: any) => {
+          let url = child.display_url;
+          let type = "image";
+          if (child.is_video) {
+             url = child.video_url;
+             type = "video";
+          }
+          return {
+             type: type,
+             url: `/api/proxy-download?url=${encodeURIComponent(url)}&filename=instagram_${type}`,
+             thumbnail: child.display_url || url,
+             id: child.id
+          };
+       });
+       
+       return {
+          success: true,
+          title: "Instagram Carousel",
+          url: items[0].url,
+          thumbnail: items[0].thumbnail,
+          mediaType: "carousel",
+          media: items,
+          source: "repo_backend"
+       };
+    }
+    
     let mediaUrl = "";
     let mediaType = "video";
     let thumbnail = media.display_url || "";
@@ -1642,15 +1699,6 @@ async function extractInstagramRepoBackend(url: string) {
     if (media.is_video) {
        mediaUrl = media.video_url;
        mediaType = "video";
-    } else if (media.edge_sidecar_to_children && media.edge_sidecar_to_children.edges.length > 0) {
-       const first = media.edge_sidecar_to_children.edges[0].node;
-       if (first.is_video) {
-          mediaUrl = first.video_url;
-          mediaType = "video";
-       } else {
-          mediaUrl = first.display_url;
-          mediaType = "image";
-       }
     } else {
        mediaUrl = media.display_url;
        mediaType = "image";
@@ -1910,17 +1958,29 @@ app.post("/api/download", async (req, res) => {
             console.log("YouTube specialized extractors failed, continuing to fallbacks...");
         }
         
-        console.log("Trying Cobalt API...");
-        const cobaltResult = await extractWithCobalt(trimmedUrl);
-        if (cobaltResult && cobaltResult.success) {
-           return res.json(cobaltResult);
-        }
-
         if (trimmedUrl.includes("instagram.com") || trimmedUrl.includes("instagr.am")) {
+           console.log("Trying Instagram RapidAPI...");
+           const rapidResult = await extractInstagramRapidAPI(trimmedUrl);
+           if (rapidResult && rapidResult.success) {
+               return res.json(rapidResult);
+           }
+           
+           console.log("Trying Instagram RepoBackend...");
+           const repoResult = await extractInstagramRepoBackend(trimmedUrl);
+           if (repoResult && repoResult.success) {
+               return res.json(repoResult);
+           }
+
            const btchResult = await extractInstagramBtch(trimmedUrl);
            if (btchResult && btchResult.success) {
                return res.json(btchResult);
            }
+        }
+        
+        console.log("Trying Cobalt API...");
+        const cobaltResult = await extractWithCobalt(trimmedUrl);
+        if (cobaltResult && cobaltResult.success) {
+           return res.json(cobaltResult);
         }
         
         if (platform === 'youtube') {
