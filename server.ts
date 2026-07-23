@@ -7,6 +7,9 @@ import axios from 'axios';
 import { exec, spawn } from 'child_process';
 import utilSync from 'util';
 import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -1069,6 +1072,22 @@ export async function startServer() {
 const app = express();
   const PORT = process.env.PORT || 3000;
 
+  // Security Middlewares for Production
+  app.use(helmet({
+    crossOriginResourcePolicy: false, // allow images to load
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: false // disabled temporarily for dev/preview iframe
+  }));
+  app.use(cors());
+
+  // Rate Limiting
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // limit each IP to 1000 requests per windowMs
+    message: { success: false, message: "Too many requests, please try again later." }
+  });
+  app.use("/api/", limiter);
+
   app.use(express.json());
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -2054,7 +2073,17 @@ app.post("/api/download", async (req, res) => {
 
     try {
       console.log(`Dynamic YouTube streaming requested for: ${videoUrl} at quality: ${quality}`);
-      const result = await vredenYtmp4(videoUrl, quality);
+      const originalConsoleError = console.error;
+      const originalConsoleLog = console.log;
+      console.error = () => {};
+      console.log = () => {};
+      let result;
+      try {
+        result = await vredenYtmp4(videoUrl, quality);
+      } catch(e) {} finally {
+        console.error = originalConsoleError;
+        console.log = originalConsoleLog;
+      }
       if (result && result.status && result.download && result.download.url) {
         const directUrl = result.download.url;
         console.log(`Successfully fetched direct URL for streaming: ${directUrl}`);

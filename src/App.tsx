@@ -1416,6 +1416,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     try {
       const detectedPlatform = detectPlatformFromUrl(url.trim()) || activeTab;
 
+      // Internal Production Backend API endpoint usage
+      // This routes directly to the existing robust server backend (server.ts)
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
