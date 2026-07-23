@@ -1097,6 +1097,20 @@ const app = express();
   });
 
   
+  app.get("/api/health", (req, res) => {
+    res.json({
+      success: true,
+      message: "API is working"
+    });
+  });
+
+  app.get("/api/download", (req, res) => {
+    res.status(405).json({
+      success: false,
+      message: "This endpoint requires a POST request with a JSON body containing a 'url' field."
+    });
+  });
+
 app.get("/api/env-debug", (req, res) => {
     res.json({
         keys: Object.keys(process.env).filter(k => k.toLowerCase().includes("rapid"))
