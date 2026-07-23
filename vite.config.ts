@@ -11,7 +11,8 @@ export default defineConfig({
       manifest: false, // We already have manifest.json in public/
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-      importScripts: ['/push-sw.js']
+        navigateFallbackDenylist: [/^\/api/],
+        importScripts: ['/push-sw.js']
       }
     })
   ],
