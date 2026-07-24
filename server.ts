@@ -1069,7 +1069,8 @@ class ThrottleStream extends Transform {
 }
 
 export async function startServer() {
-const app = express();
+  const app = express();
+  app.set("trust proxy", 1);
   const PORT = process.env.PORT || 3000;
 
   // Security Middlewares for Production
@@ -1079,14 +1080,6 @@ const app = express();
     contentSecurityPolicy: false // disabled temporarily for dev/preview iframe
   }));
   app.use(cors());
-
-  // Rate Limiting
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // limit each IP to 1000 requests per windowMs
-    message: { success: false, message: "Too many requests, please try again later." }
-  });
-  app.use("/api/", limiter);
 
   app.use(express.json());
   app.use((req, res, next) => {
