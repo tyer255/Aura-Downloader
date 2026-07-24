@@ -163,12 +163,12 @@ export function TermsModal({ isOpen, isLight, onAccept, onDecline }: TermsModalP
                     onChange={(e) => setAgreed(e.target.checked)}
                   />
                   <div className={clsx(
-                    "w-5.5 h-5.5 rounded-lg border-2 transition-all duration-300 flex items-center justify-center shadow-sm",
+                    "w-6 h-6 rounded-lg border-2 transition-all duration-300 flex items-center justify-center shadow-sm shrink-0",
                     agreed 
-                      ? "border-blue-500 bg-blue-500 shadow-blue-500/30 scale-105" 
+                      ? "border-blue-500 bg-blue-600 shadow-blue-500/30 scale-105" 
                       : isLight 
-                        ? "border-neutral-300 bg-white group-hover/checkbox:border-blue-400" 
-                        : "border-white/20 bg-neutral-900 group-hover/checkbox:border-blue-400"
+                        ? "border-neutral-400 bg-white group-hover/checkbox:border-blue-500" 
+                        : "border-neutral-500 bg-neutral-900 group-hover/checkbox:border-blue-400"
                   )}>
                     <AnimatePresence>
                       {agreed && (

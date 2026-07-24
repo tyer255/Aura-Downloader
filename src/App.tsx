@@ -2345,7 +2345,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   )}
                 >
                   <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                    <AlertCircle className="w-5.5 h-5.5 text-amber-500 shrink-0 mt-0.5" />
+                    <AlertCircle className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <h4 className="font-extrabold text-base tracking-tight mb-0.5 truncate">{validationError.title}</h4>
                       <p className={clsx("text-xs font-medium leading-relaxed break-words", isLight ? "text-neutral-600" : "text-neutral-400")}>
