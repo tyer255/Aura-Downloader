@@ -1412,6 +1412,7 @@ async function extractInstagramBtch(url: string) {
     if (!sc) return null;
     
     const res = await fetch(`https://www.instagram.com/p/${sc}/embed/captioned/`, {
+      signal: AbortSignal.timeout(5000),
       headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1" }
     });
     const html = await res.text();
@@ -1725,6 +1726,7 @@ async function extractInstagramRepoBackend(url: string) {
     const graphqlUrl = `https://www.instagram.com/graphql/query/?doc_id=24368985919464652&variables=${encodeURIComponent(`{"shortcode":"${shortcode}","fetch_tagged_user_count":null,"hoisted_comment_id":null,"hoisted_reply_id":null}`)}`;
     
     const response = await fetch(graphqlUrl, {
+      signal: AbortSignal.timeout(5000),
       method: 'GET',
       headers: {
           accept: '*/*',
