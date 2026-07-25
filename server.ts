@@ -2024,10 +2024,19 @@ app.post("/api/download", async (req, res) => {
             racePromises.push(extractWithYtDlp(trimmedUrl));
         }
 
-        racePromises.push(extractWithAI(trimmedUrl, false));
+        // We only use AI as a fallback now to avoid returning low-quality metadata
+        // when a real extractor might succeed a few seconds later.
 
         console.log("Racing " + racePromises.length + " extractors for speed...");
-        const raceResult = await fastRace(racePromises);
+        let raceResult = await fastRace(racePromises);
+        
+        if (!raceResult || !raceResult.success) {
+            console.log("Main extractors failed, attempting AI fallback...");
+            const aiFallback = await extractWithAI(trimmedUrl, false);
+            if (aiFallback && aiFallback.success) {
+                raceResult = aiFallback;
+            }
+        }
         
         if (raceResult && raceResult.success) {
             return res.json(raceResult);
@@ -2119,12 +2128,9 @@ app.post("/api/download", async (req, res) => {
       
       res.setHeader("Cache-Control", "public, max-age=86400");
       
-      if (response.body) {
-         response.body.pipe(res);
-      } else {
-         const buffer = await response.buffer();
-         res.send(buffer);
-      }
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      res.send(buffer);
     } catch (error: any) {
       console.error("Proxy image error:", error.message);
       res.status(500).send("Error proxying image");

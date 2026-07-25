@@ -3678,12 +3678,16 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                 )}>
                   <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="font-bold text-lg mb-1">Extraction Failed</h4>
+                    <h4 className="font-bold text-lg mb-1">
+                      {result.error?.includes("Instagram blocks our cloud servers") ? "Action Required: API Key Missing" : "Extraction Failed"}
+                    </h4>
                     <p className={clsx(
                       "leading-relaxed text-sm font-medium transition-colors mb-4",
                       isLight ? "text-red-600/90" : "text-red-400/80"
                     )}>
-                      {result.error || result.message || "The URL link is unsupported, private, or being blocked by the origin servers."}
+                      {result.error?.includes("Instagram blocks our cloud servers") 
+                        ? "Instagram restricts automated requests from cloud hosting IP addresses like Render.com. To fix this on your live app, you must configure your RAPIDAPI_KEY in your Render environment variables."
+                        : (result.error || result.message || "The URL link is unsupported, private, or being blocked by the origin servers.")}
                     </p>
                     {(result.thumbnail || result.title) && (
                       <div className={clsx(
