@@ -11,6 +11,28 @@ export default function ReloadPrompt({ isLight }: { isLight: boolean }) {
   } = useRegisterSW({
     onRegistered(r) {
       console.log('SW Registered:', r);
+      if (r) {
+        // Immediate check just in case
+        try {
+          r.update();
+        } catch (e) {}
+
+        // Check for updates periodically
+        setInterval(() => {
+          console.log('Checking for SW update...');
+          try {
+            r.update();
+          } catch (e) {}
+        }, 60 * 1000); // Check every minute
+        
+        // Check for updates when the window regains focus
+        window.addEventListener('focus', () => {
+          console.log('Window focused, checking for SW update...');
+          try {
+            r.update();
+          } catch (e) {}
+        });
+      }
     },
     onRegisterError(error) {
       console.log('SW registration error', error);
@@ -72,7 +94,32 @@ export default function ReloadPrompt({ isLight }: { isLight: boolean }) {
             </div>
             <div className="mt-4 flex gap-3">
               <button
-                onClick={() => updateServiceWorker(true)}
+                onClick={async () => {
+                  setNeedRefresh(false);
+                  
+                  // Clear all caches to ensure we fetch the latest assets
+                  if ('caches' in window) {
+                    try {
+                      const cacheNames = await caches.keys();
+                      await Promise.all(cacheNames.map(name => caches.delete(name)));
+                    } catch (err) {
+                      console.error('Failed to clear caches', err);
+                    }
+                  }
+
+                  // Unregister service workers for a clean slate
+                  if ('serviceWorker' in navigator) {
+                    try {
+                      const registrations = await navigator.serviceWorker.getRegistrations();
+                      await Promise.all(registrations.map(r => r.unregister()));
+                    } catch (err) {
+                      console.error('Failed to unregister SW', err);
+                    }
+                  }
+
+                  // Force reload from network
+                  window.location.reload();
+                }}
                 className="flex-1 bg-rose-500 hover:bg-rose-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-rose-500/25"
               >
                 <RefreshCw className="w-4 h-4" />

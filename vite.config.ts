@@ -9,10 +9,15 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.ico', 'icon.svg', 'apple-touch-icon.png'],
       manifest: false, // We already have manifest.json in public/
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         navigateFallbackDenylist: [/^\/api/],
-        importScripts: ['/push-sw.js']
+        importScripts: ['/push-sw.js'],
+        cleanupOutdatedCaches: true,
       }
     })
   ],
