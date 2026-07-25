@@ -29,6 +29,7 @@
     "firebase-admin": "^14.2.0",
     "framer-motion": "^11.2.10",
     "helmet": "^8.3.0",
+    "instagram-url-direct": "^2.0.7",
     "ioredis": "^5.11.1",
     "lucide-react": "^0.395.0",
     "motion": "^12.42.2",

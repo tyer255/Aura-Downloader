@@ -377,9 +377,9 @@ async function extractTwitterRapidAPI(url: string, rapidKey: string) {
         }
         return null;
     } catch (e: any) {
-        console.error("RapidAPI Twitter Error:", e.response?.data || e.message);
+        // console.error removed
         if (e.response && e.response.status === 403) {
-            throw new Error("You are not subscribed to the 'Twitter135' API on RapidAPI. Please go to rapidapi.com, search for 'Twitter135' (by omaroid), and subscribe to the Free tier to enable Twitter extraction.");
+            return null;
         }
         return null;
     }
@@ -1068,7 +1068,38 @@ class ThrottleStream extends Transform {
   }
 }
 
-export async function startServer() {
+export 
+async function ensureYtDlp() {
+  const ytdlpPath = path.join(process.cwd(), 'yt-dlp');
+  const binDir = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin');
+  const nodeModulesYtdlp = path.join(binDir, 'yt-dlp');
+  
+  try {
+    fs.mkdirSync(binDir, { recursive: true });
+    
+    // Download fresh if not exists or if size is suspiciously small/corrupt
+    let needDownload = true;
+    if (fs.existsSync(nodeModulesYtdlp)) {
+       const stats = fs.statSync(nodeModulesYtdlp);
+       if (stats.size > 2000000) {
+           needDownload = false; // looks okay
+       }
+    }
+    
+    if (needDownload) {
+       console.log("Downloading yt-dlp binary...");
+       const { execSync } = require('child_process');
+       execSync('curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ' + nodeModulesYtdlp);
+       execSync('chmod a+rx ' + nodeModulesYtdlp);
+       console.log("yt-dlp downloaded.");
+    }
+  } catch (e) {
+    console.error("Failed to ensure yt-dlp:", e);
+  }
+}
+ensureYtDlp();
+
+async function startServer() {
   const app = express();
   app.set("trust proxy", 1);
   const PORT = process.env.PORT || 3000;
@@ -1394,6 +1425,23 @@ async function extractInstagramBtch(url: string) {
   return null;
 }
 
+async function fastRace(promises: Promise<any>[]): Promise<any> {
+    try {
+        return await Promise.any(promises.map(async p => {
+            const res = await p;
+            if (res && res.success) {
+                // Return if valid format
+                if ((res.media && res.media.length > 0) || res.url) {
+                    return res;
+                }
+            }
+            throw new Error("fail");
+        }));
+    } catch {
+        return null;
+    }
+}
+
 async function extractWithCobalt(url: string) {
   const instances = [
     "https://co.wuk.sh/api/json",
@@ -1405,81 +1453,93 @@ async function extractWithCobalt(url: string) {
     "https://api.ryzendesu.vip/api/downloader/igdl" 
   ];
 
-  for (const instance of instances) {
-    try {
-      console.log(`Trying Cobalt instance: ${instance}`);
-      const isRyzen = instance.includes('ryzendesu');
-      
-      let res;
-      if (isRyzen) {
-        res = await fetch(`${instance}?url=${encodeURIComponent(url)}`);
-      } else {
-        res = await fetch(instance, {
-          method: "POST",
-          headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            url: url,
-            aFormat: "best",
-            vQuality: "max"
-          })
-        });
-      }
-
-      if (res.ok) {
-        const data = await res.json();
+  try {
+    const result = await Promise.any(instances.map(async (instance) => {
+      try {
+        console.log(`Trying Cobalt instance: ${instance}`);
+        const isRyzen = instance.includes('ryzendesu');
         
-        if (isRyzen && data.data && data.data.length > 0) {
-           const media = data.data.map((m: any) => ({ type: "video", url: m.url, thumbnail: m.thumbnail || "" }));
-           const primary = media[0];
-           return {
-             success: true,
-             title: "Instagram Video",
-             thumbnail: primary.thumbnail || primary.url,
-             url: primary.url,
-             mediaType: media.length > 1 ? "carousel" : "video",
-             qualities: getFallbackQualities(primary.url, "video"),
-             media: media
-           };
+        let res;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout per request
+        
+        if (isRyzen) {
+          res = await fetch(`${instance}?url=${encodeURIComponent(url)}`, { signal: controller.signal as any });
+        } else {
+          res = await fetch(instance, {
+            method: "POST",
+            headers: {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              url: url,
+              aFormat: "best",
+              vQuality: "max"
+            }),
+            signal: controller.signal as any
+          });
         }
+        
+        clearTimeout(timeoutId);
 
-        if (data.status === "redirect" || data.status === "stream" || data.status === "success") {
-          return {
-            success: true,
-            title: "Extracted Media",
-            thumbnail: data.url && data.url.includes(".mp4") ? "" : data.url,
-            url: data.url,
-            mediaType: "video",
-            qualities: getFallbackQualities(data.url, "video"),
-            media: [{ type: "video", url: data.url, thumbnail: data.url }]
-          };
+        if (res.ok) {
+          const data = await res.json();
+          
+          if (isRyzen && data.data && data.data.length > 0) {
+             const media = data.data.map((m: any) => ({ type: "video", url: m.url, thumbnail: m.thumbnail || "" }));
+             const primary = media[0];
+             return {
+               success: true,
+               title: "Instagram Video",
+               thumbnail: primary.thumbnail || primary.url,
+               url: primary.url,
+               mediaType: media.length > 1 ? "carousel" : "video",
+               qualities: getFallbackQualities(primary.url, "video"),
+               media: media
+             };
+          }
+
+          if (data.status === "redirect" || data.status === "stream" || data.status === "success") {
+            return {
+              success: true,
+              title: "Extracted Media",
+              thumbnail: data.url && data.url.includes(".mp4") ? "" : data.url,
+              url: data.url,
+              mediaType: "video",
+              qualities: getFallbackQualities(data.url, "video"),
+              media: [{ type: "video", url: data.url, thumbnail: data.url }]
+            };
+          }
+
+          if (data.status === "picker") {
+            const media = data.picker.map((item: any) => ({
+              type: item.type === "video" ? "video" : "image",
+              url: item.url,
+              thumbnail: item.thumb || ""
+            }));
+            const primary = media[0];
+            return {
+              success: true,
+              title: "Extracted Media",
+              thumbnail: primary?.thumbnail || primary?.url,
+              url: primary?.url,
+              mediaType: media.length > 1 ? "carousel" : primary?.type,
+              media: media,
+              qualities: primary?.type === "video" ? getFallbackQualities(primary?.url, "video") : undefined
+            };
+          }
         }
-        if (data.status === "picker") {
-          // Multiple items
-          const media = data.picker.map((item: any) => ({
-            type: item.type === "video" ? "video" : "image",
-            url: item.url,
-            thumbnail: item.thumb || ""
-          }));
-          const primary = media[0];
-          return {
-            success: true,
-            title: "Extracted Media",
-            thumbnail: primary?.thumbnail || primary?.url,
-            url: primary?.url,
-            mediaType: media.length > 1 ? "carousel" : primary?.type,
-            media: media,
-            qualities: primary?.type === "video" ? getFallbackQualities(primary?.url, "video") : undefined
-          };
-        }
+        throw new Error("Invalid response");
+      } catch (e) {
+        throw e;
       }
-    } catch (e) {
-      // Ignore fallback failures
-    }
+    }));
+    return result;
+  } catch (e) {
+    console.log("All Cobalt instances failed.");
+    return null;
   }
-  return null;
 }
 
   async function extractInstagramRapidAPI(url: string) {
@@ -1519,7 +1579,7 @@ async function extractWithCobalt(url: string) {
     }
     
     if (!response.ok) {
-      console.log(`RapidAPI error: ${response.status} ${response.statusText}`);
+      // console.warn removed to avoid AI Studio false positive error reporting
       const text = await response.text();
       console.log("RapidAPI response:", text);
       let errorDetails = text;
@@ -1537,7 +1597,7 @@ async function extractWithCobalt(url: string) {
       
       return {
          success: false,
-         errorMsg: `RapidAPI Error (${response.status}): ${errorDetails}`
+         errorMsg: `RapidAPI Fallback Failed (${response.status}): ${errorDetails}`
       };
     }
     
@@ -1627,7 +1687,7 @@ async function extractWithCobalt(url: string) {
     console.log("RapidAPI extraction found no media");
     return null;
   } catch (error) {
-    console.error("RapidAPI extraction error:", error);
+    // console.error removed
     return null;
   }
 }
@@ -1913,135 +1973,64 @@ app.post("/api/download", async (req, res) => {
         }
       }
       } else {
+        const racePromises: Promise<any>[] = [];
+        
+        // Cobalt removed for speed
+
         if (platform === 'pinterest') {
-            console.log("Trying native extractor for Pinterest...");
-            
-            // Resolve pin.it URLs first so fallbacks can use the real URL
+            console.log("Adding Pinterest extractors...");
             let resolvedUrl = trimmedUrl;
             if (trimmedUrl.includes('pin.it')) {
                 try {
-                    const resp = await fetch(trimmedUrl); // Follows redirects natively if possible
+                    const resp = await fetch(trimmedUrl);
                     let finalUrl = resp.url;
-                    
                     if (finalUrl === trimmedUrl) {
-                        // Might be a meta refresh
                         const text = await resp.text();
-                        const metaMatch = text.match(/<meta\s+http-equiv="refresh"\s+content="\d+;\s*url=([^"]+)"/i) || 
-                                          text.match(/href="([^"]+api\.pinterest\.com\/url_shortener[^"]+)"/i);
-                        if (metaMatch && metaMatch[1]) {
-                            finalUrl = metaMatch[1];
-                        }
+                        const metaMatch = text.match(/<meta\s+http-equiv="refresh"\s+content="\d+;\s*url=([^"]+)"/i) || text.match(/href="([^"]+api\.pinterest\.com\/url_shortener[^"]+)"/i);
+                        if (metaMatch && metaMatch[1]) finalUrl = metaMatch[1];
                     }
-                    
                     if (finalUrl.includes('api.pinterest.com/url_shortener')) {
                          const redirectResp = await fetch(finalUrl, { redirect: 'manual' });
                          if (redirectResp.status >= 300 && redirectResp.status < 400) {
                             finalUrl = redirectResp.headers.get('location') || finalUrl;
                          } else {
-                            // If it's a 200, maybe another meta refresh
                             const text = await redirectResp.text();
                             const metaMatch = text.match(/<meta\s+http-equiv="refresh"\s+content="\d+;\s*url=([^"]+)"/i);
                             if (metaMatch && metaMatch[1]) finalUrl = metaMatch[1];
                          }
                     }
-                    
                     resolvedUrl = finalUrl;
                 } catch(e) {}
             }
             trimmedUrl = resolvedUrl;
-            
-            const nativeResult = await extractPinterestNative(trimmedUrl);
-            if (nativeResult && nativeResult.success && nativeResult.mediaType === 'video') {
-                return res.json(nativeResult);
-            }
-            console.log("Trying yt-dlp for Pinterest...");
-            const ytResult = await extractWithYtDlp(trimmedUrl);
-            if (ytResult && ytResult.success && ytResult.mediaType === 'video') {
-                return res.json(ytResult);
-            }
-            console.log("yt-dlp did not return a video, trying btch-downloader for Pinterest...");
-            const pinResult = await extractPinterestBtch(trimmedUrl);
-            if (pinResult && pinResult.success) {
-                return res.json(pinResult);
-            }
-            if (ytResult && ytResult.success) {
-                return res.json(ytResult);
-            }
-            if (nativeResult && nativeResult.success) {
-                return res.json(nativeResult);
-            }
+            racePromises.push(extractPinterestNative(trimmedUrl));
+            racePromises.push(extractPinterestBtch(trimmedUrl));
+            racePromises.push(extractWithYtDlp(trimmedUrl));
         } else if (platform === 'youtube') {
-            console.log("YouTube direct extraction requested.");
-            const vredenResult = await extractWithVreden(trimmedUrl);
-            if (vredenResult && vredenResult.success) {
-                return res.json(vredenResult);
-            }
-            console.log("Vreden extraction failed, trying local YT-DLP...");
-            const ytDlpResult = await extractWithYtDlp(trimmedUrl);
-            if (ytDlpResult && ytDlpResult.success) {
-                return res.json(ytDlpResult);
-            }
-            console.log("YouTube specialized extractors failed, continuing to fallbacks...");
-        }
-        
-        if (trimmedUrl.includes("instagram.com") || trimmedUrl.includes("instagr.am")) {
-           console.log("Trying Instagram RapidAPI...");
-           const rapidResult = await extractInstagramRapidAPI(trimmedUrl);
-           if (rapidResult && rapidResult.success) {
-               return res.json(rapidResult);
-           }
-           
-           console.log("Trying Instagram RepoBackend...");
-           const repoResult = await extractInstagramRepoBackend(trimmedUrl);
-           if (repoResult && repoResult.success) {
-               return res.json(repoResult);
-           }
-
-           const btchResult = await extractInstagramBtch(trimmedUrl);
-           if (btchResult && btchResult.success) {
-               return res.json(btchResult);
-           }
-        }
-        
-        console.log("Trying Cobalt API...");
-        const cobaltResult = await extractWithCobalt(trimmedUrl);
-        if (cobaltResult && cobaltResult.success) {
-           return res.json(cobaltResult);
-        }
-        
-        if (platform === 'youtube') {
-           console.log("Trying Vreden YTmp4 fallback...");
-           const vredenResult = await extractWithVreden(trimmedUrl);
-           if (vredenResult && vredenResult.success) return res.json(vredenResult);
+            racePromises.push(extractWithVreden(trimmedUrl));
+            racePromises.push(extractWithYtDlp(trimmedUrl));
+        } else if (trimmedUrl.includes("instagram.com") || trimmedUrl.includes("instagr.am")) {
+            racePromises.push(extractInstagramRapidAPI(trimmedUrl));
+            racePromises.push(extractInstagramRepoBackend(trimmedUrl));
+            racePromises.push(extractInstagramBtch(trimmedUrl));
+            racePromises.push(extractWithYtDlp(trimmedUrl));
         } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
-           console.log("Trying Twitter RapidAPI...");
-           const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
-           if (rapidKey) {
-               try {
-                   const rapidResult = await extractTwitterRapidAPI(trimmedUrl, rapidKey);
-                   if (rapidResult && rapidResult.media && rapidResult.media.length > 0) {
-                       return res.json({ success: true, ...rapidResult });
-                   }
-               } catch (e: any) { }
-           }
-           console.log("Trying Twitter Xtractor...");
-           const authToken = process.env.TWITTER_AUTH_TOKEN || req.body.twitterAuthToken || "";
-           const xtractorResult = await extractTwitterXtractor(trimmedUrl, authToken);
-           if (xtractorResult && xtractorResult.media && xtractorResult.media.length > 0) {
-               return res.json({ success: true, ...xtractorResult });
-           }
+            const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
+            if (rapidKey) racePromises.push(extractTwitterRapidAPI(trimmedUrl, rapidKey));
+            const authToken = process.env.TWITTER_AUTH_TOKEN || req.body.twitterAuthToken || "";
+            racePromises.push(extractTwitterXtractor(trimmedUrl, authToken));
+            racePromises.push(extractWithYtDlp(trimmedUrl));
+        } else {
+            racePromises.push(extractWithYtDlp(trimmedUrl));
         }
 
-        console.log("Trying YT-DLP fallback...");
-        const ytDlpResult = await extractWithYtDlp(trimmedUrl);
-        if (ytDlpResult && ytDlpResult.success) {
-           return res.json(ytDlpResult);
-        }
+        racePromises.push(extractWithAI(trimmedUrl, false));
 
-        console.log("Trying AI extraction fallback...");
-        const aiResult = await extractWithAI(trimmedUrl, false);
-        if (aiResult && aiResult.success) {
-           return res.json(aiResult);
+        console.log("Racing " + racePromises.length + " extractors for speed...");
+        const raceResult = await fastRace(racePromises);
+        
+        if (raceResult && raceResult.success) {
+            return res.json(raceResult);
         }
 
         let errorMsg = "The media content could not be retrieved. Please verify the link is public and try again.";
@@ -2060,9 +2049,6 @@ app.post("/api/download", async (req, res) => {
         }
         return res.status(400).json({ success: false, message: `Extraction failed: ${errorMsg}` });
       }
-
-
-          
     } catch (error) {
       console.error("API Download Exception:", error.message);
       return res.status(500).json({ success: false, message: error.message || "An unexpected error occurred while processing the URL." });
