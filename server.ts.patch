@@ -1,0 +1,34 @@
+--- server.ts
++++ server.ts
+@@ -300,6 +300,34 @@
+   }
+ }
+ 
++async function extractYoutubeBtch(url: string) {
++  console.log("Trying btch-downloader for YouTube...");
++  try {
++    const b = await getBtch();
++    const r = await b.youtube(url);
++    if (r && r.status && r.mp4) {
++      return {
++        success: true,
++        title: r.title || "YouTube Video",
++        url: r.mp4,
++        thumbnail: r.thumbnail || "",
++        mediaType: "video",
++        source: "btch",
++        qualities: [
++          { label: "Video (MP4)", url: r.mp4, ext: "mp4", size: "High Definition" },
++          { label: "Audio (MP3)", url: r.mp3, ext: "mp3", size: "Audio Only" }
++        ]
++      };
++    }
++    return null;
++  } catch (error: any) {
++    console.log("btch youtube extraction failed:", error.message);
++    return null;
++  }
++}
++
+ async function extractTwitterRapidAPI(url: string, rapidKey: string) {
+   console.log("Trying Twitter RapidAPI...");

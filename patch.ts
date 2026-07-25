@@ -1,0 +1,4 @@
+import fs from 'fs';
+let content = fs.readFileSync('server.ts', 'utf8');
+content = content.replace('async function extractTwitterRapidAPI', `async function extractYoutubeBtch(url: string) {\n  console.log("Trying btch-downloader for YouTube...");\n  try {\n    const b = await getBtch();\n    if (typeof b.youtube === 'function') {\n      const r = await b.youtube(url);\n      if (r && r.status && r.mp4) {\n        return { success: true, title: r.title || "YouTube Video", url: r.mp4, thumbnail: r.thumbnail || "", mediaType: "video", source: "btch", qualities: [ { label: "Video (MP4)", url: r.mp4, ext: "mp4", size: "High Definition" }, { label: "Audio (MP3)", url: r.mp3, ext: "mp3", size: "Audio Only" } ] };\n      }\n    }\n    return null;\n  } catch (error: any) {\n    return null;\n  }\n}\n\nasync function extractTwitterRapidAPI`);
+fs.writeFileSync('server.ts', content);

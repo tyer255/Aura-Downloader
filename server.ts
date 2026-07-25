@@ -325,6 +325,22 @@ async function extractWithVreden(url: string) {
 
 
 
+async function extractYoutubeBtch(url: string) {
+  console.log("Trying btch-downloader for YouTube...");
+  try {
+    const b = await getBtch();
+    if (typeof b.youtube === 'function') {
+      const r = await b.youtube(url);
+      if (r && r.status && r.mp4) {
+        return { success: true, title: r.title || "YouTube Video", url: r.mp4, thumbnail: r.thumbnail || "", mediaType: "video", source: "btch", qualities: [ { label: "Video (MP4)", url: r.mp4, ext: "mp4", size: "High Definition" }, { label: "Audio (MP3)", url: r.mp3, ext: "mp3", size: "Audio Only" } ] };
+      }
+    }
+    return null;
+  } catch (error: any) {
+    return null;
+  }
+}
+
 async function extractTwitterRapidAPI(url: string, rapidKey: string) {
     try {
         const tweetIdMatch = url.match(/status\/(\d+)/);
@@ -2007,6 +2023,7 @@ app.post("/api/download", async (req, res) => {
             racePromises.push(extractPinterestBtch(trimmedUrl));
             racePromises.push(extractWithYtDlp(trimmedUrl));
         } else if (platform === 'youtube') {
+            racePromises.push(extractYoutubeBtch(trimmedUrl));
             racePromises.push(extractWithVreden(trimmedUrl));
             racePromises.push(extractWithYtDlp(trimmedUrl));
         } else if (trimmedUrl.includes("instagram.com") || trimmedUrl.includes("instagr.am")) {
