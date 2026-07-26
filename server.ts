@@ -1382,6 +1382,51 @@ async function extractPinterestBtch(url: string) {
   return null;
 }
 
+
+async function extractTiktokTikwm(url: string) {
+    try {
+        console.log("Trying tikwm for TikTok...");
+        const res = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+        if (data && data.data) {
+            const media = [];
+            let mediaType = "video";
+            let thumbnailUrl = data.data.cover || "";
+            let mainUrl = data.data.play || data.data.wmplay || data.data.hdplay || "";
+            
+            if (data.data.images && data.data.images.length > 0) {
+                mediaType = "carousel";
+                data.data.images.forEach((img: string) => {
+                    media.push({ type: "image", url: img, thumbnail: img });
+                });
+                thumbnailUrl = data.data.images[0];
+                mainUrl = data.data.images[0];
+            } else if (mainUrl) {
+                media.push({ type: "video", url: mainUrl, thumbnail: thumbnailUrl });
+            }
+            
+            if (media.length > 0) {
+                return {
+                    success: true,
+                    title: data.data.title || "TikTok Video",
+                    thumbnail: thumbnailUrl,
+                    url: mainUrl,
+                    mediaType: mediaType,
+                    source: "tikwm",
+                    media: media,
+                    qualities: mediaType === "video" ? [
+                        { label: "HD Video", url: data.data.hdplay || mainUrl, ext: "mp4", size: "HD" },
+                        { label: "Audio", url: data.data.music || data.data.music_info?.play, ext: "mp3", size: "Audio" }
+                    ] : undefined
+                };
+            }
+        }
+    } catch(e) {
+        console.error("tikwm error:", e.message);
+    }
+    return null;
+}
+
 async function extractInstagramBtch(url: string) {
   console.log("Trying btch-downloader for Instagram...");
   try {
@@ -1464,107 +1509,8 @@ async function fastRace(promises: Promise<any>[]): Promise<any> {
     }
 }
 
-async function extractWithCobalt(url: string) {
-  const instances = [
-    "https://co.wuk.sh/api/json",
-    "https://cobalt.q0.is/api/json",
-    "https://api.cobalt.bckc.rs/api/json",
-    "https://cobalt.kwiatekit.com/api/json",
-    "https://cobalt.shiron.dev/api/json",
-    "https://api.cobalt.tools/api/json",
-    "https://api.ryzendesu.vip/api/downloader/igdl" 
-  ];
 
-  try {
-    const result = await Promise.any(instances.map(async (instance) => {
-      try {
-        console.log(`Trying Cobalt instance: ${instance}`);
-        const isRyzen = instance.includes('ryzendesu');
-        
-        let res;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout per request
-        
-        if (isRyzen) {
-          res = await fetch(`${instance}?url=${encodeURIComponent(url)}`, { signal: controller.signal as any });
-        } else {
-          res = await fetch(instance, {
-            method: "POST",
-            headers: {
-              "Accept": "application/json",
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              url: url,
-              aFormat: "best",
-              vQuality: "max"
-            }),
-            signal: controller.signal as any
-          });
-        }
-        
-        clearTimeout(timeoutId);
-
-        if (res.ok) {
-          const data = await res.json();
-          
-          if (isRyzen && data.data && data.data.length > 0) {
-             const media = data.data.map((m: any) => ({ type: "video", url: m.url, thumbnail: m.thumbnail || "" }));
-             const primary = media[0];
-             return {
-               success: true,
-               title: "Instagram Video",
-               thumbnail: primary.thumbnail || primary.url,
-               url: primary.url,
-               mediaType: media.length > 1 ? "carousel" : "video",
-               qualities: getFallbackQualities(primary.url, "video"),
-               media: media
-             };
-          }
-
-          if (data.status === "redirect" || data.status === "stream" || data.status === "success") {
-            return {
-              success: true,
-              title: "Extracted Media",
-              thumbnail: data.url && data.url.includes(".mp4") ? "" : data.url,
-              url: data.url,
-              mediaType: "video",
-              qualities: getFallbackQualities(data.url, "video"),
-              media: [{ type: "video", url: data.url, thumbnail: data.url }]
-            };
-          }
-
-          if (data.status === "picker") {
-            const media = data.picker.map((item: any) => ({
-              type: item.type === "video" ? "video" : "image",
-              url: item.url,
-              thumbnail: item.thumb || ""
-            }));
-            const primary = media[0];
-            return {
-              success: true,
-              title: "Extracted Media",
-              thumbnail: primary?.thumbnail || primary?.url,
-              url: primary?.url,
-              mediaType: media.length > 1 ? "carousel" : primary?.type,
-              media: media,
-              qualities: primary?.type === "video" ? getFallbackQualities(primary?.url, "video") : undefined
-            };
-          }
-        }
-        throw new Error("Invalid response");
-      } catch (e) {
-        throw e;
-      }
-    }));
-    return result;
-  } catch (e) {
-    console.log("All Cobalt instances failed.");
-    return null;
-  }
-}
-
-  async function extractInstagramRapidAPI(url: string) {
+async function extractInstagramRapidAPI(url: string) {
   const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
   if (!rapidKey) return null;
   
@@ -2037,6 +1983,9 @@ app.post("/api/download", async (req, res) => {
             racePromises.push(extractPinterestNative(trimmedUrl));
             racePromises.push(extractPinterestBtch(trimmedUrl));
             racePromises.push(extractWithYtDlp(trimmedUrl));
+        } else if (platform === 'tiktok') {
+            racePromises.push(extractTiktokTikwm(trimmedUrl));
+            racePromises.push(extractWithYtDlp(trimmedUrl));
         } else if (platform === 'youtube') {
             racePromises.push(extractYoutubeBtch(trimmedUrl));
             racePromises.push(extractWithVreden(trimmedUrl));
@@ -2052,14 +2001,14 @@ app.post("/api/download", async (req, res) => {
             const authToken = process.env.TWITTER_AUTH_TOKEN || req.body.twitterAuthToken || "";
             racePromises.push(extractTwitterXtractor(trimmedUrl, authToken));
             racePromises.push(extractWithYtDlp(trimmedUrl));
+        
+        } else if (platform === 'snapchat') {
+            racePromises.push(extractWithYtDlp(trimmedUrl));
         } else {
             racePromises.push(extractWithYtDlp(trimmedUrl));
         }
 
-        // Universally add Cobalt for all supported platforms
-        // It's extremely fast and supports almost everything (TikTok, YouTube, Snapchat, etc)
-        racePromises.push(extractWithCobalt(trimmedUrl));
-
+        
         // We only use AI as a fallback now to avoid returning low-quality metadata
         // when a real extractor might succeed a few seconds later.
 
