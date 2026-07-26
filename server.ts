@@ -293,6 +293,16 @@ async function extractWithVreden(url: string) {
           size: q >= 720 ? "High Definition" : "Standard Quality"
         };
       });
+      
+      // If we already have the URL for the requested quality (usually the default one)
+      if (downloadInfo.url) {
+        qualities.unshift({
+           label: `${downloadInfo.quality || '360'}p (MP4)`,
+           url: `/api/proxy-download?url=${encodeURIComponent(downloadInfo.url)}&filename=${encodeURIComponent(title)}`,
+           ext: "mp4",
+           size: "Ready"
+        });
+      }
 
       const primaryUrl = `/api/youtube-stream?url=${encodeURIComponent(url)}&quality=${downloadInfo.quality || '360'}&filename=${encodeURIComponent(title)}`;
 

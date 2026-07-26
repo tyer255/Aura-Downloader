@@ -1522,122 +1522,25 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       setShowTermsModal(true);
       return;
     }
-    try {
-      requestNotificationPermission();
-      setDownloadProgress(0);
-      setHistoryToast("Preparing download stream...");
+    
+    requestNotificationPermission();
 
-      setActiveDownloads(prev => ({
-        ...prev,
-        [url]: { filename, progress: 0, status: "preparing" }
-      }));
+    const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
+      ? url 
+      : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+    const throttleParam = throttleSetting !== "unlimited" ? `&throttle=${throttleSetting}` : "";
+    const finalFetchUrl = fetchUrl.includes("?") ? `${fetchUrl}${throttleParam}` : `${fetchUrl}?${throttleParam}`;
 
-      const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
-        ? url 
-        : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
-      const throttleParam = throttleSetting !== "unlimited" ? `&throttle=${throttleSetting}` : "";
-      const finalFetchUrl = fetchUrl.includes("?") ? `${fetchUrl}${throttleParam}` : `${fetchUrl}?${throttleParam}`;
-      
-      const response = await fetch(finalFetchUrl);
-      if (!response.ok) {
-        throw new Error(`Server returned status code ${response.status}`);
-      }
-
-      setActiveDownloads(prev => ({
-        ...prev,
-        [url]: { filename, progress: 0, status: "downloading" }
-      }));
-
-      const contentLength = response.headers.get('content-length') || response.headers.get('estimated-content-length');
-      const total = contentLength ? parseInt(contentLength, 10) : 0;
-      let loaded = 0;
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body stream reader available");
-
-      const chunks = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value);
-          loaded += value.length;
-          if (total) {
-            const pct = Math.round((loaded / total) * 100);
-            setDownloadProgress(pct);
-            setActiveDownloads(prev => ({
-              ...prev,
-              [url]: { filename, progress: pct, status: "downloading" }
-            }));
-          } else {
-            setActiveDownloads(prev => ({
-              ...prev,
-              [url]: { filename, progress: null, status: "downloading" }
-            }));
-          }
-        }
-      }
-
-      const blob = new Blob(chunks);
-      const objectUrl = window.URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = objectUrl;
-      a.download = filename || 'download';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      
-      setTimeout(() => {
-          if (document.body.contains(a)) document.body.removeChild(a);
-          window.URL.revokeObjectURL(objectUrl);
-      }, 1000);
-      
-      setDownloadProgress(null);
-      setActiveDownloads(prev => ({
-        ...prev,
-        [url]: { filename, progress: 100, status: "complete" }
-      }));
-      setHistoryToast("Download complete!");
-      setTimeout(() => setHistoryToast(null), 3000);
-      showNotification("Download Complete", {
-        body: `Successfully downloaded: ${filename}`,
-        icon: '/vite.svg'
-      });
-
-      // Keep it complete for 3.5s then clear
-      setTimeout(() => {
-        setActiveDownloads(prev => {
-          const next = { ...prev };
-          delete next[url];
-          return next;
-        });
-      }, 3500);
-
-    } catch (error: any) {
-      console.error('Download setup failed:', error);
-      setDownloadProgress(null);
-      setActiveDownloads(prev => ({
-        ...prev,
-        [url]: { filename, progress: null, status: "failed" }
-      }));
-      setHistoryToast("Download failed.");
-      setTimeout(() => setHistoryToast(null), 3000);
-      showNotification("Download Failed", {
-        body: `Failed to download: ${filename}`,
-        icon: '/vite.svg'
-      });
-
-      setTimeout(() => {
-        setActiveDownloads(prev => {
-          const next = { ...prev };
-          delete next[url];
-          return next;
-        });
-      }, 4000);
-    }
+    const a = document.createElement('a');
+    a.href = finalFetchUrl;
+    a.download = filename || 'download';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    setHistoryToast("Download started!");
+    setTimeout(() => setHistoryToast(null), 3000);
   };
-
   const downloadFileDirect = (url: string, filename: string) => {
     if (!hasAcceptedTerms) {
       setShowTermsModal(true);
