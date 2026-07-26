@@ -288,7 +288,7 @@ async function extractWithVreden(url: string) {
         const qLabel = qStr.endsWith('p') ? qStr : `${qStr}p`;
         return {
           label: `${qLabel} (MP4)`,
-          url: `/api/youtube-stream?url=${encodeURIComponent(url)}&quality=${qStr}&filename=${encodeURIComponent(title)}`,
+          url: `/api/get-youtube-link?url=${encodeURIComponent(url)}&quality=${qStr}&filename=${encodeURIComponent(title)}`,
           ext: "mp4",
           size: q >= 720 ? "High Definition" : "Standard Quality"
         };
@@ -2062,6 +2062,35 @@ app.post("/api/download", async (req, res) => {
     } catch (error) {
       console.error("API Download Exception:", error.message);
       return res.status(500).json({ success: false, message: error.message || "An unexpected error occurred while processing the URL." });
+    }
+  });
+
+  app.get("/api/get-youtube-link", async (req, res) => {
+    const videoUrl = req.query.url as string;
+    const quality = (req.query.quality as string) || "360";
+    
+    if (!videoUrl) return res.status(400).json({ success: false, message: "Missing url parameter" });
+    
+    try {
+      const originalConsoleError = console.error;
+      const originalConsoleLog = console.log;
+      console.error = () => {};
+      console.log = () => {};
+      let result;
+      try {
+        result = await vredenYtmp4(videoUrl, quality);
+      } catch(e) {} finally {
+        console.error = originalConsoleError;
+        console.log = originalConsoleLog;
+      }
+      
+      if (result && result.status && result.download && result.download.url) {
+        return res.json({ success: true, url: result.download.url });
+      } else {
+        return res.status(500).json({ success: false, message: "Failed to fetch direct URL." });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
     }
   });
 

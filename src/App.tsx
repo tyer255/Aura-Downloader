@@ -1517,13 +1517,79 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
 
-  const downloadFileClientSide = async (url: string, filename: string) => {
+    const downloadFileClientSide = async (url: string, filename: string) => {
     if (!hasAcceptedTerms) {
       setShowTermsModal(true);
       return;
     }
     
     requestNotificationPermission();
+
+    if (url.startsWith("/api/get-youtube-link")) {
+      setActiveDownloads(prev => ({
+        ...prev,
+        [url]: { filename, progress: 0, status: "preparing" }
+      }));
+      setHistoryToast("Preparing YouTube stream... (takes ~10 seconds)");
+      
+      // Simulate progress for preparing
+      const interval = setInterval(() => {
+         setActiveDownloads(prev => {
+            const current = prev[url];
+            if (current && current.status === "preparing") {
+                const nextProg = Math.min((current.progress || 0) + 5, 95);
+                return { ...prev, [url]: { ...current, progress: nextProg } };
+            }
+            return prev;
+         });
+      }, 500);
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        clearInterval(interval);
+        
+        if (data && data.url) {
+           const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(filename)}`;
+           const a = document.createElement('a');
+           a.href = proxyUrl;
+           a.download = filename || 'download';
+           document.body.appendChild(a);
+           a.click();
+           document.body.removeChild(a);
+           
+           setActiveDownloads(prev => ({
+             ...prev,
+             [url]: { filename, progress: 100, status: "complete" }
+           }));
+           setHistoryToast("Download started!");
+           setTimeout(() => {
+              setActiveDownloads(prev => {
+                const next = { ...prev };
+                delete next[url];
+                return next;
+              });
+           }, 3000);
+        } else {
+           throw new Error("Failed to resolve link");
+        }
+      } catch (err) {
+           clearInterval(interval);
+           setActiveDownloads(prev => ({
+             ...prev,
+             [url]: { filename, progress: null, status: "failed" }
+           }));
+           setHistoryToast("Failed to prepare video stream.");
+           setTimeout(() => {
+              setActiveDownloads(prev => {
+                const next = { ...prev };
+                delete next[url];
+                return next;
+              });
+           }, 3000);
+      }
+      return;
+    }
 
     const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
       ? url 
@@ -3427,8 +3493,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                                 activeDl && "text-emerald-600 dark:text-emerald-400 font-medium"
                                               )}>
                                                 {activeDl 
-                                                  ? activeDl.status === "preparing"
-                                                    ? "Preparing stream (fetching URL)..."
+                                                  ? activeDl.status === "preparing" ? (activeDl.progress ? `Preparing stream (${activeDl.progress}%)` : "Preparing stream...")
                                                     : activeDl.status === "downloading"
                                                       ? activeDl.progress !== null ? `Downloading in background (${activeDl.progress}%)` : "Downloading stream..."
                                                       : activeDl.status === "complete"
@@ -3507,8 +3572,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                   activeDl.status === "preparing" || activeDl.status === "downloading" ? (
                                     <>
                                       <Loader2 className="w-5 h-5 animate-spin" />
-                                      {activeDl.status === "preparing" 
-                                        ? "Preparing stream..." 
+                                      {activeDl.status === "preparing" ? (activeDl.progress ? `Preparing stream (${activeDl.progress}%)` : "Preparing stream...") 
                                         : activeDl.progress !== null ? `Downloading (${activeDl.progress}%)` : "Downloading..."
                                       }
                                     </>
