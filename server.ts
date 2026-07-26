@@ -1795,6 +1795,7 @@ const sizeCache = new Map<string, string>();
 function formatBytes(bytes: number) {
     if (bytes === 0) return "0 MB";
     const k = 1024;
+    if (bytes < k) return (bytes / k).toFixed(2) + ' KB';
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];

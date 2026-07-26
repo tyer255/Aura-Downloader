@@ -39,6 +39,10 @@ function getThumbnailQualities(thumbnailUrl?: string) {
 function formatBytes(bytes: number): string {
   if (!bytes || isNaN(bytes) || bytes <= 0) return '';
   const k = 1024;
+  // Never display in Bytes.
+  if (bytes < k) {
+    return (bytes / k).toFixed(1) + ' KB';
+  }
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
@@ -1090,43 +1094,54 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   useEffect(() => {
     if (!result) return;
     const list = sanitizeQualities(result.qualities, result.url);
-    list.forEach(q => {
-      if (q.url && !q.size && !fetchedSizes[q.url]) {
-        const proxyUrl = q.url.startsWith('/api/') ? q.url : `/api/proxy-download?url=${encodeURIComponent(q.url)}&filename=media`;
-        fetch(proxyUrl, { method: 'HEAD' })
-          .then(res => {
-            const len = res.headers.get('content-length') || res.headers.get('estimated-content-length');
-            if (len) {
-              const bytes = parseInt(len, 10);
-              if (bytes > 0) {
-                const formatted = formatBytes(bytes);
-                if (formatted) {
-                  setFetchedSizes(prev => ({ ...prev, [q.url]: formatted }));
-                }
-              }
+    
+    const fetchSize = async (url: string) => {
+      if (!url || fetchedSizes[url]) return;
+      
+      try {
+        let targetUrl = url;
+        if (url.startsWith('/api/get-youtube-link')) {
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data && data.url) {
+            targetUrl = data.url;
+          } else {
+             setFetchedSizes(prev => ({ ...prev, [url]: "Size Unknown" }));
+             return;
+          }
+        }
+        
+        const proxyUrl = targetUrl.startsWith('/api/') ? targetUrl : `/api/proxy-download?url=${encodeURIComponent(targetUrl)}&filename=media`;
+        const res = await fetch(proxyUrl, { method: 'HEAD' });
+        const len = res.headers.get('content-length') || res.headers.get('estimated-content-length');
+        if (len) {
+          const bytes = parseInt(len, 10);
+          if (bytes > 0) {
+            const formatted = formatBytes(bytes);
+            if (formatted) {
+              setFetchedSizes(prev => ({ ...prev, [url]: formatted }));
+              return;
             }
-          })
-          .catch(() => {});
+          }
+        }
+        setFetchedSizes(prev => ({ ...prev, [url]: "Size Unknown" }));
+      } catch (err) {
+        setFetchedSizes(prev => ({ ...prev, [url]: "Size Unknown" }));
+      }
+    };
+
+    list.forEach(q => {
+      // Treat placeholder texts as missing sizes so we fetch the real size
+      const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
+      if (q.url && (!q.size || isPlaceholder) && !fetchedSizes[q.url]) {
+         fetchSize(q.url);
       }
     });
+
     if (result.media && Array.isArray(result.media)) {
       result.media.forEach((item: any) => {
         if (item.url && !fetchedSizes[item.url]) {
-          const proxyUrl = item.url.startsWith('/api/') ? item.url : `/api/proxy-download?url=${encodeURIComponent(item.url)}&filename=media`;
-          fetch(proxyUrl, { method: 'HEAD' })
-            .then(res => {
-              const len = res.headers.get('content-length') || res.headers.get('estimated-content-length');
-              if (len) {
-                const bytes = parseInt(len, 10);
-                if (bytes > 0) {
-                  const formatted = formatBytes(bytes);
-                  if (formatted) {
-                    setFetchedSizes(prev => ({ ...prev, [item.url]: formatted }));
-                  }
-                }
-              }
-            })
-            .catch(() => {});
+           fetchSize(item.url);
         }
       });
     }
@@ -3444,6 +3459,21 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         )}
                         {(result.qualities && result.qualities.length > 0) ? (() => {
                           const sanitized = sanitizeQualities(result.qualities, result.url);
+                          
+                          const isResolvingSizes = sanitized.some(q => {
+                            const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
+                            return (!q.size || isPlaceholder || q.size === 'Unknown Size') && !fetchedSizes[q.url];
+                          });
+                          
+                          if (isResolvingSizes) {
+                            return (
+                              <div className={clsx("flex flex-col gap-3 w-full border-t pt-8 mt-1 items-center justify-center min-h-[200px] transition-colors", isLight ? "border-neutral-200" : "border-white/10")}>
+                                 <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-2" />
+                                 <p className="text-sm font-bold tracking-wide text-emerald-600 dark:text-emerald-400">Preparing download options...</p>
+                              </div>
+                            );
+                          }
+
                           if (sanitized.length > 0) {
                             const videoOptions = sanitized.filter(q => !q.isAudio);
                             const sectionHeader = videoOptions.length > 1 ? "Available Video Quality Formats:" : "Download Media File:";
@@ -3463,7 +3493,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                     {sanitized.map((q, idx) => {
                                       const activeDl = activeDownloads[q.url];
                                       const filename = (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + "." + (q.ext || "mp4");
-                                      const sizeDisplay = q.size || fetchedSizes[q.url] || (q.isAudio ? "MP3 Audio" : "Original Quality");
+                                      const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
+                                      const sizeDisplay = fetchedSizes[q.url] && fetchedSizes[q.url] !== "Size Unknown" 
+                                          ? fetchedSizes[q.url] 
+                                          : (!isPlaceholder && q.size ? q.size : (q.isAudio ? "MP3 Audio" : "Unknown Size"));
                                       return (
                                         <div key={idx} className="flex items-center gap-2 w-full">
                                           <button type="button"
