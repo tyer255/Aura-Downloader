@@ -866,7 +866,7 @@ function isInstagramVideoUrl(url: string) { return /\/(reel|tv|reels)\//.test(ur
 
 function classifyUrl(urlStr: string) {
   const url = urlStr.toLowerCase().trim();
-  let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'x' | 'linkedin' | 'unknown' = 'unknown';
+  let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'x' | 'linkedin' | 'snapchat' | 'unknown' = 'unknown';
   let type: 'profile' | 'media' | 'playlist' = 'media';
 
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
@@ -913,6 +913,11 @@ function classifyUrl(urlStr: string) {
       type = 'profile';
     } else if (url.includes("/posts/")) {
       type = 'media';
+    }
+  } else if (url.includes("snapchat.com")) {
+    platform = 'snapchat';
+    if (!url.includes("/spotlight/") && !url.includes("/s/") && !url.includes("/p/")) {
+      type = 'profile';
     }
   }
   return { platform, type };
@@ -1957,6 +1962,14 @@ app.post("/api/download", async (req, res) => {
            if (ytDlpResult && ytDlpResult.success) {
              return res.json(ytDlpResult);
            }
+        } else if (platform === 'snapchat') {
+           console.log("Snapchat URL detected as profile/story, extracting with yt-dlp playlist.");
+           const ytDlpResult = await extractWithYtDlp(trimmedUrl, true);
+           if (ytDlpResult && ytDlpResult.success) {
+             return res.json(ytDlpResult);
+           } else {
+             return res.status(400).json({ success: false, message: "Extraction failed: This Snapchat content is private or unavailable." });
+           }
         } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
         console.log("Trying Twitter extraction...");
         
@@ -2043,6 +2056,10 @@ app.post("/api/download", async (req, res) => {
             racePromises.push(extractWithYtDlp(trimmedUrl));
         }
 
+        // Universally add Cobalt for all supported platforms
+        // It's extremely fast and supports almost everything (TikTok, YouTube, Snapchat, etc)
+        racePromises.push(extractWithCobalt(trimmedUrl));
+
         // We only use AI as a fallback now to avoid returning low-quality metadata
         // when a real extractor might succeed a few seconds later.
 
@@ -2074,6 +2091,12 @@ app.post("/api/download", async (req, res) => {
           errorMsg = "Instagram blocks our cloud servers from downloading posts. Please check your RapidAPI subscription.";
         } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
           errorMsg = "Twitter blocked our server IP for unauthenticated requests. Add your RAPIDAPI_KEY to AI Studio Secrets and subscribe to 'Twitter135' on RapidAPI, OR set your TWITTER_AUTH_TOKEN.";
+        } else if (platform === 'snapchat') {
+          if (!trimmedUrl.includes("/spotlight/") && !trimmedUrl.includes("/s/") && !trimmedUrl.includes("/p/") && !trimmedUrl.includes("/add/") && !trimmedUrl.includes("@")) {
+            errorMsg = "Invalid Snapchat URL.";
+          } else {
+            errorMsg = "This Snapchat content is private or unavailable.";
+          }
         }
         return res.status(400).json({ success: false, message: `Extraction failed: ${errorMsg}` });
       }

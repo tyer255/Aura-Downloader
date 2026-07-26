@@ -235,6 +235,7 @@ const getProxiedUrl = (url?: string, inline = true) => {
     url.includes('twitter.com') ||
     url.includes('licdn.com') ||
     url.includes('linkedin.com') ||
+    url.includes('snapchat.com') ||
     url.includes('youtube.com') ||
     url.includes('ytimg.com') ||
     url.includes('ggpht.com') ||
@@ -253,12 +254,13 @@ const getProxiedUrl = (url?: string, inline = true) => {
   return `/api/proxy-download?url=${encodeURIComponent(url)}`;
 };
 
-type Tab = 'pinterest' | 'youtube' | 'instagram' | 'tiktok' | 'facebook' | 'reddit' | 'x' | 'linkedin';
+type Tab = 'pinterest' | 'youtube' | 'instagram' | 'snapchat' | 'tiktok' | 'facebook' | 'reddit' | 'x' | 'linkedin';
 
 const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string; title: string; keywords?: string }[] = [
   { id: 'pinterest', label: 'Pinterest', placeholder: 'Paste Pinterest Link Here', name: 'Pinterest Downloader', title: 'Aura Downloader - Download Pinterest Videos & Images Free', description: 'Best free Pinterest Downloader online. Download Pinterest videos, images, and GIFs in HD quality without watermark using Aura Downloader.', keywords: 'Aura Downloader, Pinterest downloader, download Pinterest video, Pinterest video downloader, Pinterest saver' },
   { id: 'youtube', label: 'YouTube', placeholder: 'Paste YouTube Link (Video, Short, Channel, Playlist)', name: 'YouTube Downloader', title: 'Aura Downloader - YouTube Downloader, Shorts & Reels Saver', description: 'Aura Downloader is the best free YouTube Downloader. Download YouTube videos, Shorts, and Reels in 1080p, 4K HD effortlessly.', keywords: 'Aura Downloader, YouTube downloader, YouTube Shorts downloader, YouTube Reel downloader, download YouTube video, YouTube to mp3' },
   { id: 'instagram', label: 'Instagram', placeholder: 'Paste Instagram Link Here', name: 'Instagram Downloader', title: 'Aura Downloader - Instagram Reels & Video Downloader', description: 'Free online Instagram Downloader by Aura Downloader. Download Instagram reels, photos, videos, IGTV, and stories in high quality easily.', keywords: 'Aura Downloader, Instagram downloader, download Instagram video, Instagram reels downloader, Instagram story saver' },
+  { id: 'snapchat', label: 'Snapchat', placeholder: 'Paste Snapchat Spotlight or Story Link', name: 'Snapchat Downloader', title: 'Aura Downloader - Download Snapchat Videos Free', description: 'Free online Snapchat Video Downloader. Download Snapchat Spotlight videos and stories in high quality directly to your device with Aura Downloader.', keywords: 'Aura Downloader, Snapchat downloader, download Snapchat video, Snapchat spotlight downloader, story saver' },
   { id: 'tiktok', label: 'TikTok', placeholder: 'Paste TikTok Link Here', name: 'TikTok Downloader', title: 'Aura Downloader - TikTok Downloader Without Watermark', description: 'Best free TikTok Downloader. Download TikTok videos without watermark in HD quality using Aura Downloader.', keywords: 'Aura Downloader, TikTok downloader, download TikTok video, TikTok no watermark, TikTok video downloader' },
   { id: 'facebook', label: 'Facebook', placeholder: 'Paste Facebook Link Here', name: 'Facebook Downloader', title: 'Aura Downloader - Download Facebook Videos & Reels Free', description: 'Free online Facebook Video Downloader by Aura Downloader. Download Facebook reels and videos in HD quality to your device fast and easily.', keywords: 'Aura Downloader, Facebook downloader, download Facebook video, Facebook reels downloader, FB video downloader' },
   { id: 'reddit', label: 'Reddit', placeholder: 'Paste Reddit Link Here', name: 'Reddit Downloader', title: 'Aura Downloader - Download Reddit Videos With Audio', description: 'Free Reddit Video Downloader. Download Reddit videos with sound in HD quality with Aura Downloader.', keywords: 'Aura Downloader, Reddit downloader, download Reddit video with audio, Reddit video saver' },
@@ -293,6 +295,9 @@ const detectPlatformFromUrl = (url: string): Tab | null => {
   }
   if (lowercase.includes('linkedin.com')) {
     return 'linkedin';
+  }
+  if (lowercase.includes('snapchat.com')) {
+    return 'snapchat';
   }
   return null;
 };
@@ -494,6 +499,29 @@ const render3DGlassIcon = (platform: Tab): React.ReactNode => {
           </g>
           <path d="M14 42 C14 26.54 26.54 14 42 14 L58 14 C73.46 14 86 26.54 86 42 C62 47 38 47 14 42 Z" fill="url(#xGlassGrad)" />
           <path d="M17 28 C26 17 74 17 83 28" fill="none" stroke="#ffffff" strokeWidth="1" strokeLinecap="round" strokeOpacity="0.3" />
+        </svg>
+      );
+    case 'snapchat':
+      return (
+        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="snap3dBase" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#fffc00" />
+              <stop offset="100%" stopColor="#e5e200" />
+            </linearGradient>
+            <linearGradient id="snap3dHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
+              <stop offset="25%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            <filter id="snapShadow">
+              <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#000000" floodOpacity="0.3" />
+            </filter>
+          </defs>
+          <rect x="12" y="12" width="76" height="76" rx="22" fill="url(#snap3dBase)" filter="drop-shadow(0 6px 12px rgba(200,200,0,0.3))" />
+          <rect x="12" y="12" width="76" height="76" rx="22" fill="url(#snap3dHighlight)" />
+          <g transform="translate(28.77, 24.88) scale(2.2)" filter="url(#snapShadow)">
+            <path d="M12.115 1.637c.214 0 .41.168.41.168.932.784 1.523 2.023 1.523 3.118v.098c0 .252.083.49.243.67.28.309.684.42 1.08.337.62-.14 1.286-.043 1.802.308.25.168.38.42.38.685 0 .448-.312.854-.827 1.092a3.25 3.25 0 0 0-1.892 2.868c-.01 1.176.626 2.14 1.524 2.463.64.223 1.374.152 1.875-.084.818-.392 1.522.476.751.951-.724.434-1.312 1.092-1.674 1.876l-.04.098c-.378 1.05-1.436 1.678-2.533 1.678-.256 0-.51-.027-.758-.098a5.67 5.67 0 0 1-3.782 3.539 1.365 1.365 0 0 1-1.05.027 5.65 5.65 0 0 1-3.892-3.566 3.407 3.407 0 0 1-.758.098c-1.096 0-2.153-.629-2.533-1.678-.014-.028-.028-.07-.042-.112-.352-.756-.922-1.4-1.62-1.818-.758-.462-.066-1.344.758-.952.502.238 1.233.308 1.874.084.896-.322 1.533-1.287 1.523-2.462a3.252 3.252 0 0 0-1.884-2.868c-.514-.238-.824-.643-.824-1.092 0-.265.13-.517.38-.685.517-.349 1.182-.447 1.801-.307.394.084.796-.027 1.077-.336.158-.182.242-.42.242-.671v-.098c0-1.092.59-2.333 1.523-3.12a2.44 2.44 0 0 1 1.036-.489c.496-.084 1.036-.042 1.49.14h.001Z" fill="#ffffff" stroke="#111111" strokeWidth="1.2" strokeLinejoin="round" />
+          </g>
         </svg>
       );
     case 'linkedin':
@@ -1189,7 +1217,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     facebook: 98,
     reddit: 74,
     x: 62,
-    linkedin: 88
+    linkedin: 88,
+    snapchat: 110
   });
 
   // Periodically fluctuate latency metrics slightly to simulate real system activity
@@ -1717,6 +1746,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       case 'pinterest': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#8C646A_0%,#4D3539_70%,#000000_100%)]';
       case 'x': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#76787B_0%,#444547_70%,#000000_100%)]';
       case 'linkedin': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#64748B_0%,#334155_70%,#000000_100%)]';
+      case 'snapchat': return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#2C2A10_0%,#121105_70%,#000000_100%)]';
       default: return 'bg-[#000000] bg-[image:linear-gradient(to_bottom,#737373_0%,#404040_70%,#000000_100%)]';
     }
   };
@@ -2242,6 +2272,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     case 'pinterest': return 'shadow-[0_0_15px_rgba(230,0,35,0.15)]';
                     case 'x': return 'shadow-[0_0_15px_rgba(0,0,0,0.1)]';
                     case 'linkedin': return 'shadow-[0_0_15px_rgba(10,102,194,0.15)]';
+                    case 'snapchat': return 'shadow-[0_0_15px_rgba(255,252,0,0.15)]';
                     default: return 'shadow-md';
                   }
                 }
@@ -2254,6 +2285,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   case 'pinterest': return 'shadow-[0_0_15px_rgba(230,0,35,0.4)]';
                   case 'x': return 'shadow-[0_0_15px_rgba(255,255,255,0.3)]';
                   case 'linkedin': return 'shadow-[0_0_15px_rgba(10,102,194,0.4)]';
+                  case 'snapchat': return 'shadow-[0_0_15px_rgba(255,252,0,0.4)]';
                   default: return 'shadow-md';
                 }
               };
@@ -2446,7 +2478,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       )}
                       style={{
                         backgroundColor: isActive ? brandColor : (isLight ? '#ffffff' : 'rgba(255,255,255,0.05)'),
-                        color: isActive ? (tab.id === 'tiktok' || tab.id === 'x' ? (isLight ? '#fff' : '#000') : '#fff') : brandColor,
+                        color: isActive ? (tab.id === 'snapchat' ? '#000' : (tab.id === 'tiktok' || tab.id === 'x' ? (isLight ? '#fff' : '#000') : '#fff')) : brandColor,
                         borderColor: isActive ? brandColor : (isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'),
                         ...(isActive ? { "--tw-ring-color": brandColor } as React.CSSProperties : {})
                       }}
@@ -3762,6 +3794,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     case 'pinterest': return 'hover:shadow-[0_0_20px_rgba(220,38,38,0.25)] dark:hover:shadow-[0_0_25px_rgba(220,38,38,0.35)] hover:border-red-600/40';
                     case 'x': return 'hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] dark:hover:shadow-[0_0_25px_rgba(255,255,255,0.15)] hover:border-white/20';
                     case 'linkedin': return 'hover:shadow-[0_0_20px_rgba(14,165,233,0.25)] dark:hover:shadow-[0_0_25px_rgba(14,165,233,0.35)] hover:border-sky-500/40';
+                    case 'snapchat': return 'hover:shadow-[0_0_20px_rgba(234,179,8,0.25)] dark:hover:shadow-[0_0_25px_rgba(234,179,8,0.35)] hover:border-yellow-500/40';
                     default: return 'hover:shadow-md';
                   }
                 };
@@ -4155,6 +4188,14 @@ const BrandIcon = ({ id, className = "" }: { id: Tab, className?: string }) => {
       return <svg fill="currentColor" viewBox="0 0 24 24" className={className}><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>;
     case 'linkedin':
       return <svg fill="currentColor" viewBox="0 0 24 24" className={className}><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>;
+    case 'snapchat':
+      return (
+        <svg viewBox="0 0 24 24" className={className} style={{ overflow: 'visible' }}>
+          <g transform="translate(2.35, 0.58)">
+            <path d="M12.115 1.637c.214 0 .41.168.41.168.932.784 1.523 2.023 1.523 3.118v.098c0 .252.083.49.243.67.28.309.684.42 1.08.337.62-.14 1.286-.043 1.802.308.25.168.38.42.38.685 0 .448-.312.854-.827 1.092a3.25 3.25 0 0 0-1.892 2.868c-.01 1.176.626 2.14 1.524 2.463.64.223 1.374.152 1.875-.084.818-.392 1.522.476.751.951-.724.434-1.312 1.092-1.674 1.876l-.04.098c-.378 1.05-1.436 1.678-2.533 1.678-.256 0-.51-.027-.758-.098a5.67 5.67 0 0 1-3.782 3.539 1.365 1.365 0 0 1-1.05.027 5.65 5.65 0 0 1-3.892-3.566 3.407 3.407 0 0 1-.758.098c-1.096 0-2.153-.629-2.533-1.678-.014-.028-.028-.07-.042-.112-.352-.756-.922-1.4-1.62-1.818-.758-.462-.066-1.344.758-.952.502.238 1.233.308 1.874.084.896-.322 1.533-1.287 1.523-2.462a3.252 3.252 0 0 0-1.884-2.868c-.514-.238-.824-.643-.824-1.092 0-.265.13-.517.38-.685.517-.349 1.182-.447 1.801-.307.394.084.796-.027 1.077-.336.158-.182.242-.42.242-.671v-.098c0-1.092.59-2.333 1.523-3.12a2.44 2.44 0 0 1 1.036-.489c.496-.084 1.036-.042 1.49.14h.001Z" fill="#ffffff" stroke="#111111" strokeWidth="1.2" strokeLinejoin="round" />
+          </g>
+        </svg>
+      );
     default:
       return null;
   }
@@ -4171,6 +4212,7 @@ const getBrandColor = (id: Tab, isLight: boolean) => {
     case 'reddit': return '#FF4500';
     case 'x': return isLight ? '#000000' : '#FFFFFF';
     case 'linkedin': return '#0077b5';
+    case 'snapchat': return '#FFFC00';
     default: return isLight ? '#1a1a1a' : '#cccccc';
   }
 };
@@ -4181,6 +4223,7 @@ export default function App() {
       <Route path="/" element={<DownloaderView routeTab="pinterest" />} />
       <Route path="/youtube-downloader" element={<DownloaderView routeTab="youtube" />} />
       <Route path="/instagram-downloader" element={<DownloaderView routeTab="instagram" />} />
+      <Route path="/snapchat-downloader" element={<DownloaderView routeTab="snapchat" />} />
       <Route path="/tiktok-downloader" element={<DownloaderView routeTab="tiktok" />} />
       <Route path="/facebook-downloader" element={<DownloaderView routeTab="facebook" />} />
       <Route path="/reddit-downloader" element={<DownloaderView routeTab="reddit" />} />

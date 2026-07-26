@@ -54,6 +54,8 @@
     "react-router-dom": "^7.18.1",
     "ruhend-scraper": "^10.0.3",
     "simple-icons": "^16.27.0",
+    "snapchat-downloader": "^2.0.0",
+    "svg-path-bounds": "^1.0.2",
     "tailwind-merge": "^2.3.0",
     "ultra-igdl": "^1.0.3",
     "web-push": "^3.6.7",
