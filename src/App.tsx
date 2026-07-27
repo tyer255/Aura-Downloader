@@ -1090,9 +1090,13 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [fetchedSizes, setFetchedSizes] = useState<Record<string, string>>({});
+  const fetchingRefs = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!result) return;
+    if (!result) {
+       fetchingRefs.current.clear();
+       return;
+    }
     const list = sanitizeQualities(result.qualities, result.url);
     
     const fetchSize = async (url: string) => {
@@ -1130,13 +1134,18 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       }
     };
 
-    list.forEach(q => {
-      // Treat placeholder texts as missing sizes so we fetch the real size
-      const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
-      if (q.url && (!q.size || isPlaceholder) && !fetchedSizes[q.url]) {
-         fetchSize(q.url);
+    // Process fetchSize sequentially or in small batches to prevent overloading the backend
+    const processQueue = async () => {
+      for (const q of list) {
+        const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
+        if (q.url && (!q.size || isPlaceholder) && !fetchedSizes[q.url]) {
+           await fetchSize(q.url);
+           // Add a tiny delay to allow React to render each update and create a cascading animation
+           await new Promise(r => setTimeout(r, 200));
+        }
       }
-    });
+    };
+    processQueue();
 
     if (result.media && Array.isArray(result.media)) {
       result.media.forEach((item: any) => {
@@ -3460,19 +3469,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         {(result.qualities && result.qualities.length > 0) ? (() => {
                           const sanitized = sanitizeQualities(result.qualities, result.url);
                           
-                          const isResolvingSizes = sanitized.some(q => {
-                            const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
-                            return (!q.size || isPlaceholder || q.size === 'Unknown Size') && !fetchedSizes[q.url];
-                          });
-                          
-                          if (isResolvingSizes) {
-                            return (
-                              <div className={clsx("flex flex-col gap-3 w-full border-t pt-8 mt-1 items-center justify-center min-h-[200px] transition-colors", isLight ? "border-neutral-200" : "border-white/10")}>
-                                 <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-2" />
-                                 <p className="text-sm font-bold tracking-wide text-emerald-600 dark:text-emerald-400">Preparing download options...</p>
-                              </div>
-                            );
-                          }
+
 
                           if (sanitized.length > 0) {
                             const videoOptions = sanitized.filter(q => !q.isAudio);
