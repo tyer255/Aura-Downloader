@@ -1,6 +1,6 @@
 {
   "name": "Aura Downloader",
-  "description": "Aura Downloader is the best tool to download videos, Shorts, and Reels from YouTube, TikTok, Instagram, Facebook, Pinterest, and Twitter.",
+  "description": "Aura Downloader is the best tool to download videos, audio, Shorts, and Reels from Spotify, Threads, YouTube, TikTok, Instagram, Facebook, Pinterest, and Twitter.",
   "requestFramePermissions": [
     "clipboard-read",
     "clipboard-write"

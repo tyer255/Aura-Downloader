@@ -14,22 +14,20 @@ export default function ReloadPrompt({ isLight }: { isLight: boolean }) {
       if (r) {
         // Immediate check just in case
         try {
-          r.update();
+          r.update()?.catch?.(() => {});
         } catch (e) {}
 
         // Check for updates periodically
         setInterval(() => {
-          console.log('Checking for SW update...');
           try {
-            r.update();
+            r.update()?.catch?.(() => {});
           } catch (e) {}
         }, 60 * 1000); // Check every minute
         
         // Check for updates when the window regains focus
         window.addEventListener('focus', () => {
-          console.log('Window focused, checking for SW update...');
           try {
-            r.update();
+            r.update()?.catch?.(() => {});
           } catch (e) {}
         });
       }

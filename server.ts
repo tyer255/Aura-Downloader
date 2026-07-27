@@ -563,7 +563,7 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
     
     if (isPlaylist) {
        options.flatPlaylist = true;
-       options.playlistEnd = 15;
+       options.playlistEnd = 300;
     }
     
     const data: any = await youtubedl(url, options);
@@ -717,6 +717,110 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
   }
 }
 
+
+
+async function extractSpotify(url: string) {
+    try {
+        const axios = (await import('axios')).default;
+        if (url.includes('spoti.fi') || url.includes('spotify.link')) {
+            try {
+                const redirectRes = await axios.get(url, { maxRedirects: 5, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
+                if (redirectRes.request?.res?.responseUrl) {
+                    url = redirectRes.request.res.responseUrl;
+                }
+            } catch(e) {}
+        }
+
+        const isPlaylist = url.includes('/playlist/') || url.includes('/album/');
+        let embedUrl = url;
+        if (url.includes('open.spotify.com/')) {
+            embedUrl = url.replace('open.spotify.com/', 'open.spotify.com/embed/');
+        } else {
+            embedUrl = `https://open.spotify.com/embed/${url.split('spotify.com/')[1] || ''}`;
+        }
+        
+        const res = await axios.get(embedUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        });
+        
+        const nextMatch = res.data.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/);
+        if (!nextMatch) return { success: false, message: 'Spotify extraction failed: No data found' };
+        
+        const json = JSON.parse(nextMatch[1]);
+        const entity = json?.props?.pageProps?.state?.data?.entity;
+        
+        if (!entity) return { success: false, message: 'Spotify data not found in page' };
+        
+        if (isPlaylist) {
+            const tracks = entity.trackList || [];
+            const playlistCover = entity.visualIdentity?.image?.[0]?.url || "";
+
+            const resolvedTracks = await Promise.all(tracks.map(async (t: any) => {
+                if (!t.title) return null;
+                const trackName = t.title;
+                const artistName = t.subtitle || (t.artists && t.artists[0] ? t.artists[0].name : "");
+                let thumb = t.image?.[0]?.url || "";
+
+                if (!thumb && t.uri && t.uri.includes('track:')) {
+                    const trackId = t.uri.split(':')[2];
+                    try {
+                        const oemb = await axios.get(`https://open.spotify.com/oembed?url=https://open.spotify.com/track/${trackId}`, { timeout: 2500 });
+                        if (oemb.data && oemb.data.thumbnail_url) {
+                            thumb = oemb.data.thumbnail_url;
+                        }
+                    } catch(e) {}
+                }
+
+                if (!thumb) {
+                    thumb = playlistCover;
+                }
+
+                const query = `${trackName} ${artistName} full song`;
+                const resolveUrl = `/api/spotify-resolve?query=${encodeURIComponent(query)}`;
+
+                return {
+                    type: "audio",
+                    url: resolveUrl,
+                    thumbnail: thumb,
+                    title: trackName + (artistName ? ` - ${artistName}` : ""),
+                    qualities: [
+                        { label: "MP3 Audio", url: resolveUrl, ext: "mp3", isAudio: true, size: "Unknown Size", _query: query }
+                    ]
+                };
+            }));
+
+            const media = resolvedTracks.filter(Boolean);
+
+            return {
+                success: true,
+                mediaType: 'playlist',
+                title: entity.name || "Spotify Playlist",
+                thumbnail: playlistCover,
+                source: "spotify",
+                media: media
+            };
+        } else {
+            const trackName = entity.title || entity.name;
+            const artistName = entity.artists?.[0]?.name || "";
+            const thumb = entity.visualIdentity?.image?.[0]?.url || "";
+            const query = `${trackName} ${artistName} full song`;
+            const resolveUrl = `/api/spotify-resolve?query=${encodeURIComponent(query)}`;
+            
+            return {
+                success: true,
+                mediaType: 'audio',
+                title: trackName + (artistName ? ` - ${artistName}` : ""),
+                thumbnail: thumb,
+                source: "spotify",
+                qualities: [
+                    { label: "MP3 Audio", url: resolveUrl, ext: "mp3", isAudio: true, size: "Unknown Size", _query: query }
+                ]
+            };
+        }
+    } catch(e: any) {
+        return { success: false, message: e.message };
+    }
+}
 
 export async function extractWithAI(url: string, isProfile: boolean): Promise<any> {
   let htmlContent = "";
@@ -876,7 +980,7 @@ function isInstagramVideoUrl(url: string) { return /\/(reel|tv|reels)\//.test(ur
 
 function classifyUrl(urlStr: string) {
   const url = urlStr.toLowerCase().trim();
-  let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'x' | 'linkedin' | 'snapchat' | 'unknown' = 'unknown';
+  let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'x' | 'linkedin' | 'snapchat' | 'spotify' | 'threads' | 'unknown' = 'unknown';
   let type: 'profile' | 'media' | 'playlist' = 'media';
 
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
@@ -890,7 +994,7 @@ function classifyUrl(urlStr: string) {
         type = 'profile';
       }
     }
-    } else if (url.includes("instagram.com")) {
+  } else if (url.includes("instagram.com")) {
     platform = 'instagram';
     if (!/\/(p|reel|tv|reels|stories)\//.test(url)) {
       type = 'profile';
@@ -906,6 +1010,14 @@ function classifyUrl(urlStr: string) {
         }
       }
     }
+  } else if (url.includes("spotify.com") || url.includes("spoti.fi") || url.includes("spotify.link")) {
+    platform = 'spotify';
+    if (url.includes("/playlist/")) type = 'playlist';
+    else if (url.includes("/artist/") || url.includes("/user/")) type = 'profile';
+  } else if (url.includes("threads.net") || url.includes("threads.com")) {
+    platform = 'threads';
+    if (url.includes("/post/") || url.includes("/t/")) type = 'media';
+    else type = 'profile';
   } else if (url.includes("x.com") || url.includes("twitter.com")) {
     platform = 'x';
     if (!url.includes("/status/")) {
@@ -943,7 +1055,9 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
 
   try {
     let targetUrl = fileUrl;
-    if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+    if (targetUrl.startsWith("/")) {
+      targetUrl = `http://127.0.0.1:3000${targetUrl}`;
+    } else if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
       targetUrl = "https://" + targetUrl;
     }
 
@@ -1015,7 +1129,7 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "*");
 
-      const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
+      const encodedFilename = encodeURIComponent(((customFilename || "download") as string).replace(/[\r\n]+/g, ''));
       const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
       res.setHeader("Content-Disposition", disposition);
       res.setHeader("Content-Type", contentType);
@@ -1508,7 +1622,7 @@ async function fastRace(promises: Promise<any>[]): Promise<any> {
             const res = await p;
             if (res && res.success) {
                 // Return if valid format
-                if ((res.media && res.media.length > 0) || res.url) {
+                if ((res.media && res.media.length > 0) || res.url || (res.qualities && res.qualities.length > 0)) {
                     return res;
                 }
             }
@@ -2015,13 +2129,17 @@ app.post("/api/download", async (req, res) => {
         
         } else if (platform === 'snapchat') {
             racePromises.push(extractWithYtDlp(trimmedUrl));
+        } else if (platform === 'spotify') {
+            console.log("Spotify URL detected, using Spotify extractor...");
+            racePromises.push(extractSpotify(trimmedUrl));
+        } else if (platform === 'threads') {
+            console.log("Threads URL detected, using extractors...");
+            racePromises.push(extractWithYtDlp(trimmedUrl));
+            racePromises.push(extractInstagramRapidAPI(trimmedUrl));
+            racePromises.push(extractInstagramBtch(trimmedUrl));
         } else {
             racePromises.push(extractWithYtDlp(trimmedUrl));
         }
-
-        
-        // We only use AI as a fallback now to avoid returning low-quality metadata
-        // when a real extractor might succeed a few seconds later.
 
         console.log("Racing " + racePromises.length + " extractors for speed...");
         let raceResult = await fastRace(racePromises);
@@ -2063,6 +2181,133 @@ app.post("/api/download", async (req, res) => {
     } catch (error) {
       console.error("API Download Exception:", error.message);
       return res.status(500).json({ success: false, message: error.message || "An unexpected error occurred while processing the URL." });
+    }
+  });
+
+  app.get("/api/spotify-resolve", async (req, res) => {
+    const query = req.query.query as string;
+    if (!query) return res.status(400).json({ success: false, message: "Missing query" });
+    try {
+        const axios = (await import('axios')).default;
+        let videoId: string | null = null;
+        
+        function parseDuration(durStr?: string): number {
+            if (!durStr) return 0;
+            const parts = durStr.split(':').map(Number);
+            if (parts.length === 2) return parts[0] * 60 + parts[1];
+            if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+            return 0;
+        }
+
+        // 1. Smart Multi-Query Search prioritizing Clean Studio Audio / Topic Channels
+        const cleanQuery = query.replace(/\s*(full song|audio)\s*/gi, '').trim();
+        const searchQueries = [
+            `${cleanQuery} Topic`,
+            `${cleanQuery} Official Audio`,
+            query
+        ];
+
+        let allCandidates: { id: string; title: string; channel: string; duration: number; score: number }[] = [];
+
+        for (let q of searchQueries) {
+            try {
+                const searchHtml = await axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+                    timeout: 5000
+                });
+                const jsonMatch = searchHtml.data.match(/var ytInitialData = ({.*?});<\/script>/);
+                if (jsonMatch) {
+                    const data = JSON.parse(jsonMatch[1]);
+                    const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+                    
+                    for (let c of contents) {
+                        const items = c.itemSectionRenderer?.contents || [];
+                        for (let item of items) {
+                            if (item.videoRenderer) {
+                                const v = item.videoRenderer;
+                                if (!v.videoId) continue;
+                                const title = (v.title?.runs?.[0]?.text || '').toLowerCase();
+                                const channel = (v.ownerText?.runs?.[0]?.text || '').toLowerCase();
+                                const dur = parseDuration(v.lengthText?.simpleText);
+
+                                // Filter out shorts, teasers (<40s) and 1-hour loops (>900s)
+                                if (dur < 40 || dur > 900) continue;
+
+                                let score = 0;
+                                // Highest score (+100) for Official Topic Channels (pure studio audio direct from distribution)
+                                if (channel.includes('topic')) score += 100;
+                                if (title.includes('official audio') || title.includes('audio')) score += 50;
+
+                                // Penalize videos with spoken dialogue scenes (music videos), live voiceover, covers, edits
+                                if (title.includes('music video') || title.includes('official video') || title.includes('video')) score -= 40;
+                                if (title.includes('live') || title.includes('performance')) score -= 50;
+                                if (title.includes('remix') || title.includes('edit') || title.includes('tiktok') || title.includes('slowed') || title.includes('sped up')) score -= 60;
+                                if (title.includes('cover') || title.includes('reaction') || title.includes('interview') || title.includes('review')) score -= 100;
+
+                                allCandidates.push({ id: v.videoId, title, channel, duration: dur, score });
+                            }
+                        }
+                    }
+
+                    // If we found an official Topic track or high-confidence audio, select it immediately
+                    const topMatch = allCandidates.find(c => c.score >= 80);
+                    if (topMatch) {
+                        videoId = topMatch.id;
+                        break;
+                    }
+                }
+            } catch(e) {}
+        }
+
+        if (!videoId && allCandidates.length > 0) {
+            allCandidates.sort((a, b) => b.score - a.score);
+            videoId = allCandidates[0].id;
+        }
+
+        // 2. Fallback to youtube-sr
+        if (!videoId) {
+            try {
+                const ytModule = await import('youtube-sr');
+                const YouTube = ytModule.default?.default || ytModule.default || ytModule;
+                const ytRes = await YouTube.searchOne(`${cleanQuery} Topic`);
+                if (ytRes && ytRes.id) videoId = ytRes.id;
+            } catch(e) {}
+        }
+
+        if (!videoId) {
+            return res.status(404).json({ success: false, message: "Could not resolve Spotify audio track" });
+        }
+
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const { ytmp3 } = await import("@vreden/youtube_scraper");
+        const originalConsoleError = console.error;
+        const originalConsoleLog = console.log;
+        console.error = () => {}; console.log = () => {};
+        let result;
+        try {
+            result = await ytmp3(videoUrl);
+        } catch(e) {} finally {
+            console.error = originalConsoleError;
+            console.log = originalConsoleLog;
+        }
+        let finalAudioUrl = "";
+        if (result && result.status && result.download && result.download.url) {
+            finalAudioUrl = result.download.url;
+        } else {
+            finalAudioUrl = `/api/proxy-download?url=${encodeURIComponent(videoUrl)}`;
+        }
+
+        if (req.query.stream === 'true') {
+            if (finalAudioUrl.startsWith("http")) {
+                return res.redirect(302, finalAudioUrl);
+            } else {
+                return pipeUrlStream(finalAudioUrl, res, "spotify_audio.mp3", true);
+            }
+        }
+
+        return res.json({ success: true, url: finalAudioUrl });
+    } catch(e: any) {
+        return res.status(500).json({ success: false, message: e.message });
     }
   });
 

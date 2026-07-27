@@ -40,6 +40,7 @@
     "instagram-url-direct": "^2.0.7",
     "instatouch": "^2.3.22",
     "ioredis": "^5.11.1",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.395.0",
     "motion": "^12.42.2",
     "nayan-media-downloader": "^0.0.1-security",
@@ -53,13 +54,16 @@
     "react-helmet-async": "^3.0.0",
     "react-router-dom": "^7.18.1",
     "ruhend-scraper": "^10.0.3",
-    "simple-icons": "^16.27.0",
+    "simple-icons": "^16.27.1",
     "snapchat-downloader": "^2.0.0",
+    "spotify-url-info": "^3.3.1",
+    "spottydl": "^0.2.7",
     "svg-path-bounds": "^1.0.2",
     "tailwind-merge": "^2.3.0",
     "ultra-igdl": "^1.0.3",
     "web-push": "^3.6.7",
-    "youtube-dl-exec": "^3.1.9"
+    "youtube-dl-exec": "^3.1.9",
+    "youtube-sr": "^4.3.12"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

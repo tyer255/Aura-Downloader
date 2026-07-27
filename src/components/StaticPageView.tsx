@@ -14,6 +14,8 @@ const TABS = [
   { id: 'reddit', name: 'Reddit Downloader' },
   { id: 'x', name: 'X / Twitter Downloader' },
   { id: 'linkedin', name: 'LinkedIn Downloader' },
+  { id: 'spotify', name: 'Spotify Downloader' },
+  { id: 'threads', name: 'Threads Downloader' },
 ];
 
 export function StaticPageView({ title, children, isLight, setIsLight }: { title: string; children: React.ReactNode; isLight: boolean; setIsLight: (val: boolean) => void }) {
