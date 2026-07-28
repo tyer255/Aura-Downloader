@@ -29,6 +29,7 @@ export interface DownloadResult {
         following?: string;
         postsCount?: string;
     };
+    originalUrl?: string;
     error?: string;
     source?: string;
     isFlaskBackend?: boolean;

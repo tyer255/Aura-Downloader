@@ -159,8 +159,12 @@ html.dark .driver-popover-next-btn:hover {
 
 body {
   @apply text-neutral-900;
+  overscroll-behavior-y: none;
+  user-select: none;
+  -webkit-user-select: none;
   transition: background 0.8s ease-in-out, color 0.7s ease-in-out, background-color 0.7s ease-in-out;
 }
 html.dark body {
   @apply text-neutral-50;
 }
+input, textarea { user-select: auto; -webkit-user-select: auto; }

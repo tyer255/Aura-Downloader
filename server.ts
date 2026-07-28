@@ -1140,7 +1140,7 @@ async function extractSpotify(url: string) {
             };
         }
     } catch(e: any) {
-        return { success: false, message: e.message };
+        return { success: false, message: "Extraction failed. Please try again later." };
     }
 }
 
@@ -2816,7 +2816,7 @@ app.post("/api/download", async (req, res) => {
       }
     } catch (error) {
       console.error("API Download Exception:", error.message);
-      return res.status(500).json({ success: false, message: error.message || "An unexpected error occurred while processing the URL." });
+      return res.status(500).json({ success: false, message: "Extraction failed. Please try again later." || "An unexpected error occurred while processing the URL." });
     }
   });
 
@@ -2911,7 +2911,7 @@ app.post("/api/download", async (req, res) => {
 
       return res.json({ success: true, url: finalAudioUrl, videoId });
     } catch(e: any) {
-      return res.status(500).json({ success: false, message: e.message });
+      return res.status(500).json({ success: false, message: "Extraction failed. Please try again later." });
     }
   });
 

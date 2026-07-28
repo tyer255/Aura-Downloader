@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Play, 
   Pause, 
@@ -48,6 +49,8 @@ export function SpotifyAudioPlayer({
   const [error, setError] = useState<string | null>(null);
   const [isResolving, setIsResolving] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
+  const [resolveProgress, setResolveProgress] = useState(0);
+  const [resolveMessage, setResolveMessage] = useState("Resolving Spotify source...");
 
   const toggleLoop = () => {
     const next = !isLooping;
@@ -106,6 +109,41 @@ export function SpotifyAudioPlayer({
       isMounted = false;
     };
   }, [audioUrl, compact]);
+
+  // Handle fake progress animation during resolving
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isResolving) {
+      setResolveProgress(0);
+      setResolveMessage("Resolving Spotify source...");
+      let currentProgress = 0;
+      
+      interval = setInterval(() => {
+        currentProgress += Math.random() * 8 + 2; // Random jump between 2 and 10
+        if (currentProgress > 95) currentProgress = 95; // cap at 95% until done
+        
+        setResolveProgress(Math.floor(currentProgress));
+        
+        if (currentProgress < 25) {
+          setResolveMessage("Resolving Spotify source...");
+        } else if (currentProgress < 50) {
+          setResolveMessage("Extracting audio...");
+        } else if (currentProgress < 75) {
+          setResolveMessage("Processing preview...");
+        } else {
+          setResolveMessage("Finalizing...");
+        }
+      }, 500);
+    } else {
+      if (resolvedUrl) {
+        setResolveProgress(100);
+      }
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isResolving, resolvedUrl]);
 
   // Audio Event Handlers
   const handleTimeUpdate = () => {
@@ -265,7 +303,7 @@ export function SpotifyAudioPlayer({
                 onClick={onDownload}
                 disabled={downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading"}
                 className={clsx(
-                  "p-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border shadow-sm",
+                  "p-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border shadow-sm active:scale-95",
                   downloadStatus?.status === "complete"
                     ? "bg-emerald-600 text-white border-emerald-500"
                     : isLight
@@ -412,7 +450,7 @@ export function SpotifyAudioPlayer({
           {/* Status Indicators */}
           {isResolving ? (
             <div className="inline-flex items-center gap-2 text-xs text-[#1DB954] bg-[#1DB954]/10 border border-[#1DB954]/20 px-3 py-1.5 rounded-full font-semibold w-max mx-auto sm:mx-0">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Resolving audio stream from Spotify source...
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> {resolveMessage}
             </div>
           ) : error ? (
             <div className="flex items-center gap-2 text-xs text-rose-500 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-xl font-medium w-max mx-auto sm:mx-0">
@@ -457,7 +495,7 @@ export function SpotifyAudioPlayer({
               type="button"
               onClick={() => changeSpeed(rate)}
               className={clsx(
-                "px-2 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer",
+                "px-2 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer active:scale-95",
                 playbackRate === rate
                   ? "bg-[#1DB954] text-black shadow-md shadow-[#1DB954]/20"
                   : isLight ? "bg-neutral-200/70 text-neutral-800 hover:bg-neutral-300" : "bg-white/10 text-neutral-300 hover:bg-white/20"
@@ -500,20 +538,66 @@ export function SpotifyAudioPlayer({
             <Rewind className="w-5 h-5" />
           </button>
 
-          <button
-            type="button"
-            onClick={togglePlay}
-            disabled={isResolving || !!error}
-            className="w-14 h-14 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black font-black flex items-center justify-center shadow-xl shadow-[#1DB954]/30 hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-          >
-            {isResolving || isLoading ? (
-              <Loader2 className="w-6 h-6 animate-spin text-black" />
-            ) : isPlaying ? (
-              <Pause className="w-6 h-6 fill-black" />
-            ) : (
-              <Play className="w-6 h-6 fill-black ml-1" />
-            )}
-          </button>
+          <div className="relative w-14 h-14 flex items-center justify-center">
+            <AnimatePresence mode="wait">
+              {isResolving ? (
+                <motion.div 
+                  key="progress"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="w-14 h-14 absolute inset-0 flex items-center justify-center"
+                >
+                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="44"
+                      fill="transparent"
+                      stroke="rgba(29, 185, 84, 0.2)"
+                      strokeWidth="8"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="44"
+                      fill="transparent"
+                      stroke="#1DB954"
+                      strokeWidth="8"
+                      strokeLinecap="round"
+                      strokeDasharray={2 * Math.PI * 44}
+                      strokeDashoffset={2 * Math.PI * 44 * (1 - resolveProgress / 100)}
+                      className="transition-all duration-500 ease-out"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[11px] font-black text-[#1DB954]">{resolveProgress}%</span>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.button
+                  key="playbtn"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  type="button"
+                  onClick={togglePlay}
+                  disabled={!!error}
+                  className="w-14 h-14 absolute inset-0 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black font-black flex items-center justify-center shadow-xl shadow-[#1DB954]/30 hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-black" />
+                  ) : isPlaying ? (
+                    <Pause className="w-6 h-6 fill-black" />
+                  ) : (
+                    <Play className="w-6 h-6 fill-black ml-1" />
+                  )}
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
 
           <button
             type="button"
@@ -559,7 +643,7 @@ export function SpotifyAudioPlayer({
               onClick={onDownload}
               disabled={downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading"}
               className={clsx(
-                "px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-md uppercase tracking-wider cursor-pointer shrink-0 disabled:cursor-not-allowed",
+                "px-6 py-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-md uppercase tracking-wider cursor-pointer shrink-0 disabled:cursor-not-allowed active:scale-95 hover:shadow-lg",
                 downloadStatus?.status === "complete"
                   ? "bg-emerald-600 text-white"
                   : isLight
