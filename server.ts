@@ -614,7 +614,7 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
                     }
                 }
             } catch (e: any) {
-                console.error("Rapid API Error in yt-dlp:", e.response?.data || e.message);
+                console.log("Rapid API Error in yt-dlp:", e.response?.data || e.message);
             }
         }
         // =====================================
@@ -718,6 +718,56 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
 }
 
 
+
+async function extractSnapchatNative(url: string) {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+      }
+    });
+    const html = await res.text();
+    const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/);
+    if (match) {
+      const data = JSON.parse(match[1]);
+      const spotlightStories = data?.props?.pageProps?.spotlightFeed?.spotlightStories || [];
+      if (spotlightStories.length > 0) {
+        let videoUrl = spotlightStories[0]?.metadata?.videoMetadata?.contentUrl;
+        if (!videoUrl) {
+           const snap = spotlightStories[0].story?.snapList?.[0]?.snapUrls;
+           videoUrl = snap?.mediaUrl;
+        }
+        if (videoUrl) {
+          return {
+            success: true,
+            title: spotlightStories[0]?.metadata?.videoMetadata?.description || "Snapchat Spotlight",
+            thumbnail: spotlightStories[0]?.metadata?.videoMetadata?.thumbnailUrl || spotlightStories[0].story?.thumbnailUrl || videoUrl,
+            url: videoUrl,
+            mediaType: "video",
+            source: "native"
+          };
+        }
+      }
+      
+      const story = data?.props?.pageProps?.story;
+      if (story?.snapList?.[0]?.snapUrls?.mediaUrl) {
+          const videoUrl = story.snapList[0].snapUrls.mediaUrl;
+          return {
+            success: true,
+            title: story.storyTitle || "Snapchat Story",
+            url: videoUrl,
+            thumbnail: story.thumbnailUrl || videoUrl,
+            mediaType: "video",
+            source: "native"
+          }
+      }
+    }
+  } catch(e) {
+    console.log("Snapchat native error:", e);
+  }
+  return null;
+}
 
 async function extractSpotify(url: string) {
     try {
@@ -1233,9 +1283,9 @@ async function ensureYtDlp() {
     
     if (needDownload) {
        console.log("Downloading yt-dlp binary...");
-       const { execSync } = require('child_process');
-       execSync('curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ' + nodeModulesYtdlp);
-       execSync('chmod a+rx ' + nodeModulesYtdlp);
+       const childProcess = await import('child_process');
+       childProcess.execSync('curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ' + nodeModulesYtdlp);
+       childProcess.execSync('chmod a+rx ' + nodeModulesYtdlp);
        console.log("yt-dlp downloaded.");
     }
   } catch (e) {
@@ -1247,7 +1297,7 @@ ensureYtDlp();
 async function startServer() {
   const app = express();
   app.set("trust proxy", 1);
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000;
 
   // Security Middlewares for Production
   app.use(helmet({
@@ -1501,7 +1551,7 @@ async function extractPinterestBtch(url: string) {
        }
     }
   } catch (e) {
-    console.error("btch-downloader pinterest error:", e);
+    console.log("btch-downloader pinterest error:", e);
   }
   return null;
 }
@@ -1546,7 +1596,7 @@ async function extractTiktokTikwm(url: string) {
             }
         }
     } catch(e) {
-        console.error("tikwm error:", e.message);
+        console.log("tikwm error:", e.message);
     }
     return null;
 }
@@ -1577,7 +1627,7 @@ async function extractInstagramBtch(url: string) {
       };
     }
   } catch (e) {
-    console.error("btch-downloader error:", e);
+    console.log("btch-downloader error:", e);
   }
   
   console.log("Falling back to Instagram embed page scraping...");
@@ -1610,7 +1660,7 @@ async function extractInstagramBtch(url: string) {
       };
     }
   } catch (e) {
-    console.error("Instagram embed fallback error:", e);
+    console.log("Instagram embed fallback error:", e);
   }
   
   return null;
@@ -1896,8 +1946,301 @@ async function extractInstagramRepoBackend(url: string) {
     
     return null;
   } catch (error) {
-    console.error("Repo extraction error:", error);
+    console.log("Repo extraction error:", error);
     return null;
+  }
+}
+
+// ==================== THREADS NATIVE EXTRACTOR ====================
+async function extractThreadsPost(urlStr: string): Promise<any> {
+  console.log(`[Threads Extractor] Extracting media from: ${urlStr}`);
+
+  let shortcode: string | null = null;
+  const match = urlStr.match(/(?:\/post\/|\/t\/)([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) {
+    shortcode = match[1];
+  }
+
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1'
+  ];
+
+  const browserHeaders = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1'
+  };
+
+  let html = '';
+
+  const fetchUrls = [
+    urlStr,
+    ...(shortcode ? [
+      `https://www.threads.com/t/${shortcode}`,
+      `https://www.threads.net/t/${shortcode}`,
+      `https://www.threads.net/@threads/post/${shortcode}`
+    ] : [])
+  ];
+
+  for (const fUrl of fetchUrls) {
+    for (const ua of userAgents) {
+      try {
+        const res = await fetch(fUrl, {
+          headers: {
+            'User-Agent': ua,
+            ...browserHeaders
+          }
+        });
+
+        if (res.ok) {
+          const pageHtml = await res.text();
+          if (pageHtml.includes('thread_items') || pageHtml.includes('image_versions2') || pageHtml.includes('video_versions') || pageHtml.includes('carousel_media')) {
+            html = pageHtml;
+            console.log(`[Threads Extractor] Retrieved page HTML (${html.length} bytes) from ${fUrl}.`);
+            break;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    if (html) break;
+  }
+
+  if ((!html || (!html.includes('thread_items') && !html.includes('image_versions2') && !html.includes('video_versions'))) && shortcode) {
+    const fallbackUrls = [
+      `https://www.threads.net/embed/post/${shortcode}`,
+      `https://www.instagram.com/p/${shortcode}/embed/`
+    ];
+
+    for (const fbUrl of fallbackUrls) {
+      try {
+        const res = await fetch(fbUrl, {
+          headers: {
+            'User-Agent': userAgents[0],
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
+        });
+        if (res.ok) {
+          const fbHtml = await res.text();
+          if (fbHtml.includes('thread_items') || fbHtml.includes('image_versions2') || fbHtml.includes('video_versions') || fbHtml.includes('display_url') || fbHtml.includes('video_url')) {
+            html = fbHtml;
+            console.log(`[Threads Extractor] Fallback embed URL succeeded (${html.length} bytes).`);
+            break;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  if (!html) {
+    return null;
+  }
+
+  const extractedMedia: Array<{ type: "video" | "image"; url: string; thumbnail: string; width?: number; height?: number }> = [];
+  const seenUrls = new Set<string>();
+
+  const postInfo = {
+    title: "",
+    username: "",
+    displayName: "",
+    avatarUrl: ""
+  };
+
+  const addMedia = (type: "video" | "image", rawUrl: string, thumbnail?: string, width?: number, height?: number) => {
+    if (!rawUrl) return;
+    const cleanUrl = String(rawUrl).replaceAll('\\/', '/').replaceAll('\\', '');
+    const cleanThumb = thumbnail ? String(thumbnail).replaceAll('\\/', '/').replaceAll('\\', '') : cleanUrl;
+
+    if (!cleanUrl.startsWith('http')) return;
+
+    const urlKey = cleanUrl.split('?')[0];
+    if (seenUrls.has(urlKey)) return;
+    seenUrls.add(urlKey);
+
+    extractedMedia.push({
+      type,
+      url: cleanUrl,
+      thumbnail: cleanThumb,
+      width: width || 0,
+      height: height || 0
+    });
+  };
+
+  // 1. Traverse script JSON blocks
+  const scriptRegex = /<script[^>]*>(.*?)<\/script>/gs;
+  let scriptMatch: RegExpExecArray | null;
+
+  while ((scriptMatch = scriptRegex.exec(html)) !== null) {
+    const script = scriptMatch[1];
+    if (!script) continue;
+
+    if (script.includes('thread_items') || script.includes('carousel_media') || script.includes('image_versions2') || script.includes('video_versions')) {
+      let idx = script.indexOf('{"__bbox":');
+      if (idx === -1) idx = script.indexOf('{"data":');
+      if (idx === -1) idx = script.indexOf('{"thread_items":');
+
+      if (idx !== -1) {
+        try {
+          let jsonStr = script.substring(idx);
+          const lastBrace = jsonStr.lastIndexOf('}}');
+          if (lastBrace !== -1) {
+            jsonStr = jsonStr.substring(0, lastBrace + 2);
+          }
+          const parsed = JSON.parse(jsonStr);
+          parseBboxObject(parsed, addMedia, postInfo, shortcode);
+        } catch (e) {
+          // fallback to regex
+        }
+      }
+    }
+  }
+
+  // 2. Direct Regex fallback on HTML if script traversal yielded 0 items
+  if (extractedMedia.length === 0) {
+    console.log("[Threads Extractor] Script traversal yielded 0 items, running Regex fallback scanner...");
+
+    const videoVersionRegex = /"video_versions":\s*(\[[^\]]+\])/g;
+    let vMatch: RegExpExecArray | null;
+    while ((vMatch = videoVersionRegex.exec(html)) !== null) {
+      try {
+        const vList = JSON.parse(vMatch[1]);
+        if (Array.isArray(vList) && vList.length > 0) {
+          addMedia("video", vList[0].url, vList[0].url, vList[0].width, vList[0].height);
+        }
+      } catch (e) {}
+    }
+
+    const imageVersionRegex = /"image_versions2":\s*(\{[^\}]+\})/g;
+    let iMatch: RegExpExecArray | null;
+    while ((iMatch = imageVersionRegex.exec(html)) !== null) {
+      try {
+        const iObj = JSON.parse(iMatch[1]);
+        if (iObj && iObj.candidates && Array.isArray(iObj.candidates) && iObj.candidates.length > 0) {
+          addMedia("image", iObj.candidates[0].url, iObj.candidates[0].url, iObj.candidates[0].width, iObj.candidates[0].height);
+        }
+      } catch (e) {}
+    }
+
+    const ogVideo = html.match(/<meta property="og:video[^"]*" content="([^"]+)"/i);
+    const ogImage = html.match(/<meta property="og:image" content="([^"]+)"/i);
+    if (ogVideo && ogVideo[1]) {
+      addMedia("video", ogVideo[1], ogImage ? ogImage[1] : ogVideo[1]);
+    } else if (ogImage && ogImage[1]) {
+      addMedia("image", ogImage[1], ogImage[1]);
+    }
+  }
+
+  if (extractedMedia.length === 0) {
+    return null;
+  }
+
+  const firstItem = extractedMedia[0];
+  const mainType = extractedMedia.length > 1 ? "carousel" : firstItem.type;
+
+  return {
+    success: true,
+    title: postInfo.title || "Threads Post",
+    description: postInfo.title || "",
+    thumbnail: firstItem.thumbnail || firstItem.url,
+    url: firstItem.url,
+    mediaType: mainType,
+    media: extractedMedia,
+    profile: postInfo.username ? {
+      username: `@${postInfo.username}`,
+      displayName: postInfo.displayName || postInfo.username,
+      avatarUrl: postInfo.avatarUrl
+    } : undefined
+  };
+}
+
+function parseBboxObject(obj: any, addMediaFn: Function, postInfo: any, targetCode?: string | null) {
+  if (!obj || typeof obj !== 'object') return;
+
+  if (Array.isArray(obj)) {
+    for (const item of obj) parseBboxObject(item, addMediaFn, postInfo, targetCode);
+    return;
+  }
+
+  if (obj.thread_items && Array.isArray(obj.thread_items)) {
+    let matchedInThread = false;
+    if (targetCode) {
+      for (const item of obj.thread_items) {
+        if (item.post && item.post.code === targetCode) {
+          processPostData(item.post, addMediaFn, postInfo);
+          matchedInThread = true;
+        }
+      }
+    }
+    if (!matchedInThread) {
+      for (const item of obj.thread_items) {
+        if (item.post) {
+          processPostData(item.post, addMediaFn, postInfo);
+        }
+      }
+    }
+  } else if (obj.post) {
+    if (!targetCode || obj.post.code === targetCode) {
+      processPostData(obj.post, addMediaFn, postInfo);
+    }
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (key !== 'thread_items' && key !== 'post') {
+      parseBboxObject(obj[key], addMediaFn, postInfo, targetCode);
+    }
+  }
+}
+
+function processPostData(post: any, addMediaFn: Function, postInfo: any) {
+  if (!post) return;
+
+  if (post.caption && post.caption.text && !postInfo.title) {
+    postInfo.title = post.caption.text;
+  }
+  if (!postInfo.title && post.text_post_app_info?.text_fragments?.fragments) {
+    postInfo.title = post.text_post_app_info.text_fragments.fragments.map((f: any) => f.plaintext).join('');
+  }
+
+  if (post.user) {
+    if (post.user.username) postInfo.username = post.user.username;
+    if (post.user.full_name) postInfo.displayName = post.user.full_name;
+    if (post.user.profile_pic_url) postInfo.avatarUrl = post.user.profile_pic_url;
+  }
+
+  if (post.carousel_media && Array.isArray(post.carousel_media)) {
+    for (const cItem of post.carousel_media) {
+      processSingleMediaItem(cItem, addMediaFn);
+    }
+  } else {
+    processSingleMediaItem(post, addMediaFn);
+  }
+}
+
+function processSingleMediaItem(item: any, addMediaFn: Function) {
+  if (!item) return;
+
+  if (item.video_versions && Array.isArray(item.video_versions) && item.video_versions.length > 0) {
+    const bestVid = item.video_versions[0];
+    let thumb = "";
+    if (item.image_versions2?.candidates?.length > 0) {
+      thumb = item.image_versions2.candidates[0].url;
+    }
+    addMediaFn("video", bestVid.url, thumb || bestVid.url, bestVid.width, bestVid.height);
+  } else if (item.image_versions2?.candidates?.length > 0) {
+    const bestImg = item.image_versions2.candidates[0];
+    addMediaFn("image", bestImg.url, bestImg.url, bestImg.width, bestImg.height);
   }
 }
 
@@ -2034,7 +2377,11 @@ app.post("/api/download", async (req, res) => {
              return res.json(ytDlpResult);
            }
         } else if (platform === 'snapchat') {
-           console.log("Snapchat URL detected as profile/story, extracting with yt-dlp playlist.");
+           console.log("Snapchat URL detected as profile/story, extracting with native scraper and yt-dlp playlist.");
+           const nativeResult = await extractSnapchatNative(trimmedUrl);
+           if (nativeResult && nativeResult.success) {
+             return res.json(nativeResult);
+           }
            const ytDlpResult = await extractWithYtDlp(trimmedUrl, true);
            if (ytDlpResult && ytDlpResult.success) {
              return res.json(ytDlpResult);
@@ -2128,15 +2475,17 @@ app.post("/api/download", async (req, res) => {
             racePromises.push(extractWithYtDlp(trimmedUrl));
         
         } else if (platform === 'snapchat') {
+            racePromises.push(extractSnapchatNative(trimmedUrl));
             racePromises.push(extractWithYtDlp(trimmedUrl));
         } else if (platform === 'spotify') {
             console.log("Spotify URL detected, using Spotify extractor...");
             racePromises.push(extractSpotify(trimmedUrl));
         } else if (platform === 'threads') {
-            console.log("Threads URL detected, using extractors...");
-            racePromises.push(extractWithYtDlp(trimmedUrl));
+            console.log("Threads URL detected, using native Threads extractor and fallbacks...");
+            racePromises.push(extractThreadsPost(trimmedUrl));
             racePromises.push(extractInstagramRapidAPI(trimmedUrl));
             racePromises.push(extractInstagramBtch(trimmedUrl));
+            racePromises.push(extractWithYtDlp(trimmedUrl));
         } else {
             racePromises.push(extractWithYtDlp(trimmedUrl));
         }
@@ -2145,7 +2494,7 @@ app.post("/api/download", async (req, res) => {
         let raceResult = await fastRace(racePromises);
         
         if (!raceResult || !raceResult.success) {
-            console.log("Main extractors failed, attempting AI fallback...");
+            console.log("Attempting secondary fallback extraction...");
             const aiFallback = await extractWithAI(trimmedUrl, false);
             if (aiFallback && aiFallback.success) {
                 raceResult = aiFallback;

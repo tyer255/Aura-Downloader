@@ -262,18 +262,27 @@ const getProxiedUrl = (url?: string, inline = true) => {
 
 type Tab = 'pinterest' | 'youtube' | 'instagram' | 'snapchat' | 'tiktok' | 'facebook' | 'reddit' | 'x' | 'linkedin' | 'spotify' | 'threads';
 
-const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string; title: string; keywords?: string }[] = [
+const NewBadge = ({ className = "" }: { className?: string }) => (
+  <span className={clsx(
+    "inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-full bg-emerald-400 text-black leading-none shadow-md shadow-emerald-500/30 border border-emerald-300/50 shrink-0 select-none animate-pulse",
+    className
+  )}>
+    NEW
+  </span>
+);
+
+const TABS: { id: Tab; label: string; placeholder: string; name: string; description: string; title: string; keywords?: string; isNew?: boolean }[] = [
   { id: 'pinterest', label: 'Pinterest', placeholder: 'Paste Pinterest Link Here', name: 'Pinterest Downloader', title: 'Aura Downloader - Download Pinterest Videos & Images Free', description: 'Best free Pinterest Downloader online. Download Pinterest videos, images, and GIFs in HD quality without watermark using Aura Downloader.', keywords: 'Aura Downloader, Pinterest downloader, download Pinterest video, Pinterest video downloader, Pinterest saver' },
   { id: 'youtube', label: 'YouTube', placeholder: 'Paste YouTube Link (Video, Short, Channel, Playlist)', name: 'YouTube Downloader', title: 'Aura Downloader - YouTube Downloader, Shorts & Reels Saver', description: 'Aura Downloader is the best free YouTube Downloader. Download YouTube videos, Shorts, and Reels in 1080p, 4K HD effortlessly.', keywords: 'Aura Downloader, YouTube downloader, YouTube Shorts downloader, YouTube Reel downloader, download YouTube video, YouTube to mp3' },
   { id: 'instagram', label: 'Instagram', placeholder: 'Paste Instagram Link Here', name: 'Instagram Downloader', title: 'Aura Downloader - Instagram Reels & Video Downloader', description: 'Free online Instagram Downloader by Aura Downloader. Download Instagram reels, photos, videos, IGTV, and stories in high quality easily.', keywords: 'Aura Downloader, Instagram downloader, download Instagram video, Instagram reels downloader, Instagram story saver' },
-  { id: 'snapchat', label: 'Snapchat', placeholder: 'Paste Snapchat Spotlight or Story Link', name: 'Snapchat Downloader', title: 'Aura Downloader - Download Snapchat Videos Free', description: 'Free online Snapchat Video Downloader. Download Snapchat Spotlight videos and stories in high quality directly to your device with Aura Downloader.', keywords: 'Aura Downloader, Snapchat downloader, download Snapchat video, Snapchat spotlight downloader, story saver' },
+  { id: 'snapchat', label: 'Snapchat', placeholder: 'Paste Snapchat Spotlight or Story Link', name: 'Snapchat Downloader', title: 'Aura Downloader - Download Snapchat Videos Free', description: 'Free online Snapchat Video Downloader. Download Snapchat Spotlight videos and stories in high quality directly to your device with Aura Downloader.', keywords: 'Aura Downloader, Snapchat downloader, download Snapchat video, Snapchat spotlight downloader, story saver', isNew: true },
   { id: 'tiktok', label: 'TikTok', placeholder: 'Paste TikTok Link Here', name: 'TikTok Downloader', title: 'Aura Downloader - TikTok Downloader Without Watermark', description: 'Best free TikTok Downloader. Download TikTok videos without watermark in HD quality using Aura Downloader.', keywords: 'Aura Downloader, TikTok downloader, download TikTok video, TikTok no watermark, TikTok video downloader' },
   { id: 'facebook', label: 'Facebook', placeholder: 'Paste Facebook Link Here', name: 'Facebook Downloader', title: 'Aura Downloader - Download Facebook Videos & Reels Free', description: 'Free online Facebook Video Downloader by Aura Downloader. Download Facebook reels and videos in HD quality to your device fast and easily.', keywords: 'Aura Downloader, Facebook downloader, download Facebook video, Facebook reels downloader, FB video downloader' },
   { id: 'reddit', label: 'Reddit', placeholder: 'Paste Reddit Link Here', name: 'Reddit Downloader', title: 'Aura Downloader - Download Reddit Videos With Audio', description: 'Free Reddit Video Downloader. Download Reddit videos with sound in HD quality with Aura Downloader.', keywords: 'Aura Downloader, Reddit downloader, download Reddit video with audio, Reddit video saver' },
   { id: 'x', label: 'X (Twitter)', placeholder: 'Paste X / Twitter Link Here', name: 'X / Twitter Downloader', title: 'Aura Downloader - Download Twitter Videos & GIFs Free', description: 'Best free X (Twitter) Downloader. Download videos, GIFs, and media from tweets in HD quality quickly and securely with Aura Downloader.', keywords: 'Aura Downloader, Twitter downloader, X downloader, download Twitter video, save tweet video' },
-  { id: 'linkedin', label: 'LinkedIn', placeholder: 'Paste LinkedIn Post Link Here', name: 'LinkedIn Downloader', title: 'Aura Downloader - Download LinkedIn Videos Free', description: 'Free online LinkedIn Video Downloader. Download LinkedIn videos, images, and documents in high quality directly to your device with Aura Downloader.', keywords: 'Aura Downloader, LinkedIn downloader, download LinkedIn video, LinkedIn video saver' },
-  { id: 'spotify', label: 'Spotify', placeholder: 'Paste Spotify Track or Playlist Link', name: 'Spotify Downloader', title: 'Aura Downloader - Download Spotify Audio Free', description: 'Free online Spotify Audio Downloader. Download Spotify tracks and playlists in MP3 format with Aura Downloader.', keywords: 'Aura Downloader, Spotify downloader, download Spotify audio, Spotify to mp3' },
-  { id: 'threads', label: 'Threads', placeholder: 'Paste Threads Video Link Here', name: 'Threads Downloader', title: 'Aura Downloader - Download Threads Videos Free', description: 'Free online Threads Video Downloader. Download Threads videos in high quality directly to your device with Aura Downloader.', keywords: 'Aura Downloader, Threads downloader, download Threads video' },
+  { id: 'linkedin', label: 'LinkedIn', placeholder: 'Paste LinkedIn Post Link Here', name: 'LinkedIn Downloader', title: 'Aura Downloader - Download LinkedIn Videos Free', description: 'Free online LinkedIn Video Downloader. Download LinkedIn videos, images, and documents in high quality directly to your device with Aura Downloader.', keywords: 'Aura Downloader, LinkedIn downloader, download LinkedIn video, LinkedIn video saver', isNew: true },
+  { id: 'spotify', label: 'Spotify', placeholder: 'Paste Spotify Track or Playlist Link', name: 'Spotify Downloader', title: 'Aura Downloader - Download Spotify Audio Free', description: 'Free online Spotify Audio Downloader. Download Spotify tracks and playlists in MP3 format with Aura Downloader.', keywords: 'Aura Downloader, Spotify downloader, download Spotify audio, Spotify to mp3', isNew: true },
+  { id: 'threads', label: 'Threads', placeholder: 'Paste Threads Link Here (Photos, Videos & Carousels)', name: 'Threads Downloader', title: 'Aura Downloader - Download Threads Photos & Videos Free', description: 'Free online Threads Downloader. Download Threads photos, videos, and multi-media carousels in high quality directly to your device with Aura Downloader.', keywords: 'Aura Downloader, Threads downloader, download Threads photo, download Threads video, Threads carousel downloader', isNew: true },
 ];
 
 const detectPlatformFromUrl = (url: string): Tab | null => {
@@ -430,34 +439,9 @@ const render3DGlassIcon = (platform: Tab): React.ReactNode => {
       );
     case 'reddit':
       return (
-        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="rdBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ff5700" />
-              <stop offset="100%" stopColor="#cc3300" />
-            </linearGradient>
-            <linearGradient id="rdGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.75" />
-              <stop offset="35%" stopColor="#ffffff" stopOpacity="0.2" />
-              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
-            </linearGradient>
-            <radialGradient id="rdInnerShadow" cx="50%" cy="50%" r="50%">
-              <stop offset="70%" stopColor="#000000" stopOpacity="0" />
-              <stop offset="100%" stopColor="#000000" stopOpacity="0.3" />
-            </radialGradient>
-            <linearGradient id="rd3dGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#ffffff" />
-              <stop offset="100%" stopColor="#e0e0e0" />
-            </linearGradient>
-          </defs>
-          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#rdBaseGrad)" filter="drop-shadow(0 6px 12px rgba(255,87,0,0.35))" />
-          <rect x="14" y="14" width="72" height="72" rx="22" fill="url(#rdInnerShadow)" />
-          <g transform="translate(26, 26) scale(1.6)" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.3))">
-            <path d="M 29.5 16 c 0 -2 -1.5 -3.5 -3.5 -3.5 c -0.9 0 -1.6 0.3 -2.2 0.8 c -3 -1.8 -6.9 -3 -11.3 -3.2 l 2 -6.2 l 5.2 1.1 c 0.1 1.5 1.4 2.8 3 2.8 c 1.7 0 3 -1.3 3 -3 c 0 -1.7 -1.3 -3 -3 -3 c -1.4 0 -2.6 1 -2.9 2.3 l -5.8 -1.2 c -0.2 0 -0.4 0.1 -0.5 0.3 l -2.3 7 c -4.5 0.2 -8.5 1.4 -11.5 3.2 c -0.6 -0.5 -1.4 -0.8 -2.2 -0.8 c -2 0 -3.5 1.5 -3.5 3.5 c 0 1.4 0.9 2.6 2.1 3.1 c -0.1 0.5 -0.1 1 -0.1 1.6 c 0 6 8.3 11 18.5 11 s 18.5 -5 18.5 -11 c 0 -0.5 0 -1 -0.1 -1.6 c 1.3 -0.5 2.2 -1.7 2.2 -3.1 z m -25.2 9 c 0 -1.4 1.1 -2.5 2.5 -2.5 s 2.5 1.1 2.5 2.5 s -1.1 2.5 -2.5 2.5 s -2.5 -1.1 -2.5 -2.5 z m 10 4 c -2.2 2.2 -6.2 2.2 -8.4 0 c -0.3 -0.3 -0.3 -0.7 0 -0.9 c 0.3 -0.3 0.7 -0.3 0.9 0 c 1.7 1.7 5 1.7 6.6 0 c 0.3 -0.3 0.7 -0.3 0.9 0 c 0.3 0.2 0.3 0.7 0 0.9 z m 0.8 -4 c 0 -1.4 1.1 -2.5 2.5 -2.5 s 2.5 1.1 2.5 2.5 s -1.1 2.5 -2.5 2.5 s -2.5 -1.1 -2.5 -2.5 z" fill="url(#rd3dGrad)" />
-          </g>
-          <path d="M14 42 C14 26.54 26.54 14 42 14 L58 14 C73.46 14 86 26.54 86 42 C62 47 38 47 14 42 Z" fill="url(#rdGlassGrad)" />
-          <path d="M17 28 C26 17 74 17 83 28" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.5" />
-        </svg>
+        <div className="w-16 h-16 flex items-center justify-center">
+          <BrandIcon id="reddit" className="w-[85%] h-[85%] drop-shadow-xl select-none" />
+        </div>
       );
     case 'spotify':
       return (
@@ -571,26 +555,9 @@ const render3DGlassIcon = (platform: Tab): React.ReactNode => {
       );
     case 'snapchat':
       return (
-        <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-xl select-none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="snap3dBase" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#fffc00" />
-              <stop offset="100%" stopColor="#e5e200" />
-            </linearGradient>
-            <linearGradient id="snap3dHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
-              <stop offset="25%" stopColor="#ffffff" stopOpacity="0.0" />
-            </linearGradient>
-            <filter id="snapShadow">
-              <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#000000" floodOpacity="0.3" />
-            </filter>
-          </defs>
-          <rect x="12" y="12" width="76" height="76" rx="22" fill="url(#snap3dBase)" filter="drop-shadow(0 6px 12px rgba(200,200,0,0.3))" />
-          <rect x="12" y="12" width="76" height="76" rx="22" fill="url(#snap3dHighlight)" />
-          <g transform="translate(28.77, 24.88) scale(2.2)" filter="url(#snapShadow)">
-            <path d="M12.115 1.637c.214 0 .41.168.41.168.932.784 1.523 2.023 1.523 3.118v.098c0 .252.083.49.243.67.28.309.684.42 1.08.337.62-.14 1.286-.043 1.802.308.25.168.38.42.38.685 0 .448-.312.854-.827 1.092a3.25 3.25 0 0 0-1.892 2.868c-.01 1.176.626 2.14 1.524 2.463.64.223 1.374.152 1.875-.084.818-.392 1.522.476.751.951-.724.434-1.312 1.092-1.674 1.876l-.04.098c-.378 1.05-1.436 1.678-2.533 1.678-.256 0-.51-.027-.758-.098a5.67 5.67 0 0 1-3.782 3.539 1.365 1.365 0 0 1-1.05.027 5.65 5.65 0 0 1-3.892-3.566 3.407 3.407 0 0 1-.758.098c-1.096 0-2.153-.629-2.533-1.678-.014-.028-.028-.07-.042-.112-.352-.756-.922-1.4-1.62-1.818-.758-.462-.066-1.344.758-.952.502.238 1.233.308 1.874.084.896-.322 1.533-1.287 1.523-2.462a3.252 3.252 0 0 0-1.884-2.868c-.514-.238-.824-.643-.824-1.092 0-.265.13-.517.38-.685.517-.349 1.182-.447 1.801-.307.394.084.796-.027 1.077-.336.158-.182.242-.42.242-.671v-.098c0-1.092.59-2.333 1.523-3.12a2.44 2.44 0 0 1 1.036-.489c.496-.084 1.036-.042 1.49.14h.001Z" fill="#ffffff" stroke="#111111" strokeWidth="1.2" strokeLinejoin="round" />
-          </g>
-        </svg>
+        <div className="w-16 h-16 flex items-center justify-center">
+          <BrandIcon id="snapchat" className="w-[72%] h-[72%] drop-shadow-xl select-none" />
+        </div>
       );
     case 'linkedin':
       return (
@@ -1161,12 +1128,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     const currentActive = explicitTab || activeTab;
     const detected = detectPlatformFromUrl(newUrl);
     if (detected && detected !== currentActive) {
-      setValidationError({
-        title: "Platform Mismatch Detected",
-        message: `This URL belongs to ${getTabLabel(detected)}. It won't work correctly on the ${getTabLabel(currentActive)} downloader.`,
-        targetTab: detected,
-        targetTabName: getTabLabel(detected)
-      });
+      setActiveTab(detected);
+      setValidationError(null);
     } else {
       setValidationError(null);
     }
@@ -1521,9 +1484,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     return (match && match[2].length === 11) ? match[2] : null;
   };
 
-  const handleDownload = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleDownload = async (e?: React.FormEvent, overrideUrl?: string) => {
+    if (e) e.preventDefault();
     
+    const targetUrl = (overrideUrl || url).trim();
+
     if (!hasAcceptedTerms) {
       setShowTermsModal(true);
       return;
@@ -1534,22 +1499,16 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       return;
     }
 
-    if (!url.trim()) return;
+    if (!targetUrl) return;
 
     requestNotificationPermission();
 
     // Check platform matching before proceeding
-    const detected = detectPlatformFromUrl(url);
+    const detected = detectPlatformFromUrl(targetUrl);
     if (detected && detected !== activeTab) {
-      setValidationError({
-        title: "Platform Mismatch Detected",
-        message: `This URL belongs to ${getTabLabel(detected)}. It won't work correctly on the ${getTabLabel(activeTab)} downloader.`,
-        targetTab: detected,
-        targetTabName: getTabLabel(detected)
-      });
-      return;
+      setActiveTab(detected);
+      setValidationError(null);
     }
-
     
     setLoadingStep(0);
     setIsLoading(true);
@@ -1557,14 +1516,14 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
     // Default multi-platform downloader
     try {
-      const detectedPlatform = detectPlatformFromUrl(url.trim()) || activeTab;
+      const detectedPlatform = detectPlatformFromUrl(targetUrl) || activeTab;
 
       // Internal Production Backend API endpoint usage
       // This routes directly to the existing robust server backend (server.ts)
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() })
+        body: JSON.stringify({ url: targetUrl })
       });
       const data = await res.json();
       
@@ -1600,9 +1559,9 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         const titleText = data.profile 
           ? `Profile: @${data.profile.username}` 
           : (data.title || 'Media Download');
-        const detectedPlatform = detectPlatformFromUrl(url.trim()) || activeTab;
+        const detectedPlatform = detectPlatformFromUrl(targetUrl) || activeTab;
         const newEntry = { 
-          url: url.trim(), 
+          url: targetUrl, 
           title: titleText, 
           timestamp: Date.now(), 
           platform: detectedPlatform,
@@ -1610,7 +1569,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           thumbnail: data.thumbnail || (data.media && data.media.length > 0 ? (data.media[0].thumbnail || data.media[0].url) : undefined) || data.profile?.avatarUrl,
           appName: TABS.find(t => t.id === detectedPlatform)?.name || 'Aura Downloader'
         };
-        const newHistory = [newEntry, ...history.filter(h => h.url !== url.trim())].slice(0, 50);
+        const newHistory = [newEntry, ...history.filter(h => h.url !== targetUrl)].slice(0, 50);
         setHistory(newHistory);
         localStorage.setItem('download_history', JSON.stringify(newHistory));
       }
@@ -2357,6 +2316,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                   navigate(item.platform === 'pinterest' ? '/' : `/${item.platform}-downloader`);
                               }
                               setShowHistory(false);
+                              setTimeout(() => {
+                                const form = document.querySelector('form');
+                                if (form) form.requestSubmit();
+                              }, 100);
                             }}
                             className="text-left cursor-pointer flex-1 flex gap-3 mt-1 items-center"
                           >
@@ -2403,6 +2366,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                   navigate(item.platform === 'pinterest' ? '/' : `/${item.platform}-downloader`);
                                 }
                                 setShowHistory(false);
+                                setTimeout(() => {
+                                  const form = document.querySelector('form');
+                                  if (form) form.requestSubmit();
+                                }, 100);
                               }}
                               className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] bg-white text-neutral-900 hover:bg-neutral-100"
                             >
@@ -2524,7 +2491,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   )}
-                  <span className="relative z-10">{tab.label}</span>
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    {tab.label}
+                    {tab.isNew && <NewBadge />}
+                  </span>
                 </button>
               );
             })}
@@ -2617,6 +2587,13 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     id="tour-input" type="url"
                     value={url}
                     onChange={(e) => handleUrlChange(e.target.value)}
+                    onPaste={(e) => {
+                      const pastedText = e.clipboardData.getData('text');
+                      if (pastedText && (pastedText.startsWith('http://') || pastedText.startsWith('https://'))) {
+                        handleUrlChange(pastedText);
+                        setTimeout(() => handleDownload(undefined, pastedText), 50);
+                      }
+                    }}
                     placeholder={activeTabData.placeholder}
                     required
                     aria-label="Social media post or media URL"
@@ -2655,30 +2632,36 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   const isActive = activeTab === tab.id;
                   const brandColor = getBrandColor(tab.id, isLight);
                   return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => {
-                         setActiveTab(tab.id);
-                         setResult(null);
-                         setValidationError(null);
-                      }}
-                      title={"Switch to " + tab.label}
-                      className={clsx(
-                        "p-2.5 rounded-full transition-all duration-300 border shadow-sm flex items-center justify-center cursor-pointer",
-                        isActive 
-                          ? "scale-110 shadow-md ring-2 ring-offset-2 ring-offset-transparent"
-                          : "opacity-70 hover:opacity-100 hover:scale-105 active:scale-95"
+                    <div key={tab.id} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                           setActiveTab(tab.id);
+                           setResult(null);
+                           setValidationError(null);
+                        }}
+                        title={"Switch to " + tab.label}
+                        className={clsx(
+                          "p-2.5 rounded-full transition-all duration-300 border shadow-sm flex items-center justify-center cursor-pointer",
+                          isActive 
+                            ? "scale-110 shadow-md ring-2 ring-offset-2 ring-offset-transparent"
+                            : "opacity-70 hover:opacity-100 hover:scale-105 active:scale-95"
+                        )}
+                        style={{
+                          backgroundColor: isActive ? brandColor : (isLight ? '#ffffff' : 'rgba(255,255,255,0.05)'),
+                          color: isActive ? (tab.id === 'snapchat' ? '#000' : (tab.id === 'tiktok' || tab.id === 'x' ? (isLight ? '#fff' : '#000') : '#fff')) : brandColor,
+                          borderColor: isActive ? brandColor : (isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'),
+                          ...(isActive ? { "--tw-ring-color": brandColor } as React.CSSProperties : {})
+                        }}
+                      >
+                        <BrandIcon id={tab.id} className="w-5 h-5 sm:w-6 sm:h-6" />
+                      </button>
+                      {tab.isNew && (
+                        <span className="absolute -top-1.5 -right-1.5 z-30 pointer-events-none">
+                          <NewBadge className="text-[7px] px-1 py-0.2" />
+                        </span>
                       )}
-                      style={{
-                        backgroundColor: isActive ? brandColor : (isLight ? '#ffffff' : 'rgba(255,255,255,0.05)'),
-                        color: isActive ? (tab.id === 'snapchat' ? '#000' : (tab.id === 'tiktok' || tab.id === 'x' ? (isLight ? '#fff' : '#000') : '#fff')) : brandColor,
-                        borderColor: isActive ? brandColor : (isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'),
-                        ...(isActive ? { "--tw-ring-color": brandColor } as React.CSSProperties : {})
-                      }}
-                    >
-                      <BrandIcon id={tab.id} className="w-5 h-5 sm:w-6 sm:h-6" />
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -3759,7 +3742,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
                           if (sanitized.length > 0) {
                             const videoOptions = sanitized.filter(q => !q.isAudio);
-                            const sectionHeader = videoOptions.length > 1 ? "Available Video Quality Formats:" : "Download Media File:";
+                            const sectionHeader = videoOptions.length > 1 ? "Available Video Quality Formats:" : `Download ${result.mediaType === 'image' ? 'Image' : result.mediaType === 'video' ? 'Video' : 'Media'}:`;
                             return (
                               <div className="flex flex-col gap-4 w-full">
                                 <div className={clsx("border-t pt-4 mt-1 transition-colors", isLight ? "border-neutral-200" : "border-white/10")}>
@@ -3906,7 +3889,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                 ) : (
                                   <>
                                     <Download className="w-5 h-5" /> 
-                                    Download Media File
+                                    Download {result.mediaType === 'image' ? 'Image' : result.mediaType === 'video' ? 'Video' : 'Media'}
                                   </>
                                 )}
                               </button>
@@ -4118,6 +4101,12 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     {/* Visual Glass Reflection Sheen */}
                     <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/[0.03] to-white/[0.08] opacity-0 group-hover/tile:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
+                    {tab.isNew && (
+                      <div className="absolute top-3 right-3 z-20 pointer-events-none">
+                        <NewBadge className="text-[8px] px-1.5 py-0.5 shadow-md" />
+                      </div>
+                    )}
+
                     {/* Logo wrapper for colorful 3D glass icon */}
                     <div className="transition-all duration-300 group-hover/tile:scale-110 select-none">
                       {render3DGlassIcon(tab.id)}
@@ -4151,11 +4140,12 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               key={tab.id} 
               to={`/${tab.id}-downloader`}
               className={clsx(
-                "flex items-center justify-center sm:justify-start px-2 py-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200 text-center sm:text-left leading-relaxed",
+                "flex items-center justify-center sm:justify-start gap-1.5 px-2 py-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200 text-center sm:text-left leading-relaxed",
                 isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"
               )}
             >
-              {tab.name}
+              <span>{tab.name}</span>
+              {tab.isNew && <NewBadge />}
             </Link>
           ))}
         </div>
@@ -4223,7 +4213,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   {/* Download Direct Link Button */}
                   <button type="button"                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); downloadFileClientSide(activeItem.url, (activeItem.title || "download").slice(0, 30).trim() + "_preview" + (activeItem.type === "video" ? ".mp4" : ".jpg")); }}
                     className="p-2 sm:p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/10 shadow-lg flex items-center justify-center"
-                    title="Download Media File"
+                    title={`Download ${activeItem.type === 'image' ? 'Image' : activeItem.type === 'video' ? 'Video' : 'Media'}`}
                   >
                     <Download className="w-5 h-5" />
                   </button>
@@ -4468,16 +4458,101 @@ const BrandIcon = ({ id, className = "" }: { id: Tab, className?: string }) => {
     case 'facebook':
       return <svg fill="currentColor" viewBox="0 0 24 24" className={className}><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>;
     case 'reddit':
-      return <svg fill="currentColor" viewBox="0 0 24 24" className={className}><path d="M12 0C5.373 0 0 5.373 0 12c0 3.314 1.343 6.314 3.515 8.485l-2.286 2.286C.775 23.225 1.097 24 1.738 24H12c6.627 0 12-5.373 12-12S18.627 0 12 0Zm4.388 3.199c1.104 0 1.999.895 1.999 1.999 0 1.105-.895 2-1.999 2-.946 0-1.739-.657-1.947-1.539v.002c-1.147.162-2.032 1.15-2.032 2.341v.007c1.776.067 3.4.567 4.686 1.363.473-.363 1.064-.58 1.707-.58 1.547 0 2.802 1.254 2.802 2.802 0 1.117-.655 2.081-1.601 2.531-.088 3.256-3.637 5.876-7.997 5.876-4.361 0-7.905-2.617-7.998-5.87-.954-.447-1.614-1.415-1.614-2.538 0-1.548 1.255-2.802 2.803-2.802.645 0 1.239.218 1.712.585 1.275-.79 2.881-1.291 4.64-1.365v-.01c0-1.663 1.263-3.034 2.88-3.207.188-.911.993-1.595 1.959-1.595Zm-8.085 8.376c-.784 0-1.459.78-1.506 1.797-.047 1.016.64 1.429 1.426 1.429.786 0 1.371-.369 1.418-1.385.047-1.017-.553-1.841-1.338-1.841Zm7.406 0c-.786 0-1.385.824-1.338 1.841.047 1.017.634 1.385 1.418 1.385.785 0 1.473-.413 1.426-1.429-.046-1.017-.721-1.797-1.506-1.797Zm-3.703 4.013c-.974 0-1.907.048-2.77.135-.147.015-.241.168-.183.305.483 1.154 1.622 1.964 2.953 1.964 1.33 0 2.47-.81 2.953-1.964.057-.137-.037-.29-.184-.305-.863-.087-1.795-.135-2.769-.135Z"/></svg>;
+      return (
+        <svg viewBox="0 0 100 100" className={className} xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            {/* Background Gradients */}
+            <linearGradient id="rdBg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#FF7A33" />
+              <stop offset="100%" stopColor="#FF4500" />
+            </linearGradient>
+            
+            <linearGradient id="rdBgHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.4" />
+              <stop offset="25%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+
+            {/* 3D drop shadow for Snoo */}
+            <filter id="rdSnooShadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="-2" dy="4" stdDeviation="3" floodColor="#992A00" floodOpacity="0.6" />
+            </filter>
+
+            {/* Snoo Mask */}
+            <mask id="rdSnooMask">
+              {/* Base head */}
+              <g fill="#FFFFFF">
+                <ellipse cx="50" cy="58" rx="28" ry="19" />
+                <circle cx="21" cy="46" r="7.5" />
+                <circle cx="79" cy="46" r="7.5" />
+                {/* Antenna */}
+                <path d="M50 40 V 27 Q 50 21 56 21 H 64" fill="none" stroke="#FFFFFF" strokeWidth="5.5" strokeLinecap="round" />
+                <circle cx="66" cy="21" r="5.5" />
+              </g>
+              {/* Eyes (cut out) */}
+              <circle cx="37" cy="56" r="4.5" fill="#000000" />
+              <circle cx="63" cy="56" r="4.5" fill="#000000" />
+              {/* Smile (cut out) */}
+              <path d="M 38 65 Q 50 71 62 65" fill="none" stroke="#000000" strokeWidth="4" strokeLinecap="round" />
+            </mask>
+
+            <linearGradient id="rdSnooGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#FFFFFF" />
+              <stop offset="100%" stopColor="#EAEAEA" />
+            </linearGradient>
+          </defs>
+
+          {/* Orange Circle Base */}
+          <circle cx="50" cy="50" r="45" fill="url(#rdBg)" filter="drop-shadow(0 6px 12px rgba(255,69,0,0.4))" />
+          <circle cx="50" cy="50" r="45" fill="url(#rdBgHighlight)" />
+          
+          {/* 3D Bevel Edge */}
+          <circle cx="50" cy="50" r="43.5" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" />
+
+          {/* Snoo Logo */}
+          <rect x="0" y="0" width="100" height="100" fill="url(#rdSnooGrad)" mask="url(#rdSnooMask)" filter="url(#rdSnooShadow)" />
+        </svg>
+      );
     case 'x':
       return <svg fill="currentColor" viewBox="0 0 24 24" className={className}><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>;
     case 'linkedin':
       return <svg fill="currentColor" viewBox="0 0 24 24" className={className}><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>;
     case 'snapchat':
       return (
-        <svg viewBox="0 0 24 24" className={className} style={{ overflow: 'visible' }}>
-          <g transform="translate(2.35, 0.58)">
-            <path d="M12.115 1.637c.214 0 .41.168.41.168.932.784 1.523 2.023 1.523 3.118v.098c0 .252.083.49.243.67.28.309.684.42 1.08.337.62-.14 1.286-.043 1.802.308.25.168.38.42.38.685 0 .448-.312.854-.827 1.092a3.25 3.25 0 0 0-1.892 2.868c-.01 1.176.626 2.14 1.524 2.463.64.223 1.374.152 1.875-.084.818-.392 1.522.476.751.951-.724.434-1.312 1.092-1.674 1.876l-.04.098c-.378 1.05-1.436 1.678-2.533 1.678-.256 0-.51-.027-.758-.098a5.67 5.67 0 0 1-3.782 3.539 1.365 1.365 0 0 1-1.05.027 5.65 5.65 0 0 1-3.892-3.566 3.407 3.407 0 0 1-.758.098c-1.096 0-2.153-.629-2.533-1.678-.014-.028-.028-.07-.042-.112-.352-.756-.922-1.4-1.62-1.818-.758-.462-.066-1.344.758-.952.502.238 1.233.308 1.874.084.896-.322 1.533-1.287 1.523-2.462a3.252 3.252 0 0 0-1.884-2.868c-.514-.238-.824-.643-.824-1.092 0-.265.13-.517.38-.685.517-.349 1.182-.447 1.801-.307.394.084.796-.027 1.077-.336.158-.182.242-.42.242-.671v-.098c0-1.092.59-2.333 1.523-3.12a2.44 2.44 0 0 1 1.036-.489c.496-.084 1.036-.042 1.49.14h.001Z" fill="#ffffff" stroke="#111111" strokeWidth="1.2" strokeLinejoin="round" />
+        <svg viewBox="4.5 4.5 91 91" className={className} style={{ overflow: 'visible' }} xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="snap3dBase" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#FFFC00" />
+              <stop offset="100%" stopColor="#E3E000" />
+            </linearGradient>
+            
+            <linearGradient id="snap3dHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.8" />
+              <stop offset="25%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+
+            <linearGradient id="snap3dRightHighlight" x1="100%" y1="0%" x2="0%" y2="0%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.6" />
+              <stop offset="25%" stopColor="#ffffff" stopOpacity="0.0" />
+            </linearGradient>
+            
+            <filter id="snapGhostShadow" x="-30%" y="-30%" width="160%" height="160%">
+              <feDropShadow dx="-2" dy="3.5" stdDeviation="2.5" floodColor="#000000" floodOpacity="0.4" />
+            </filter>
+          </defs>
+          
+          {/* Main yellow squircle */}
+          <rect x="5" y="5" width="90" height="90" rx="28" fill="url(#snap3dBase)" filter="drop-shadow(0 4px 8px rgba(200,200,0,0.25))" />
+          
+          {/* Edge highlights for 3D effect */}
+          <rect x="5" y="5" width="90" height="90" rx="28" fill="url(#snap3dHighlight)" />
+          <rect x="5" y="5" width="90" height="90" rx="28" fill="url(#snap3dRightHighlight)" />
+          
+          {/* Inner stroke for bevel effect */}
+          <rect x="6" y="6" width="88" height="88" rx="27" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" />
+          
+          {/* The Ghost */}
+          <g transform="translate(17.5, 17.5) scale(2.7)" filter="url(#snapGhostShadow)">
+            <path d="M12.206.793c.99 0 4.347.276 5.93 3.821.529 1.193.403 3.219.299 4.847l-.003.06c-.012.18-.022.345-.03.51.075.045.203.09.401.09.3-.016.659-.12 1.033-.301.165-.088.344-.104.464-.104.182 0 .359.029.509.09.45.149.734.479.734.838.015.449-.39.839-1.213 1.168-.089.029-.209.075-.344.119-.45.135-1.139.36-1.333.81-.09.224-.061.524.12.868l.015.015c.06.136 1.526 3.475 4.791 4.014.255.044.435.27.42.509 0 .075-.015.149-.045.225-.24.569-1.273.988-3.146 1.271-.059.091-.12.375-.164.57-.029.179-.074.36-.134.553-.076.271-.27.405-.555.405h-.03c-.135 0-.313-.031-.538-.074-.36-.075-.765-.135-1.273-.135-.3 0-.599.015-.913.074-.6.104-1.123.464-1.723.884-.853.599-1.826 1.288-3.294 1.288-.06 0-.119-.015-.18-.015h-.149c-1.468 0-2.427-.675-3.279-1.288-.599-.42-1.107-.779-1.707-.884-.314-.045-.629-.074-.928-.074-.54 0-.958.089-1.272.149-.211.043-.391.074-.54.074-.374 0-.523-.224-.583-.42-.061-.192-.09-.389-.135-.567-.046-.181-.105-.494-.166-.57-1.918-.222-2.95-.642-3.189-1.226-.031-.063-.052-.15-.055-.225-.015-.243.165-.465.42-.509 3.264-.54 4.73-3.879 4.791-4.02l.016-.029c.18-.345.224-.645.119-.869-.195-.434-.884-.658-1.332-.809-.121-.029-.24-.074-.346-.119-1.107-.435-1.257-.93-1.197-1.273.09-.479.674-.793 1.168-.793.146 0 .27.029.383.074.42.194.789.3 1.104.3.234 0 .384-.06.465-.105l-.046-.569c-.098-1.626-.225-3.651.307-4.837C7.392 1.077 10.739.807 11.727.807l.419-.015h.06z" fill="#ffffff" stroke="#000000" strokeWidth="1.4" strokeLinejoin="round" />
           </g>
         </svg>
       );

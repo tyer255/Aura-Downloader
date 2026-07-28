@@ -5,18 +5,28 @@ import clsx from 'clsx';
 import { m as motion, LazyMotion, domMax } from 'motion/react';
 import { Youtube, Sun, Moon, ChevronLeft } from 'lucide-react';
 
-const TABS = [
+const TABS: { id: string; name: string; isNew?: boolean }[] = [
   { id: 'pinterest', name: 'Pinterest Downloader' },
   { id: 'youtube', name: 'YouTube Downloader' },
   { id: 'instagram', name: 'Instagram Downloader' },
+  { id: 'snapchat', name: 'Snapchat Downloader', isNew: true },
   { id: 'tiktok', name: 'TikTok Downloader' },
   { id: 'facebook', name: 'Facebook Downloader' },
   { id: 'reddit', name: 'Reddit Downloader' },
   { id: 'x', name: 'X / Twitter Downloader' },
-  { id: 'linkedin', name: 'LinkedIn Downloader' },
-  { id: 'spotify', name: 'Spotify Downloader' },
-  { id: 'threads', name: 'Threads Downloader' },
+  { id: 'linkedin', name: 'LinkedIn Downloader', isNew: true },
+  { id: 'spotify', name: 'Spotify Downloader', isNew: true },
+  { id: 'threads', name: 'Threads Downloader', isNew: true },
 ];
+
+export const NewBadge = ({ className = "" }: { className?: string }) => (
+  <span className={clsx(
+    "inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-full bg-emerald-400 text-black leading-none shadow-md shadow-emerald-500/30 border border-emerald-300/50 shrink-0 select-none animate-pulse",
+    className
+  )}>
+    NEW
+  </span>
+);
 
 export function StaticPageView({ title, children, isLight, setIsLight }: { title: string; children: React.ReactNode; isLight: boolean; setIsLight: (val: boolean) => void }) {
   const getBgGlow = () => {
@@ -95,11 +105,12 @@ export function StaticPageView({ title, children, isLight, setIsLight }: { title
                   key={tab.id} 
                   to={`/${tab.id}-downloader`}
                   className={clsx(
-                    "flex flex-col gap-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200",
+                    "flex items-center gap-1.5 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200",
                     isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"
                   )}
                 >
-                  {tab.name}
+                  <span>{tab.name}</span>
+                  {tab.isNew && <NewBadge />}
                 </Link>
               ))}
             </div>
