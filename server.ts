@@ -769,6 +769,243 @@ async function extractSnapchatNative(url: string) {
   return null;
 }
 
+async function getSpotifyTrackDetails(trackId: string) {
+  let trackName = "";
+  let primaryArtist = "";
+  let allArtists: string[] = [];
+  let albumName = "";
+  let isrc = "";
+  let durationMs = 0;
+  let thumbnail = "";
+
+  // 1. Try Spotify Web API if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are configured
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (clientId && clientSecret) {
+    try {
+      const authRes = await fetch("https://accounts.spotify.com/api/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": "Basic " + Buffer.from(clientId + ":" + clientSecret).toString("base64")
+        },
+        body: "grant_type=client_credentials"
+      });
+      const authData = await authRes.json();
+      if (authData.access_token) {
+        const trackRes = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+          headers: { "Authorization": `Bearer ${authData.access_token}` }
+        });
+        const trackData = await trackRes.json();
+        if (trackData.name) {
+          trackName = trackData.name;
+          primaryArtist = trackData.artists?.[0]?.name || "";
+          allArtists = trackData.artists?.map((a: any) => a.name) || [];
+          albumName = trackData.album?.name || "";
+          isrc = trackData.external_ids?.isrc || "";
+          durationMs = trackData.duration_ms || 0;
+          thumbnail = trackData.album?.images?.[0]?.url || "";
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 2. Embed page NEXT_DATA extraction (Always works without credentials)
+  if (!trackName) {
+    try {
+      const axios = (await import('axios')).default;
+      const embedRes = await axios.get(`https://open.spotify.com/embed/track/${trackId}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      });
+      const match = embedRes.data.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/);
+      if (match) {
+        const json = JSON.parse(match[1]);
+        const entity = json?.props?.pageProps?.state?.data?.entity;
+        if (entity) {
+          trackName = entity.name || entity.title || "";
+          primaryArtist = entity.artists?.[0]?.name || "";
+          allArtists = entity.artists?.map((a: any) => a.name) || [];
+          durationMs = entity.duration || 0;
+          thumbnail = entity.visualIdentity?.image?.[0]?.url || "";
+        }
+      }
+    } catch (e) {}
+  }
+
+  return {
+    trackId,
+    trackName,
+    primaryArtist,
+    allArtists,
+    albumName,
+    isrc,
+    durationMs,
+    durationSeconds: durationMs / 1000,
+    thumbnail
+  };
+}
+
+async function resolveSpotifyTrackToYouTube(trackMeta: {
+  trackName: string;
+  primaryArtist: string;
+  allArtists: string[];
+  albumName?: string;
+  isrc?: string;
+  durationMs: number;
+}): Promise<string | null> {
+  const { trackName, primaryArtist, allArtists, albumName = "", isrc = "", durationMs } = trackMeta;
+  const targetDurationSec = durationMs / 1000;
+
+  const BANNED_KEYWORDS = [
+    "female version", "female cover", "female vocal", "male version", "male cover",
+    "slowed", "reverb", "remix", "cover", "nightcore", "lofi", "lo-fi", "sped up",
+    "speed up", "bass boosted", "boosted", "instrumental", "karaoke", "mashup",
+    "live", "edit", "8d audio", "8d", "16d", "ringtone", "tiktok version", "acapella"
+  ];
+
+  const originalTitleLower = (trackName + " " + albumName).toLowerCase();
+  const activeBannedKeywords = BANNED_KEYWORDS.filter(kw => !originalTitleLower.includes(kw));
+
+  const queries: string[] = [];
+  if (isrc) {
+    queries.push(`"${isrc}"`);
+  }
+  if (primaryArtist && trackName) {
+    queries.push(`"${primaryArtist}" "${trackName}" Topic`);
+    queries.push(`"${trackName}" ${allArtists.join(" ")} Official Audio`);
+    queries.push(`"${trackName}" ${primaryArtist} Official Audio`);
+    queries.push(`"${trackName}" ${primaryArtist}`);
+  }
+
+  function parseDuration(durStr?: string): number {
+    if (!durStr) return 0;
+    const parts = durStr.split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return 0;
+  }
+
+  const axios = (await import('axios')).default;
+
+  const candidates: { id: string; title: string; channel: string; durSec: number; score: number; durationDelta: number }[] = [];
+  const seenIds = new Set<string>();
+
+  // Fetch all queries concurrently to drastically reduce extraction time
+  const searchPromises = queries.map(q => 
+    axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      timeout: 5000
+    }).then(res => res.data).catch(() => null)
+  );
+
+  const htmlResults = await Promise.all(searchPromises);
+
+  for (const searchHtml of htmlResults) {
+    if (!searchHtml) continue;
+    
+    try {
+      const jsonMatch = searchHtml.match(/var ytInitialData = ({.*?});<\/script>/);
+      if (jsonMatch) {
+        const data = JSON.parse(jsonMatch[1]);
+        const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+
+        for (let c of contents) {
+          const items = c.itemSectionRenderer?.contents || [];
+          for (let item of items) {
+            if (item.videoRenderer) {
+              const v = item.videoRenderer;
+              if (!v.videoId || seenIds.has(v.videoId)) continue;
+              seenIds.add(v.videoId);
+
+              const title = v.title?.runs?.[0]?.text || "";
+              const channel = v.ownerText?.runs?.[0]?.text || "";
+              const durSec = parseDuration(v.lengthText?.simpleText);
+
+              const titleLower = title.toLowerCase();
+              const channelLower = channel.toLowerCase();
+
+              // Rejection Check 1: Banned Keywords
+              let hasBanned = false;
+              for (const kw of activeBannedKeywords) {
+                if (titleLower.includes(kw) || channelLower.includes(kw)) {
+                  hasBanned = true;
+                  break;
+                }
+              }
+              if (hasBanned) continue;
+
+              // Rejection Check 2: Artist match
+              const isIsrcMatch = isrc && (titleLower.includes(isrc.toLowerCase()) || channelLower.includes(isrc.toLowerCase()));
+              const artistMatched = allArtists.some(artist => 
+                artist && (titleLower.includes(artist.toLowerCase()) || channelLower.includes(artist.toLowerCase()))
+              );
+              if (!artistMatched && !isIsrcMatch && allArtists.length > 0) continue;
+
+              // Rejection Check 3: Duration match (max 6s delta)
+              const maxAllowedDelta = 6;
+              const durationDelta = Math.abs(durSec - targetDurationSec);
+              if (targetDurationSec > 0 && durationDelta > maxAllowedDelta) continue;
+
+              // Candidate Passed! Calculate preference score
+              let score = 0;
+
+              // Priority 0: ISRC Match
+              if (isIsrcMatch) {
+                score += 1000;
+              }
+
+              // Priority 1: Official Artist Channel
+              const isOfficialArtistChannel = allArtists.some(a => a && channelLower.includes(a.toLowerCase()));
+              if (isOfficialArtistChannel && !channelLower.includes("topic")) {
+                score += 400;
+              }
+
+              // Priority 2: Official Audio
+              if (titleLower.includes("official audio") || titleLower.includes("audio")) {
+                score += 300;
+              }
+
+              // Priority 3: Official Music Video
+              if (titleLower.includes("official music video") || titleLower.includes("official video")) {
+                score += 200;
+              }
+
+              // Priority 4: Official Topic Channel
+              if (channelLower.includes("- topic") || channelLower.endsWith("topic")) {
+                score += 100;
+              }
+
+              // Bonus for precise duration match
+              score += (maxAllowedDelta - durationDelta) * 20;
+              if (durationDelta <= 3) {
+                score += 50; // extra bonus for very tight duration match
+              }
+
+              candidates.push({ id: v.videoId, title, channel, durSec, score, durationDelta });
+            }
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0].id;
+  }
+
+  // Final fallback to youtube-sr if no candidates matched YouTube HTML search
+  try {
+    const ytModule = await import('youtube-sr');
+    const YouTube = ytModule.default?.default || ytModule.default || ytModule;
+    const cleanSearch = `${trackName} ${primaryArtist}`.trim();
+    const ytRes = await YouTube.searchOne(`${cleanSearch} Topic`);
+    if (ytRes && ytRes.id) return ytRes.id;
+  } catch(e) {}
+
+  return null;
+}
+
 async function extractSpotify(url: string) {
     try {
         const axios = (await import('axios')).default;
@@ -782,6 +1019,37 @@ async function extractSpotify(url: string) {
         }
 
         const isPlaylist = url.includes('/playlist/') || url.includes('/album/');
+        const trackIdMatch = url.match(/track[\/:]([a-zA-Z0-9]+)/);
+
+        if (!isPlaylist && trackIdMatch && trackIdMatch[1]) {
+            const trackId = trackIdMatch[1];
+            const details = await getSpotifyTrackDetails(trackId);
+
+            const title = details.trackName
+              ? details.trackName + (details.primaryArtist ? ` - ${details.primaryArtist}` : "")
+              : "Spotify Track";
+
+            const resolveUrl = `/api/spotify-resolve?trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(details.trackName)}&artist=${encodeURIComponent(details.primaryArtist)}&artists=${encodeURIComponent(details.allArtists.join(','))}&durationMs=${details.durationMs}&isrc=${encodeURIComponent(details.isrc)}`;
+
+            return {
+              success: true,
+              mediaType: 'audio',
+              title: title,
+              thumbnail: details.thumbnail,
+              source: "spotify",
+              qualities: [
+                {
+                  label: "MP3 Audio",
+                  url: resolveUrl,
+                  ext: "mp3",
+                  isAudio: true,
+                  size: "Unknown Size",
+                  _query: `${details.trackName} ${details.primaryArtist}`
+                }
+              ]
+            };
+        }
+
         let embedUrl = url;
         if (url.includes('open.spotify.com/')) {
             embedUrl = url.replace('open.spotify.com/', 'open.spotify.com/embed/');
@@ -809,10 +1077,13 @@ async function extractSpotify(url: string) {
                 if (!t.title) return null;
                 const trackName = t.title;
                 const artistName = t.subtitle || (t.artists && t.artists[0] ? t.artists[0].name : "");
+                let trackId = "";
+                if (t.uri && t.uri.includes('track:')) {
+                    trackId = t.uri.split(':')[2] || "";
+                }
                 let thumb = t.image?.[0]?.url || "";
 
-                if (!thumb && t.uri && t.uri.includes('track:')) {
-                    const trackId = t.uri.split(':')[2];
+                if (!thumb && trackId) {
                     try {
                         const oemb = await axios.get(`https://open.spotify.com/oembed?url=https://open.spotify.com/track/${trackId}`, { timeout: 2500 });
                         if (oemb.data && oemb.data.thumbnail_url) {
@@ -825,8 +1096,7 @@ async function extractSpotify(url: string) {
                     thumb = playlistCover;
                 }
 
-                const query = `${trackName} ${artistName} full song`;
-                const resolveUrl = `/api/spotify-resolve?query=${encodeURIComponent(query)}`;
+                const resolveUrl = `/api/spotify-resolve?trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(trackName)}&artist=${encodeURIComponent(artistName)}&durationMs=${t.duration || 0}`;
 
                 return {
                     type: "audio",
@@ -834,7 +1104,7 @@ async function extractSpotify(url: string) {
                     thumbnail: thumb,
                     title: trackName + (artistName ? ` - ${artistName}` : ""),
                     qualities: [
-                        { label: "MP3 Audio", url: resolveUrl, ext: "mp3", isAudio: true, size: "Unknown Size", _query: query }
+                        { label: "MP3 Audio", url: resolveUrl, ext: "mp3", isAudio: true, size: "Unknown Size", _query: `${trackName} ${artistName}` }
                     ]
                 };
             }));
@@ -853,8 +1123,10 @@ async function extractSpotify(url: string) {
             const trackName = entity.title || entity.name;
             const artistName = entity.artists?.[0]?.name || "";
             const thumb = entity.visualIdentity?.image?.[0]?.url || "";
-            const query = `${trackName} ${artistName} full song`;
-            const resolveUrl = `/api/spotify-resolve?query=${encodeURIComponent(query)}`;
+            const trackId = entity.id || "";
+            const durationMs = entity.duration || 0;
+
+            const resolveUrl = `/api/spotify-resolve?trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(trackName)}&artist=${encodeURIComponent(artistName)}&durationMs=${durationMs}`;
             
             return {
                 success: true,
@@ -863,7 +1135,7 @@ async function extractSpotify(url: string) {
                 thumbnail: thumb,
                 source: "spotify",
                 qualities: [
-                    { label: "MP3 Audio", url: resolveUrl, ext: "mp3", isAudio: true, size: "Unknown Size", _query: query }
+                    { label: "MP3 Audio", url: resolveUrl, ext: "mp3", isAudio: true, size: "Unknown Size", _query: `${trackName} ${artistName}` }
                 ]
             };
         }
@@ -2534,129 +2806,97 @@ app.post("/api/download", async (req, res) => {
   });
 
   app.get("/api/spotify-resolve", async (req, res) => {
-    const query = req.query.query as string;
-    if (!query) return res.status(400).json({ success: false, message: "Missing query" });
     try {
-        const axios = (await import('axios')).default;
-        let videoId: string | null = null;
-        
-        function parseDuration(durStr?: string): number {
-            if (!durStr) return 0;
-            const parts = durStr.split(':').map(Number);
-            if (parts.length === 2) return parts[0] * 60 + parts[1];
-            if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-            return 0;
+      let trackId = (req.query.trackId as string) || "";
+      let title = (req.query.title as string) || (req.query.trackName as string) || "";
+      let artist = (req.query.artist as string) || (req.query.artistName as string) || "";
+      let artistsParam = (req.query.artists as string) || "";
+      let durationMs = parseInt((req.query.durationMs as string) || (req.query.duration as string) || "0") || 0;
+      let isrc = (req.query.isrc as string) || "";
+      const query = (req.query.query as string) || "";
+
+      // Check if query itself contains a Spotify track URL or trackId
+      if (!trackId && query) {
+        const urlMatch = query.match(/track[\/:]([a-zA-Z0-9]+)/);
+        if (urlMatch && urlMatch[1]) {
+          trackId = urlMatch[1];
         }
+      }
 
-        // 1. Smart Multi-Query Search prioritizing Clean Studio Audio / Topic Channels
-        const cleanQuery = query.replace(/\s*(full song|audio)\s*/gi, '').trim();
-        const searchQueries = [
-            `${cleanQuery} Topic`,
-            `${cleanQuery} Official Audio`,
-            query
-        ];
+      let allArtists: string[] = artistsParam ? artistsParam.split(',').map(s => s.trim()).filter(Boolean) : [];
+      if (artist && !allArtists.includes(artist)) {
+        allArtists.unshift(artist);
+      }
 
-        let allCandidates: { id: string; title: string; channel: string; duration: number; score: number }[] = [];
+      let albumName = "";
 
-        for (let q of searchQueries) {
-            try {
-                const searchHtml = await axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
-                    timeout: 5000
-                });
-                const jsonMatch = searchHtml.data.match(/var ytInitialData = ({.*?});<\/script>/);
-                if (jsonMatch) {
-                    const data = JSON.parse(jsonMatch[1]);
-                    const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
-                    
-                    for (let c of contents) {
-                        const items = c.itemSectionRenderer?.contents || [];
-                        for (let item of items) {
-                            if (item.videoRenderer) {
-                                const v = item.videoRenderer;
-                                if (!v.videoId) continue;
-                                const title = (v.title?.runs?.[0]?.text || '').toLowerCase();
-                                const channel = (v.ownerText?.runs?.[0]?.text || '').toLowerCase();
-                                const dur = parseDuration(v.lengthText?.simpleText);
-
-                                // Filter out shorts, teasers (<40s) and 1-hour loops (>900s)
-                                if (dur < 40 || dur > 900) continue;
-
-                                let score = 0;
-                                // Highest score (+100) for Official Topic Channels (pure studio audio direct from distribution)
-                                if (channel.includes('topic')) score += 100;
-                                if (title.includes('official audio') || title.includes('audio')) score += 50;
-
-                                // Penalize videos with spoken dialogue scenes (music videos), live voiceover, covers, edits
-                                if (title.includes('music video') || title.includes('official video') || title.includes('video')) score -= 40;
-                                if (title.includes('live') || title.includes('performance')) score -= 50;
-                                if (title.includes('remix') || title.includes('edit') || title.includes('tiktok') || title.includes('slowed') || title.includes('sped up')) score -= 60;
-                                if (title.includes('cover') || title.includes('reaction') || title.includes('interview') || title.includes('review')) score -= 100;
-
-                                allCandidates.push({ id: v.videoId, title, channel, duration: dur, score });
-                            }
-                        }
-                    }
-
-                    // If we found an official Topic track or high-confidence audio, select it immediately
-                    const topMatch = allCandidates.find(c => c.score >= 80);
-                    if (topMatch) {
-                        videoId = topMatch.id;
-                        break;
-                    }
-                }
-            } catch(e) {}
+      // If trackId is available, fetch complete details from Spotify to guarantee 100% accuracy
+      if (trackId) {
+        const details = await getSpotifyTrackDetails(trackId);
+        if (details.trackName) {
+          title = details.trackName;
+          artist = details.primaryArtist || artist;
+          allArtists = details.allArtists.length > 0 ? details.allArtists : allArtists;
+          albumName = details.albumName || "";
+          isrc = details.isrc || isrc;
+          durationMs = details.durationMs || durationMs;
         }
+      }
 
-        if (!videoId && allCandidates.length > 0) {
-            allCandidates.sort((a, b) => b.score - a.score);
-            videoId = allCandidates[0].id;
-        }
+      // Fallback if title is missing but query was passed
+      if (!title && query) {
+        title = query.replace(/\s*(full song|official audio|audio)\s*/gi, '').trim();
+      }
 
-        // 2. Fallback to youtube-sr
-        if (!videoId) {
-            try {
-                const ytModule = await import('youtube-sr');
-                const YouTube = ytModule.default?.default || ytModule.default || ytModule;
-                const ytRes = await YouTube.searchOne(`${cleanQuery} Topic`);
-                if (ytRes && ytRes.id) videoId = ytRes.id;
-            } catch(e) {}
-        }
+      // If title or query is still missing, return error
+      if (!title && !trackId) {
+        return res.status(400).json({ success: false, message: "Missing track identifiers or query" });
+      }
 
-        if (!videoId) {
-            return res.status(404).json({ success: false, message: "Could not resolve Spotify audio track" });
-        }
+      const videoId = await resolveSpotifyTrackToYouTube({
+        trackName: title,
+        primaryArtist: artist,
+        allArtists: allArtists.length > 0 ? allArtists : [artist],
+        albumName,
+        isrc,
+        durationMs
+      });
 
-        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        const { ytmp3 } = await import("@vreden/youtube_scraper");
-        const originalConsoleError = console.error;
-        const originalConsoleLog = console.log;
-        console.error = () => {}; console.log = () => {};
-        let result;
-        try {
-            result = await ytmp3(videoUrl);
-        } catch(e) {} finally {
-            console.error = originalConsoleError;
-            console.log = originalConsoleLog;
-        }
-        let finalAudioUrl = "";
-        if (result && result.status && result.download && result.download.url) {
-            finalAudioUrl = result.download.url;
+      if (!videoId) {
+        return res.status(404).json({ success: false, message: "Could not resolve Spotify audio track" });
+      }
+
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const { ytmp3 } = await import("@vreden/youtube_scraper");
+      const originalConsoleError = console.error;
+      const originalConsoleLog = console.log;
+      console.error = () => {}; console.log = () => {};
+      let result;
+      try {
+        result = await ytmp3(videoUrl);
+      } catch(e) {} finally {
+        console.error = originalConsoleError;
+        console.log = originalConsoleLog;
+      }
+
+      let finalAudioUrl = "";
+      if (result && result.status && result.download && result.download.url) {
+        finalAudioUrl = result.download.url;
+      } else {
+        finalAudioUrl = `/api/proxy-download?url=${encodeURIComponent(videoUrl)}`;
+      }
+
+      if (req.query.stream === 'true') {
+        if (finalAudioUrl.startsWith("http")) {
+          return res.redirect(302, finalAudioUrl);
         } else {
-            finalAudioUrl = `/api/proxy-download?url=${encodeURIComponent(videoUrl)}`;
+          return pipeUrlStream(finalAudioUrl, res, "spotify_audio.mp3", true);
         }
+      }
 
-        if (req.query.stream === 'true') {
-            if (finalAudioUrl.startsWith("http")) {
-                return res.redirect(302, finalAudioUrl);
-            } else {
-                return pipeUrlStream(finalAudioUrl, res, "spotify_audio.mp3", true);
-            }
-        }
-
-        return res.json({ success: true, url: finalAudioUrl });
+      return res.json({ success: true, url: finalAudioUrl, videoId });
     } catch(e: any) {
-        return res.status(500).json({ success: false, message: e.message });
+      return res.status(500).json({ success: false, message: e.message });
     }
   });
 
