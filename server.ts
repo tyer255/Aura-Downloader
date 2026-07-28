@@ -1588,10 +1588,25 @@ async function startServer() {
   });
 
   
+  const SERVER_BUILD_ID = process.env.BUILD_ID || process.env.REVISION_ID || Date.now().toString();
+
+  app.get("/api/version", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.json({
+      success: true,
+      version: "2.5.0",
+      buildId: SERVER_BUILD_ID,
+      timestamp: Date.now()
+    });
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({
       success: true,
-      message: "API is working"
+      message: "API is working",
+      buildId: SERVER_BUILD_ID
     });
   });
 
