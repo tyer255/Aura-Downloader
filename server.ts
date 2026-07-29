@@ -3167,36 +3167,36 @@ app.post("/api/download", async (req, res) => {
   });
 
 
+  
   app.get("/robots.txt", (req, res) => {
     res.type("text/plain");
-    res.send("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://aura-download.ai.studio/sitemap.xml");
+    res.send("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://aura-downloader-yg40.onrender.com/sitemap.xml");
   });
 
   app.get("/sitemap.xml", (req, res) => {
     res.type("application/xml");
-    const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://aura-download.ai.studio/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
-  <url><loc>https://aura-download.ai.studio/youtube-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/instagram-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/tiktok-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/facebook-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/pinterest-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/x-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/reddit-downloader</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
-  <url><loc>https://aura-download.ai.studio/linkedin-downloader</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
-  <url><loc>https://aura-download.ai.studio/spotify-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/threads-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/snapchat-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-  <url><loc>https://aura-download.ai.studio/faq</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://aura-download.ai.studio/about</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://aura-download.ai.studio/contact</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://aura-download.ai.studio/privacy-policy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
-  <url><loc>https://aura-download.ai.studio/terms</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
-  <url><loc>https://aura-download.ai.studio/dmca</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
-  <url><loc>https://aura-download.ai.studio/cookie-policy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
-</urlset>`;
-    res.send(sitemap);
+  <url><loc>https://aura-downloader-yg40.onrender.com/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/youtube-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/instagram-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/tiktok-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/facebook-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/pinterest-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/x-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/reddit-downloader</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/linkedin-downloader</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/spotify-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/threads-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/snapchat-downloader</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/faq</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/about</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/contact</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/privacy-policy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/terms</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/dmca</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://aura-downloader-yg40.onrender.com/cookie-policy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+</urlset>`);
   });
 
   if (process.env.NODE_ENV !== "production") {
@@ -3287,7 +3287,7 @@ app.post("/api/download", async (req, res) => {
 
       const routeData = routes[req.path];
       if (routeData) {
-         const canonicalUrl = `https://aura-download.ai.studio${req.path === "/" ? "" : req.path}`;
+         const canonicalUrl = `https://aura-downloader-yg40.onrender.com${req.path === "/" ? "" : req.path}`;
          html = html.replace(/<title[^>]*>.*?<\/title>/i, `<title data-rh="true">${routeData.title}</title>`);
          html = html.replace(/<meta[^>]*name="description"[^>]*\/?>/i, `<meta name="description" data-rh="true" content="${routeData.desc}" />`);
          html = html.replace(/<meta[^>]*name="keywords"[^>]*\/?>/i, `<meta name="keywords" data-rh="true" content="${routeData.keywords}" />`);
@@ -3307,7 +3307,7 @@ app.post("/api/download", async (req, res) => {
               "name": "Aura Downloader",
               "logo": {
                 "@type": "ImageObject",
-                "url": "https://aura-download.ai.studio/icon-512.png"
+                "url": "https://aura-downloader-yg40.onrender.com/icon-512.png"
               }
             }
          })}\n</script>\n</head>`);
@@ -3334,7 +3334,7 @@ app.post("/api/download", async (req, res) => {
       
       // Also inject og:image if not present, though it's likely handled by index.html or client, 
       // let's ensure it's there.
-      const ogImage = 'https://aura-download.ai.studio/banner.jpg';
+      const ogImage = 'https://aura-downloader-yg40.onrender.com/banner.jpg';
       if (!html.includes('property="og:image"')) {
          html = html.replace('</head>', `<meta property="og:image" content="${ogImage}" />\n</head>`);
       }

@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /api/
 
-Sitemap: https://aura-download.ai.studio/sitemap.xml
+Sitemap: https://aura-downloader-yg40.onrender.com/sitemap.xml
