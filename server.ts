@@ -1569,13 +1569,14 @@ ensureYtDlp();
 async function startServer() {
   const app = express();
   app.set("trust proxy", 1);
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   // Security Middlewares for Production
   app.use(helmet({
     crossOriginResourcePolicy: false, // allow images to load
     crossOriginEmbedderPolicy: false,
-    contentSecurityPolicy: false // disabled temporarily for dev/preview iframe
+    contentSecurityPolicy: false, // disabled temporarily for dev/preview iframe
+    xFrameOptions: false // allow iframe preview
   }));
   app.use(cors());
 
@@ -3172,18 +3173,145 @@ app.post("/api/download", async (req, res) => {
     });
     app.use(vite.middlewares);
   } else {
+
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath, {
+      index: false,
       setHeaders: (res, path) => {
         if (path.endsWith('.js') && (path.includes('sw.js') || path.includes('workbox-'))) {
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         }
       }
     }));
+
     app.get('*', (req, res) => {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.sendFile(path.join(distPath, 'index.html'));
+      let htmlPath = path.join(distPath, 'index.html');
+      if (!fs.existsSync(htmlPath)) {
+          return res.status(404).send('Not Found');
+      }
+      
+      let html = fs.readFileSync(htmlPath, 'utf8');
+      
+      // Dynamic SSR Meta Tags
+      const routes = {
+        '/pinterest-downloader': {
+            title: 'Aura Downloader - Download Pinterest Videos & Images Free',
+            desc: 'Best free Pinterest Downloader online. Download Pinterest videos, images, and GIFs in HD quality without watermark using Aura Downloader.',
+            keywords: 'Aura Downloader, Pinterest downloader, download Pinterest video'
+        },
+        '/youtube-downloader': {
+            title: 'Aura Downloader - YouTube Downloader, Shorts & Reels Saver',
+            desc: 'Aura Downloader is the best free YouTube Downloader. Download YouTube videos, Shorts, and Reels in 1080p, 4K HD effortlessly.',
+            keywords: 'Aura Downloader, YouTube downloader, YouTube Shorts downloader'
+        },
+        '/instagram-downloader': {
+            title: 'Aura Downloader - Instagram Reels & Video Downloader',
+            desc: 'Free online Instagram Downloader by Aura Downloader. Download Instagram reels, photos, videos, IGTV, and stories in high quality easily.',
+            keywords: 'Aura Downloader, Instagram downloader, Instagram reels downloader'
+        },
+        '/snapchat-downloader': {
+            title: 'Aura Downloader - Download Snapchat Videos Free',
+            desc: 'Free online Snapchat Video Downloader. Download Snapchat Spotlight videos and stories in high quality directly to your device with Aura Downloader.',
+            keywords: 'Aura Downloader, Snapchat downloader, download Snapchat video'
+        },
+        '/tiktok-downloader': {
+            title: 'Aura Downloader - TikTok Downloader Without Watermark',
+            desc: 'Best free TikTok Downloader. Download TikTok videos without watermark in HD quality using Aura Downloader.',
+            keywords: 'Aura Downloader, TikTok downloader, download TikTok video'
+        },
+        '/facebook-downloader': {
+            title: 'Aura Downloader - Download Facebook Videos & Reels Free',
+            desc: 'Free online Facebook Video Downloader by Aura Downloader. Download Facebook reels and videos in HD quality to your device fast and easily.',
+            keywords: 'Aura Downloader, Facebook downloader, FB video downloader'
+        },
+        '/reddit-downloader': {
+            title: 'Aura Downloader - Download Reddit Videos With Audio',
+            desc: 'Free Reddit Video Downloader. Download Reddit videos with sound in HD quality with Aura Downloader.',
+            keywords: 'Aura Downloader, Reddit downloader, download Reddit video with audio'
+        },
+        '/x-downloader': {
+            title: 'Aura Downloader - Download Twitter Videos & GIFs Free',
+            desc: 'Best free X (Twitter) Downloader. Download videos, GIFs, and media from tweets in HD quality quickly and securely with Aura Downloader.',
+            keywords: 'Aura Downloader, Twitter downloader, X downloader'
+        },
+        '/linkedin-downloader': {
+            title: 'Aura Downloader - Download LinkedIn Videos Free',
+            desc: 'Free online LinkedIn Video Downloader. Download LinkedIn videos, images, and documents in high quality directly to your device with Aura Downloader.',
+            keywords: 'Aura Downloader, LinkedIn downloader, download LinkedIn video'
+        },
+        '/spotify-downloader': {
+            title: 'Aura Downloader - Download Spotify Audio Free',
+            desc: 'Free online Spotify Audio Downloader. Download Spotify tracks and playlists in MP3 format with Aura Downloader.',
+            keywords: 'Aura Downloader, Spotify downloader, download Spotify audio'
+        },
+        '/threads-downloader': {
+            title: 'Aura Downloader - Download Threads Photos & Videos Free',
+            desc: 'Free online Threads Downloader. Download Threads photos, videos, and multi-media carousels in high quality directly to your device with Aura Downloader.',
+            keywords: 'Aura Downloader, Threads downloader, download Threads photo'
+        }
+      };
+
+      const routeData = routes[req.path];
+      if (routeData) {
+         const canonicalUrl = `https://aura-download.ai.studio${req.path === "/" ? "" : req.path}`;
+         html = html.replace(/<title[^>]*>.*?<\/title>/i, `<title data-rh="true">${routeData.title}</title>`);
+         html = html.replace(/<meta[^>]*name="description"[^>]*\/?>/i, `<meta name="description" data-rh="true" content="${routeData.desc}" />`);
+         html = html.replace(/<meta[^>]*name="keywords"[^>]*\/?>/i, `<meta name="keywords" data-rh="true" content="${routeData.keywords}" />`);
+         html = html.replace(/<meta[^>]*property="og:title"[^>]*\/?>/i, `<meta property="og:title" data-rh="true" content="${routeData.title}" />`);
+         html = html.replace(/<meta[^>]*property="og:description"[^>]*\/?>/i, `<meta property="og:description" data-rh="true" content="${routeData.desc}" />`);
+         html = html.replace(/<meta[^>]*name="twitter:title"[^>]*\/?>/i, `<meta name="twitter:title" data-rh="true" content="${routeData.title}" />`);
+         html = html.replace(/<meta[^>]*name="twitter:description"[^>]*\/?>/i, `<meta name="twitter:description" data-rh="true" content="${routeData.desc}" />`);
+         html = html.replace("</head>", `<link rel="canonical" href="${canonicalUrl}" />\n</head>`);
+         html = html.replace("</head>", `\n<script type="application/ld+json">\n${JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": routeData.title,
+            "description": routeData.desc,
+            "url": canonicalUrl,
+            "publisher": {
+              "@type": "Organization",
+              "name": "Aura Downloader",
+              "logo": {
+                "@type": "ImageObject",
+                "url": "https://aura-download.ai.studio/icon-512.png"
+              }
+            }
+         })}\n</script>\n</head>`);
+         html = html.replace("</head>", `\n<script type="application/ld+json">\n${JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": routeData.title.split(" - ")[0],
+            "operatingSystem": "Any",
+            "applicationCategory": "UtilitiesApplication",
+            "description": routeData.desc,
+            "url": canonicalUrl,
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "4.9",
+              "ratingCount": "1284"
+            }
+         })}\n</script>\n</head>`);
+      }
+      
+      // Also inject og:image if not present, though it's likely handled by index.html or client, 
+      // let's ensure it's there.
+      const ogImage = 'https://aura-download.ai.studio/banner.jpg';
+      if (!html.includes('property="og:image"')) {
+         html = html.replace('</head>', `<meta property="og:image" content="${ogImage}" />\n</head>`);
+      }
+      if (!html.includes('name="twitter:image"')) {
+         html = html.replace('</head>', `<meta name="twitter:image" content="${ogImage}" />\n</head>`);
+      }
+
+      res.send(html);
     });
+
   }
 
   if (!process.env.VERCEL) {

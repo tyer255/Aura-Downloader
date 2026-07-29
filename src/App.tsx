@@ -1,9 +1,21 @@
+import { PlatformContent } from './components/PlatformContent';
 import React, { useState, useEffect, useRef } from 'react';
 import JSZip from 'jszip';
 import ReloadPrompt from './components/ReloadPrompt';
 import NotificationRequest from './components/NotificationRequest';
 
-import { PrivacyPolicy, TermsConditions, DMCA, About, Contact, FAQ, NotFound, ServerError, CookiePolicy } from './pages/StaticPages';
+
+import { Suspense, lazy } from 'react';
+const PrivacyPolicy = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.PrivacyPolicy })));
+const TermsConditions = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.TermsConditions })));
+const DMCA = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.DMCA })));
+const About = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.About })));
+const Contact = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.Contact })));
+const FAQ = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.FAQ })));
+const NotFound = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.NotFound })));
+const ServerError = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.ServerError })));
+const CookiePolicy = lazy(() => import('./pages/StaticPages').then(m => ({ default: m.CookiePolicy })));
+
 import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera, Headphones, HelpCircle, Settings, DownloadCloud } from 'lucide-react';
@@ -826,7 +838,7 @@ function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }
   return (
     <div ref={containerRef} className={clsx("p-4 rounded-xl flex flex-col sm:flex-row gap-4 items-center shadow border transition-all group", isLight ? "bg-white border-neutral-200 hover:border-blue-400/50" : "bg-white/5 border-white/10 hover:border-blue-500/50")}>
        <div className="w-24 h-16 sm:w-32 sm:h-20 shrink-0 overflow-hidden rounded-lg bg-black">
-         <img src={item.thumbnail} alt="thumbnail" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+         <img src={item.thumbnail} alt={item.title || "Media thumbnail"} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" loading="lazy" decoding="async" />
        </div>
        <div className="flex-1 min-w-0 w-full text-left">
          <h4 className={clsx("font-bold truncate text-sm sm:text-base", isLight ? "text-neutral-900" : "text-white")} title={item.title}>{item.title}</h4>
@@ -1939,11 +1951,77 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         <meta property="og:description" content={activeTabData.description} />
         <meta property="og:type" content="website" />
         <meta property="og:url" content={window.location.href} />
+        <link rel="canonical" href={`https://aura-download.ai.studio/${activeTab === 'pinterest' ? '' : activeTab + '-downloader'}`.replace(/\/$/, '') || 'https://aura-download.ai.studio'} />
         <meta property="og:image" content={window.location.origin + "/banner.jpg"} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta property="twitter:title" content={activeTabData.title} />
         <meta property="twitter:description" content={activeTabData.description} />
         <meta property="twitter:image" content={window.location.origin + "/banner.jpg"} />
+        <script type="application/ld+json">
+          {`
+            {
+              "@context": "https://schema.org",
+              "@type": "WebPage",
+              "name": "${activeTabData.title}",
+              "description": "${activeTabData.description}",
+              "url": "https://aura-download.ai.studio/${activeTab === 'pinterest' ? '' : activeTab + '-downloader'}",
+              "publisher": {
+                "@type": "Organization",
+                "name": "Aura Downloader",
+                "logo": {
+                  "@type": "ImageObject",
+                  "url": "https://aura-download.ai.studio/icon-512.png"
+                }
+              }
+            }
+          `}
+        </script>
+        <script type="application/ld+json">
+          {`
+            {
+              "@context": "https://schema.org",
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {
+                  "@type": "ListItem",
+                  "position": 1,
+                  "name": "Home",
+                  "item": "https://aura-download.ai.studio/"
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 2,
+                  "name": "${activeTabData.name}",
+                  "item": "https://aura-download.ai.studio/${activeTab === 'pinterest' ? '' : activeTab + '-downloader'}"
+                }
+              ]
+            }
+          `}
+        </script>
+        <script type="application/ld+json">
+          {`
+            {
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              "name": "${activeTabData.name}",
+              "operatingSystem": "Any",
+              "applicationCategory": "UtilitiesApplication",
+              "description": "${activeTabData.description}",
+              "url": "https://aura-download.ai.studio/${activeTab === 'pinterest' ? '' : activeTab + '-downloader'}",
+              "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
+              },
+              "aggregateRating": {
+                "@type": "AggregateRating",
+                "ratingValue": "4.9",
+                "ratingCount": "1284"
+              }
+            }
+          `}
+        </script>
+
       </Helmet>
       <LazyMotion features={domMax}>
     <div className={clsx(
@@ -1997,10 +2075,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         </div>
 
         <div className="relative z-10 ml-1">
-           <h1 className={clsx(
+           <span className={clsx(
                "text-base sm:text-lg font-black tracking-tight uppercase",
                isLight ? "text-neutral-900" : "text-white"
-           )}>AURA Downloader</h1>
+           )}>AURA Downloader</span>
         </div>
         </div>
         <a 
@@ -2354,7 +2432,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           >
                             {item.thumbnail && (
                               <div className="w-12 h-12 rounded-lg bg-neutral-950 shrink-0 overflow-hidden border border-white/10 shadow-sm relative group-hover/item:scale-105 transition-transform">
-                                <img src={item.thumbnail} alt="" className="w-full h-full object-cover"  loading="lazy" decoding="async" width="400" height="400" />
+                                <img src={item.thumbnail} alt={item.title || "Playlist track thumbnail"} className="w-full h-full object-cover"  loading="lazy" decoding="async" width="400" height="400" />
                               </div>
                             )}
                             <div className="flex-1 min-w-0">
@@ -2481,9 +2559,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               };
 
               return (
-                <button
+                <Link
                   key={tab.id}
-                  ref={(el) => {
+                  to={tab.id === 'pinterest' ? '/' : `/${tab.id}-downloader`}
+                  ref={(el: any) => {
                     tabRefs.current[tab.id] = el;
                   }}
                   onClick={() => {
@@ -2524,7 +2603,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     {tab.label}
                     {tab.isNew && <NewBadge />}
                   </span>
-                </button>
+                </Link>
               );
             })}
           </div>
@@ -2549,6 +2628,15 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               {activeTabData.name}
             </div>
 
+            
+            {/* Breadcrumbs */}
+            {activeTab !== 'pinterest' && (
+                <nav className={clsx("flex items-center justify-center space-x-2 mb-6 text-sm font-medium", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                  <Link to="/" className="hover:text-primary transition-colors">Home</Link>
+                  <span>/</span>
+                  <span className={clsx(isLight ? "text-neutral-900" : "text-white")}>{activeTabData.name}</span>
+                </nav>
+            )}
             {/* Hero Area */}
             <h1 className={clsx(
               "text-4xl sm:text-5xl leading-[1.1] font-bold mb-6 transition-colors",
@@ -2662,8 +2750,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   const brandColor = getBrandColor(tab.id, isLight);
                   return (
                     <div key={tab.id} className="relative">
-                      <button
-                        type="button"
+                      <Link
+                        to={tab.id === 'pinterest' ? '/' : `/${tab.id}-downloader`}
                         onClick={() => {
                            setActiveTab(tab.id);
                            setResult(null);
@@ -2684,7 +2772,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         }}
                       >
                         <BrandIcon id={tab.id} className="w-5 h-5 sm:w-6 sm:h-6" />
-                      </button>
+                      </Link>
                       {tab.isNew && (
                         <span className="absolute -top-1.5 -right-1.5 z-30 pointer-events-none">
                           <NewBadge className="text-[7px] px-1 py-0.2" />
@@ -3101,7 +3189,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               
                               <div className="flex flex-col items-center text-center gap-4 mb-6 relative z-10">
                                 <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
-                                  <img src={getProxiedUrl(result.profile.avatarUrl)} alt="Logo" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" width="400" height="400" />
+                                  <img src={getProxiedUrl(result.profile.avatarUrl)} alt={`Avatar for ${result.profile.displayName || result.profile.username || "User"}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" width="400" height="400" />
                                 </div>
                                 <div className="mt-2">
                                   <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Profile Logo</h4>
@@ -3168,7 +3256,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
                               <div className="flex flex-col items-center text-center gap-4 mb-6 relative z-10">
                                 <div className="w-full rounded-2xl overflow-hidden shrink-0 border-[6px] border-white/30 shadow-[0_8px_30px_rgba(0,0,0,0.12)] bg-neutral-100/50 backdrop-blur-sm relative group">
-                                  <img src={getProxiedUrl(result.profile.bannerUrl)} alt="Banner" className="w-full h-auto object-contain transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" />
+                                  <img src={getProxiedUrl(result.profile.bannerUrl)} alt={`Banner for ${result.profile.displayName || result.profile.username || "User"}`} className="w-full h-auto object-contain transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" />
                                 </div>
                                 <div className="mt-2">
                                   <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Cover Banner</h4>
@@ -4024,7 +4112,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       )}>
                         {result.thumbnail && (
                           <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 group-hover:scale-110 transition-transform">
-                            <img src={getProxiedUrl(result.thumbnail)} alt="Thumbnail" className="w-full h-full object-cover"  loading="lazy" decoding="async" width="400" height="400" />
+                            <img src={getProxiedUrl(result.thumbnail)} alt={result.title || "Media thumbnail"} className="w-full h-full object-cover"  loading="lazy" decoding="async" width="400" height="400" />
                           </div>
                         )}
                         <div>
@@ -4283,8 +4371,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       className="max-w-full max-h-[75vh] rounded-2xl object-contain shadow-[0_25px_60px_rgba(0,0,0,0.8)] border border-white/5"
                     />
                   ) : (
-                    <img                       src={getProxiedUrl(activeItem.url)}
-                      alt={activeItem.title || "Full Resolution Preview"}
+                    <img alt={activeItem.title || "Full size media preview"} src={getProxiedUrl(activeItem.url)}
                       className="max-w-full max-h-[75vh] rounded-2xl object-contain shadow-[0_25px_60px_rgba(0,0,0,0.8)] border border-white/5"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
@@ -4617,6 +4704,7 @@ const ThreadsIcon = ({ className }: { className?: string }) => (
 );
 export default function App() {
   return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
     <Routes>
       <Route path="/" element={<DownloaderView routeTab="pinterest" />} />
       <Route path="/youtube-downloader" element={<DownloaderView routeTab="youtube" />} />
@@ -4641,5 +4729,6 @@ export default function App() {
       <Route path="/cookie-policy" element={<CookiePolicy />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
   );
 }

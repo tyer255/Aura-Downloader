@@ -281,7 +281,7 @@ export function SpotifyAudioPlayer({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             {thumbnail ? (
-              <img src={thumbnail} alt="Cover" className="w-10 h-10 rounded-lg object-cover shrink-0 border border-emerald-500/20" />
+              <img src={thumbnail} alt={`Cover art for ${title}`} className="w-10 h-10 rounded-lg object-cover shrink-0 border border-emerald-500/20" />
             ) : (
               <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0">
                 <Music className="w-5 h-5 text-emerald-500" />
