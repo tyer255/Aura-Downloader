@@ -332,28 +332,28 @@ const detectPlatformFromUrl = (url: string): Tab | null => {
   if (lowercase.includes('threads.net') || lowercase.includes('threads.com')) {
     return 'threads';
   }
-  if (lowercase.includes('pinterest.com') || lowercase.includes('pin.it')) {
+  if (lowercase.includes('pinterest.com') || lowercase.includes('pin.it') || lowercase.includes('pinterest.')) {
     return 'pinterest';
   }
-  if (lowercase.includes('instagram.com') || lowercase.includes('instagr.am')) {
+  if (lowercase.includes('instagram.com') || lowercase.includes('instagr.am') || lowercase.includes('instagr.com')) {
     return 'instagram';
   }
-  if (lowercase.includes('tiktok.com')) {
+  if (lowercase.includes('tiktok.com') || lowercase.includes('vt.tiktok.com') || lowercase.includes('vm.tiktok.com')) {
     return 'tiktok';
   }
-  if (lowercase.includes('facebook.com') || lowercase.includes('fb.watch') || lowercase.includes('fb.com')) {
+  if (lowercase.includes('facebook.com') || lowercase.includes('fb.watch') || lowercase.includes('fb.com') || lowercase.includes('fb.gg') || lowercase.includes('fb.me')) {
     return 'facebook';
   }
   if (lowercase.includes('reddit.com') || lowercase.includes('redd.it')) {
     return 'reddit';
   }
-  if (lowercase.includes('youtube.com') || lowercase.includes('youtu.be')) {
+  if (lowercase.includes('youtube.com') || lowercase.includes('youtu.be') || lowercase.includes('youtube-nocookie.com')) {
     return 'youtube';
   }
-  if (lowercase.includes('x.com') || lowercase.includes('twitter.com')) {
+  if (lowercase.includes('x.com') || lowercase.includes('twitter.com') || lowercase.includes('t.co')) {
     return 'x';
   }
-  if (lowercase.includes('linkedin.com')) {
+  if (lowercase.includes('linkedin.com') || lowercase.includes('lnkd.in')) {
     return 'linkedin';
   }
   if (lowercase.includes('snapchat.com')) {
@@ -1180,75 +1180,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   
   
   const [loadingStep, setLoadingStep] = useState(0);
+  const [extractionProgress, setExtractionProgress] = useState<number | null>(null);
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [fetchedSizes, setFetchedSizes] = useState<Record<string, string>>({});
   const fetchingRefs = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!result) {
-       fetchingRefs.current.clear();
-       return;
-    }
-    const list = sanitizeQualities(result.qualities, result.url);
-    
-    const fetchSize = async (url: string) => {
-      if (!url || fetchedSizes[url]) return;
-      
-      try {
-        let targetUrl = url;
-        if (url.startsWith('/api/get-youtube-link')) {
-          const res = await fetch(url);
-          const data = await res.json();
-          if (data && data.url) {
-            targetUrl = data.url;
-          } else {
-             setFetchedSizes(prev => ({ ...prev, [url]: "Size Unknown" }));
-             return;
-          }
-        }
-        
-        const proxyUrl = targetUrl.startsWith('/api/') ? targetUrl : `/api/proxy-download?url=${encodeURIComponent(targetUrl)}&filename=media`;
-        const res = await fetch(proxyUrl, { method: 'HEAD' });
-        const len = res.headers.get('content-length') || res.headers.get('estimated-content-length');
-        if (len) {
-          const bytes = parseInt(len, 10);
-          if (bytes > 0) {
-            const formatted = formatBytes(bytes);
-            if (formatted) {
-              setFetchedSizes(prev => ({ ...prev, [url]: formatted }));
-              return;
-            }
-          }
-        }
-        setFetchedSizes(prev => ({ ...prev, [url]: "Size Unknown" }));
-      } catch (err) {
-        setFetchedSizes(prev => ({ ...prev, [url]: "Size Unknown" }));
-      }
-    };
-
-    // Process fetchSize sequentially or in small batches to prevent overloading the backend
-    const processQueue = async () => {
-      for (const q of list) {
-        const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
-        const isSpotify = q.url && q.url.startsWith('/api/spotify-resolve');
-        if (q.url && (!q.size || isPlaceholder) && !fetchedSizes[q.url] && !isSpotify) {
-           await fetchSize(q.url);
-           // Add a tiny delay to allow React to render each update and create a cascading animation
-           await new Promise(r => setTimeout(r, 200));
-        }
-      }
-    };
-    processQueue();
-
-    if (result.media && Array.isArray(result.media)) {
-      result.media.forEach((item: any) => {
-        const isSpotify = item.url && item.url.startsWith('/api/spotify-resolve');
-        if (item.url && !fetchedSizes[item.url] && !isSpotify) {
-           fetchSize(item.url);
-        }
-      });
-    }
-  }, [result]);
   const [showHistory, setShowHistory] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -1546,7 +1482,15 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
     // Check platform matching before proceeding
     const detected = detectPlatformFromUrl(targetUrl);
-    if (detected && detected !== activeTab) {
+    if (!detected) {
+      setIsLoading(false);
+      setResult({
+        success: false,
+        error: "This URL is from an unsupported website. Aura Downloader supports links from YouTube, Instagram, Facebook, TikTok, Reddit, Pinterest, X/Twitter, LinkedIn, Snapchat, Spotify, and Threads. Please enter a valid link from a supported platform."
+      });
+      return;
+    }
+    if (detected !== activeTab) {
       setActiveTab(detected);
       setValidationError(null);
     }
@@ -1593,8 +1537,64 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         data.success = false;
         data.error = "Could not fetch profile metadata. The handle may be incorrect, or the page is blocking access.";
       }
+
+      // Extraction logic before setting result
+      if (data && data.success) {
+        let qualitiesToFetch = [];
+        
+        if (data.qualities && Array.isArray(data.qualities)) {
+           qualitiesToFetch = data.qualities;
+        } else if (data.media && Array.isArray(data.media)) {
+           data.media.forEach((m: any) => {
+              if (m.qualities && Array.isArray(m.qualities)) {
+                 qualitiesToFetch.push(...m.qualities);
+              }
+           });
+        }
+        
+        if (qualitiesToFetch.length > 0) {
+           setExtractionProgress(0);
+           let completed = 0;
+           const total = qualitiesToFetch.length;
+           
+           for (const q of qualitiesToFetch) {
+              const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
+              const isSpotify = q.url && q.url.startsWith('/api/spotify-resolve');
+              
+              if (q.url && (!q.size || isPlaceholder) && !isSpotify) {
+                 try {
+                    let targetUrl = q.url;
+                    if (targetUrl.startsWith('/api/get-youtube-link')) {
+                       const ytres = await fetch(targetUrl);
+                       const ytdata = await ytres.json();
+                       if (ytdata && ytdata.url) {
+                          targetUrl = ytdata.url;
+                          q.url = targetUrl; // Replace URL with resolved stream URL
+                       }
+                    }
+                    
+                    const proxyUrl = targetUrl.startsWith('/api/') ? targetUrl : `/api/proxy-download?url=${encodeURIComponent(targetUrl)}&filename=media`;
+                    const resHead = await fetch(proxyUrl, { method: 'HEAD' });
+                    const len = resHead.headers.get('content-length') || resHead.headers.get('estimated-content-length');
+                    if (len) {
+                       const bytes = parseInt(len, 10);
+                       if (bytes > 0) {
+                          const formatted = formatBytes(bytes);
+                          if (formatted) q.size = formatted;
+                       }
+                    }
+                 } catch(e) {
+                    // ignore
+                 }
+              }
+              completed++;
+              setExtractionProgress(Math.round((completed / total) * 100));
+           }
+        }
+      }
       
       setResult(data ? { ...data, originalUrl: url.trim() } : null);
+
       
       if (data.success) {
         const titleText = data.profile 
@@ -1623,6 +1623,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       
       setTimeout(() => {
         setIsLoading(false);
+        setExtractionProgress(null);
       }, 300);
     }
   };
@@ -4095,7 +4096,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
                   <div>
                     <h4 className="font-bold text-lg mb-1">
-                      {result.error?.includes("Instagram blocks our cloud servers") ? "Action Required: API Key Missing" : "Extraction Failed"}
+                      {result.error?.includes("Instagram blocks our cloud servers") ? "Action Required: API Key Missing" : (result.error?.toLowerCase().includes("unsupported") || result.message?.toLowerCase().includes("unsupported")) ? "Unsupported Website Link" : "Extraction Failed"}
                     </h4>
                     <p className={clsx(
                       "leading-relaxed text-sm font-medium transition-colors mb-4",

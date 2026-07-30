@@ -302,6 +302,12 @@ async function extractWithVreden(url: string) {
            ext: "mp4",
            size: "Ready"
         });
+        qualities.push({
+           label: "Audio (MP3)",
+           url: `/api/proxy-download?url=${encodeURIComponent(downloadInfo.url)}&filename=${encodeURIComponent(title)}.mp3&extractAudio=true`,
+           ext: "mp3",
+           size: "Audio Only"
+        });
       }
 
       const primaryUrl = `/api/youtube-stream?url=${encodeURIComponent(url)}&quality=${downloadInfo.quality || '360'}&filename=${encodeURIComponent(title)}`;
@@ -688,6 +694,15 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
          });
       });
       
+      if (bestAudio) {
+         qualities.push({
+            label: "Audio (MP3)",
+            url: `/api/proxy-download?url=${encodeURIComponent(bestAudio.url)}&filename=${encodeURIComponent(data.title || "audio")}.mp3&extractAudio=true`,
+            ext: "mp3",
+            size: "Audio Only"
+         });
+      }
+      
       if (qualities.length > 0) {
          mediaUrl = qualities[0].url; // Best quality
       } else {
@@ -745,6 +760,7 @@ async function extractSnapchatNative(url: string) {
             thumbnail: spotlightStories[0]?.metadata?.videoMetadata?.thumbnailUrl || spotlightStories[0].story?.thumbnailUrl || videoUrl,
             url: videoUrl,
             mediaType: "video",
+            qualities: getFallbackQualities(videoUrl, "video"),
             source: "native"
           };
         }
@@ -759,6 +775,7 @@ async function extractSnapchatNative(url: string) {
             url: videoUrl,
             thumbnail: story.thumbnailUrl || videoUrl,
             mediaType: "video",
+            qualities: getFallbackQualities(videoUrl, "video"),
             source: "native"
           }
       }
@@ -1305,7 +1322,7 @@ function classifyUrl(urlStr: string) {
   let platform: 'youtube' | 'instagram' | 'facebook' | 'tiktok' | 'reddit' | 'pinterest' | 'x' | 'linkedin' | 'snapchat' | 'spotify' | 'threads' | 'unknown' = 'unknown';
   let type: 'profile' | 'media' | 'playlist' = 'media';
 
-  if (url.includes("youtube.com") || url.includes("youtu.be")) {
+  if (url.includes("youtube.com") || url.includes("youtu.be") || url.includes("youtube-nocookie.com")) {
     platform = 'youtube';
     if (url.includes("/playlist")) {
       type = 'playlist';
@@ -1316,12 +1333,18 @@ function classifyUrl(urlStr: string) {
         type = 'profile';
       }
     }
-  } else if (url.includes("instagram.com")) {
+  } else if (url.includes("instagram.com") || url.includes("instagr.am") || url.includes("instagr.com")) {
     platform = 'instagram';
     if (!/\/(p|reel|tv|reels|stories)\//.test(url)) {
       type = 'profile';
     }
-  } else if (url.includes("pinterest.com") || url.includes("pin.it")) {
+  } else if (url.includes("facebook.com") || url.includes("fb.watch") || url.includes("fb.com") || url.includes("fb.gg") || url.includes("fb.me")) {
+    platform = 'facebook';
+  } else if (url.includes("tiktok.com") || url.includes("vt.tiktok.com") || url.includes("vm.tiktok.com")) {
+    platform = 'tiktok';
+  } else if (url.includes("reddit.com") || url.includes("redd.it")) {
+    platform = 'reddit';
+  } else if (url.includes("pinterest.com") || url.includes("pin.it") || url.includes("pinterest.")) {
     platform = 'pinterest';
     if (!url.includes("/pin/") && !url.includes("pin.it")) {
       const path = urlStr.split("pinterest.com")[1] || "";
@@ -1340,7 +1363,7 @@ function classifyUrl(urlStr: string) {
     platform = 'threads';
     if (url.includes("/post/") || url.includes("/t/")) type = 'media';
     else type = 'profile';
-  } else if (url.includes("x.com") || url.includes("twitter.com")) {
+  } else if (url.includes("x.com") || url.includes("twitter.com") || url.includes("t.co")) {
     platform = 'x';
     if (!url.includes("/status/")) {
       const path = urlStr.split(/x\.com|twitter\.com/)[1] || "";
@@ -1351,7 +1374,7 @@ function classifyUrl(urlStr: string) {
         }
       }
     }
-  } else if (url.includes("linkedin.com")) {
+  } else if (url.includes("linkedin.com") || url.includes("lnkd.in")) {
     platform = 'linkedin';
     if (url.includes("/in/") || url.includes("/company/")) {
       type = 'profile';
@@ -2631,19 +2654,6 @@ async function enrichResultSizes(result: any) {
 }
 
 app.post("/api/download", async (req, res) => {
-    const originalJson = res.json.bind(res);
-    res.json = function(body) {
-        if (body && body.success) {
-            enrichResultSizes(body).then(enriched => {
-                originalJson(enriched);
-            }).catch(e => {
-                originalJson(body);
-            });
-        } else {
-            originalJson(body);
-        }
-        return this;
-    };
 
     const { url } = req.body;
     if (!url) {
@@ -2654,6 +2664,12 @@ app.post("/api/download", async (req, res) => {
       let trimmedUrl = url.trim();
       const lowerUrl = trimmedUrl.toLowerCase();
       const { platform, type } = classifyUrl(trimmedUrl);
+      if (platform === 'unknown') {
+        return res.status(400).json({
+          success: false,
+          message: "This URL is from an unsupported website. Aura Downloader supports links from YouTube, Instagram, Facebook, TikTok, Reddit, Pinterest, X/Twitter, LinkedIn, Snapchat, Spotify, and Threads. Please enter a valid link from a supported platform."
+        });
+      }
       const isProfile = type === 'profile';
       console.log(`Processing extraction for platform: ${platform}, type: ${type}, url: ${trimmedUrl}`);
 
