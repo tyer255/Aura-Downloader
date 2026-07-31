@@ -1,7 +1,7 @@
-import btch from 'btch-downloader';
-async function test() {
-    try {
-        console.log("YouTube:", await btch.youtube('https://www.youtube.com/watch?v=jNQXAC9IVRw'));
-    } catch(e) { console.error("YouTube err:", e.message) }
+import { getBtch } from './src/lib/lazyImports';
+async function run() {
+    const b = await getBtch();
+    const res = await b.youtube("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    console.log(res);
 }
-test();
+run();

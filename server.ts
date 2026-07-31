@@ -281,47 +281,60 @@ async function extractWithVreden(url: string) {
     if (result && result.status && result.download && result.download.status) {
       const downloadInfo = result.download;
       const title = downloadInfo.filename || "YouTube Video";
-      const availableQualities = downloadInfo.availableQuality || [360, 720];
+      const availableQualities = downloadInfo.availableQuality || [1080, 720, 480, 360, 144];
       
-      const qualities = availableQualities.map((q: any) => {
-        const qStr = String(q);
-        const qLabel = qStr.endsWith('p') ? qStr : `${qStr}p`;
-        return {
-          label: `${qLabel} (MP4)`,
-          url: `/api/get-youtube-link?url=${encodeURIComponent(url)}&quality=${qStr}&filename=${encodeURIComponent(title)}`,
-          ext: "mp4",
-          size: q >= 720 ? "High Definition" : "Standard Quality"
-        };
-      });
-      
-      // If we already have the URL for the requested quality (usually the default one)
-      if (downloadInfo.url) {
-        qualities.unshift({
-           label: `${downloadInfo.quality || '360'}p (MP4)`,
-           url: `/api/proxy-download?url=${encodeURIComponent(downloadInfo.url)}&filename=${encodeURIComponent(title)}`,
-           ext: "mp4",
-           size: "Ready"
-        });
-        qualities.push({
-           label: "Audio (MP3)",
-           url: `/api/proxy-download?url=${encodeURIComponent(downloadInfo.url)}&filename=${encodeURIComponent(title)}.mp3&extractAudio=true`,
-           ext: "mp3",
-           size: "Audio Only"
-        });
-      }
-
-      const primaryUrl = `/api/youtube-stream?url=${encodeURIComponent(url)}&quality=${downloadInfo.quality || '360'}&filename=${encodeURIComponent(title)}`;
-
       let videoId = "";
       const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
       if (match) {
         videoId = match[1];
       }
-      const thumbnail = result.metadata?.thumbnail || result.metadata?.image || (videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : "");
+      
+      const cleanTitle = (result.metadata?.title || title)
+        .replace(/\s*\(\d+p\)\.mp4$/i, "")
+        .replace(/\.mp4$/i, "")
+        .trim();
+
+      const thumbnail = videoId ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg` : (result.metadata?.thumbnail || result.metadata?.image || "");
+
+      const qualities: any[] = [];
+      const sortedQualities = [...availableQualities]
+        .map(q => Number(String(q).replace(/p$/i, '')))
+        .filter(n => !isNaN(n) && n > 0)
+        .sort((a, b) => b - a);
+      
+      const seenQualities = new Set<number>();
+      sortedQualities.forEach((q) => {
+        if (!seenQualities.has(q)) {
+          seenQualities.add(q);
+          const qStr = String(q);
+          qualities.push({
+            label: `${qStr}p (MP4)`,
+            url: `/api/get-youtube-link?url=${encodeURIComponent(url)}&quality=${qStr}&filename=${encodeURIComponent(cleanTitle)}.mp4`,
+            ext: "mp4",
+            size: q >= 720 ? "High Definition" : "Standard Quality"
+          });
+        }
+      });
+
+      let primaryUrl = qualities[0]?.url;
+      if (downloadInfo.url) {
+        primaryUrl = `/api/proxy-download?url=${encodeURIComponent(downloadInfo.url)}&filename=${encodeURIComponent(cleanTitle)}.mp4`;
+      }
+
+      const audioUrl = downloadInfo.url 
+        ? `/api/proxy-download?url=${encodeURIComponent(downloadInfo.url)}&filename=${encodeURIComponent(cleanTitle)}.mp3&extractAudio=true`
+        : `/api/get-youtube-link?url=${encodeURIComponent(url)}&quality=audio&filename=${encodeURIComponent(cleanTitle)}.mp3`;
+
+      qualities.push({
+         label: "Audio (MP3)",
+         url: audioUrl,
+         ext: "mp3",
+         size: "Audio Only"
+      });
 
       return {
         success: true,
-        title: (result.metadata?.title || title).replace(/\s*\(\d+p\)\.mp4$/i, ""),
+        title: cleanTitle || "YouTube Video",
         url: primaryUrl,
         thumbnail: thumbnail,
         mediaType: "video",
@@ -551,6 +564,14 @@ async function extractTwitterXtractor(url: string, authToken?: string) {
 }
 
 
+
+async function extractWithYtDlpWithTimeout(url: string, timeoutMs = 3000) {
+  return Promise.race([
+    extractWithYtDlp(url),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs))
+  ]);
+}
+
 async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
   try {
     const youtubedl = (await import('youtube-dl-exec')).default;
@@ -561,10 +582,7 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
       noCheckCertificate: true,
       preferFreeFormats: true,
       noPlaylist: !isPlaylist,
-      youtubeSkipDashManifest: true,
-      youtubeSkipHlsManifest: true,
-      noCheckFormats: true,
-      checkFormats: "no"
+      noCheckFormats: true
     };
     
     if (isPlaylist) {
@@ -717,11 +735,18 @@ async function extractWithYtDlp(url: string, isPlaylist: boolean = false) {
         mediaUrl = data.url;
     }
 
+    let videoId = "";
+    const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+    if (ytMatch) {
+      videoId = ytMatch[1];
+    }
+    const finalThumbnail = videoId ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg` : (data.thumbnail || "");
+
     return {
       success: true,
       title: data.title || "Extracted Video",
       url: mediaUrl,
-      thumbnail: data.thumbnail || "",
+      thumbnail: finalThumbnail,
       mediaType: "video",
       source: "yt-dlp",
       qualities: qualities.length > 0 ? qualities : getFallbackQualities(mediaUrl, "video")
@@ -2763,9 +2788,10 @@ app.post("/api/download", async (req, res) => {
             racePromises.push(extractTiktokTikwm(trimmedUrl));
             racePromises.push(extractWithYtDlp(trimmedUrl));
         } else if (platform === 'youtube') {
-            racePromises.push(extractYoutubeBtch(trimmedUrl));
+            console.log("Extracting YouTube video in parallel...");
             racePromises.push(extractWithVreden(trimmedUrl));
-            racePromises.push(extractWithYtDlp(trimmedUrl));
+            racePromises.push(extractYoutubeBtch(trimmedUrl));
+            racePromises.push(extractWithYtDlpWithTimeout(trimmedUrl, 3000));
         } else if (trimmedUrl.includes("instagram.com") || trimmedUrl.includes("instagr.am")) {
             racePromises.push(extractInstagramRapidAPI(trimmedUrl));
             racePromises.push(extractInstagramRepoBackend(trimmedUrl));
@@ -2945,7 +2971,12 @@ app.post("/api/download", async (req, res) => {
       console.log = () => {};
       let result;
       try {
-        result = await vredenYtmp4(videoUrl, quality);
+        if (quality === 'audio' || quality === 'mp3') {
+          const { ytmp3 } = await import("@vreden/youtube_scraper");
+          result = await ytmp3(videoUrl);
+        } else {
+          result = await vredenYtmp4(videoUrl, quality);
+        }
       } catch(e) {} finally {
         console.error = originalConsoleError;
         console.log = originalConsoleLog;
@@ -3187,6 +3218,16 @@ app.post("/api/download", async (req, res) => {
   app.get("/robots.txt", (req, res) => {
     res.type("text/plain");
     res.send("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://aura-downloader-yg40.onrender.com/sitemap.xml");
+  });
+
+  app.get("/llms.txt", (req, res) => {
+    res.type("text/plain");
+    const llmsPath = path.join(process.cwd(), 'public', 'llms.txt');
+    if (fs.existsSync(llmsPath)) {
+      res.sendFile(llmsPath);
+    } else {
+      res.send("# Aura Downloader\n> Free online all-in-one social media video, photo, and audio downloader.");
+    }
   });
 
   app.get("/sitemap.xml", (req, res) => {

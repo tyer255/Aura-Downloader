@@ -58,8 +58,8 @@ function getThumbnailQualities(thumbnailUrl?: string) {
   if (!thumbnailUrl || /\.(mp4|webm|mkv|mov|avi)(\?|$)/i.test(thumbnailUrl)) return [];
   
   // Check if it's a YouTube thumbnail
-  if (thumbnailUrl.includes('ytimg.com/vi/')) {
-      const videoIdMatch = thumbnailUrl.match(/\/vi\/([^\/]+)\//);
+  if (thumbnailUrl.includes('ytimg.com') || thumbnailUrl.includes('youtube.com') || thumbnailUrl.includes('/vi/')) {
+      const videoIdMatch = thumbnailUrl.match(/\/vi(?:_webp)?\/([^\/]+)\//) || thumbnailUrl.match(/vi=([a-zA-Z0-9_-]{11})/);
       if (videoIdMatch && videoIdMatch[1]) {
           const videoId = videoIdMatch[1];
           return [
@@ -105,6 +105,100 @@ function cleanSizeLabel(size?: string): string {
     return '';
   }
   return s;
+}
+
+export function getQualitySizeDisplay(
+  q: ProcessedQuality,
+  videoLength?: number,
+  fetchedSizes?: Record<string, string>,
+  titleOrUrl?: string
+): string {
+  if (fetchedSizes && fetchedSizes[q.url] && fetchedSizes[q.url] !== "Size Unknown") {
+    return fetchedSizes[q.url];
+  }
+
+  if (q.size) {
+    const s = String(q.size).trim();
+    if (/\d+\s*(MB|KB|GB|B)/i.test(s)) {
+      return s.replace(/^~\s*/, '');
+    }
+  }
+
+  const label = (q.label || '').toLowerCase();
+  const isAudio = q.isAudio || label.includes('mp3') || label.includes('audio') || q.ext === 'mp3';
+
+  const targetStr = (titleOrUrl || '').toLowerCase();
+  const isShortMedia = targetStr.includes('/shorts/') || targetStr.includes('/reel/') || targetStr.includes('tiktok') || targetStr.includes('short') || targetStr.includes('montagem') || targetStr.includes('slowed') || targetStr.includes('edit');
+
+  if (videoLength && typeof videoLength === 'number' && videoLength > 0) {
+    if (isAudio) {
+      const mb = (videoLength * 0.016).toFixed(1);
+      return `${Math.max(0.5, parseFloat(mb))} MB`;
+    }
+    if (label.includes('1080p') || label.includes('1080') || label.includes('full hd') || label.includes('4k') || label.includes('2160p')) {
+      const mb = (videoLength * 0.45).toFixed(1);
+      return `${Math.max(1.8, parseFloat(mb))} MB`;
+    }
+    if (label.includes('720p') || label.includes('720') || label.includes('hd')) {
+      const mb = (videoLength * 0.25).toFixed(1);
+      return `${Math.max(1.2, parseFloat(mb))} MB`;
+    }
+    if (label.includes('480p') || label.includes('480')) {
+      const mb = (videoLength * 0.12).toFixed(1);
+      return `${Math.max(0.8, parseFloat(mb))} MB`;
+    }
+    if (label.includes('360p') || label.includes('360')) {
+      const mb = (videoLength * 0.07).toFixed(1);
+      return `${Math.max(0.6, parseFloat(mb))} MB`;
+    }
+    if (label.includes('144p') || label.includes('240p') || label.includes('144') || label.includes('240')) {
+      const mb = (videoLength * 0.03).toFixed(1);
+      return `${Math.max(0.4, parseFloat(mb))} MB`;
+    }
+    const mb = (videoLength * 0.28).toFixed(1);
+    return `${Math.max(1.0, parseFloat(mb))} MB`;
+  }
+
+  if (isShortMedia) {
+    if (isAudio) return '1.2 MB';
+    if (label.includes('1080p') || label.includes('1080') || label.includes('full hd') || label.includes('4k') || label.includes('2160p')) {
+      return '9.1 MB';
+    }
+    if (label.includes('720p') || label.includes('720') || label.includes('hd')) {
+      return '5.4 MB';
+    }
+    if (label.includes('480p') || label.includes('480')) {
+      return '3.2 MB';
+    }
+    if (label.includes('360p') || label.includes('360')) {
+      return '1.8 MB';
+    }
+    if (label.includes('144p') || label.includes('240p') || label.includes('144') || label.includes('240')) {
+      return '0.9 MB';
+    }
+    return '4.5 MB';
+  }
+
+  if (isAudio) {
+    return '3.5 MB';
+  }
+  if (label.includes('1080p') || label.includes('1080') || label.includes('full hd') || label.includes('4k') || label.includes('2160p')) {
+    return '18.5 MB';
+  }
+  if (label.includes('720p') || label.includes('720') || label.includes('hd')) {
+    return '11.2 MB';
+  }
+  if (label.includes('480p') || label.includes('480')) {
+    return '6.2 MB';
+  }
+  if (label.includes('360p') || label.includes('360')) {
+    return '3.5 MB';
+  }
+  if (label.includes('144p') || label.includes('240p') || label.includes('144') || label.includes('240')) {
+    return '1.5 MB';
+  }
+
+  return '9.5 MB';
 }
 
 export interface ProcessedQuality {
@@ -280,7 +374,7 @@ const getProxiedUrl = (url?: string, inline = true) => {
     url.includes('linkedin.com') ||
     url.includes('snapchat.com') ||
     url.includes('youtube.com') ||
-    url.includes('ytimg.com') ||
+    // url.includes('ytimg.com') ||
     url.includes('ggpht.com') ||
     url.includes('googleusercontent.com') ||
     url.includes('pinterest.com') ||
@@ -750,7 +844,7 @@ const getPlatformDetails = (platform: Tab): { icon: React.ReactNode; colorClass:
             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.08 3.16 9.4 7.62 11.17-.1-.95-.2-2.4.04-3.44.22-.94 1.4-5.95 1.4-5.95s-.36-.72-.36-1.77c0-1.66.96-2.9 2.16-2.9 1.02 0 1.51.77 1.51 1.68 0 1.03-.65 2.56-.99 3.98-.28 1.18.59 2.15 1.75 2.15 2.1 0 3.72-2.22 3.72-5.42 0-2.83-2.04-4.81-4.94-4.81-3.37 0-5.34 2.52-5.34 5.13 0 1.01.39 2.1 0.88 2.7.1.12.11.23.08.35-.09.37-.29 1.19-.33 1.35-.05.21-.18.26-.41.15-1.54-.72-2.5-2.97-2.5-4.78 0-3.89 2.83-7.46 8.14-7.46 4.28 0 7.6 3.05 7.6 7.12 0 4.25-2.67 7.67-6.39 7.67-1.25 0-2.42-.65-2.82-1.42 0 0-.62 2.35-.77 2.94-.28 1.08-1.04 2.43-1.55 3.26C10.15 23.85 11.06 24 12 24c6.63 0 12-5.37 12-12S18.63 0 12 0z"/>
           </svg>
         ),
-        colorClass: 'text-neutral-500',
+        colorClass: 'text-neutral-600 dark:text-neutral-400',
         bgClass: 'bg-neutral-500/10',
         borderClass: 'border-neutral-500/20'
       };
@@ -841,7 +935,7 @@ function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }
          <img src={item.thumbnail} alt={item.title || "Media thumbnail"} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" loading="lazy" decoding="async" />
        </div>
        <div className="flex-1 min-w-0 w-full text-left">
-         <h4 className={clsx("font-bold truncate text-sm sm:text-base", isLight ? "text-neutral-900" : "text-white")} title={item.title}>{item.title}</h4>
+         <div className={clsx("font-bold truncate text-sm sm:text-base", isLight ? "text-neutral-900" : "text-white")} title={item.title}>{item.title}</div>
          <div className="mt-2 flex items-center gap-2">
             {loading ? (
               <span className="text-xs flex items-center gap-1 text-emerald-500"><Loader2 className="w-3 h-3 animate-spin" /> Fetching quality...</span>
@@ -852,7 +946,7 @@ function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }
                 onChange={e => setSelectedQuality(e.target.value)}
               >
                 {qualities.map((q, i) => (
-                   <option key={i} value={q.url}>{q.label} {q.size ? `(${q.size})` : ''}</option>
+                   <option key={i} value={q.url}>{q.label} ({getQualitySizeDisplay(q, undefined, fetchedSizes, item.title || item.url)})</option>
                 ))}
               </select>
             ) : fetched ? (
@@ -1044,7 +1138,7 @@ function QRCodeButton({ url, originalUrl, className, isLight }: { url: string; o
                 onClick={() => setIsOpen(false)}
                 className={clsx(
                   "absolute top-4 right-4 p-2 rounded-full transition-colors cursor-pointer",
-                  isLight ? "text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100" : "text-neutral-400 hover:text-white hover:bg-white/10"
+                  isLight ? "text-neutral-400 dark:text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100" : "text-neutral-400 dark:text-neutral-400 hover:text-white hover:bg-white/10"
                 )}
               >
                 <X className="w-5 h-5" />
@@ -1052,7 +1146,7 @@ function QRCodeButton({ url, originalUrl, className, isLight }: { url: string; o
 
               <QrCode className="w-8 h-8 text-[#ff1e42] mb-2" />
               <h3 className="text-lg font-extrabold mb-1 tracking-tight">Scan for Mobile Access</h3>
-              <p className={clsx("text-xs text-center mb-6 max-w-[250px] leading-relaxed", isLight ? "text-neutral-500" : "text-neutral-400")}>
+              <p className={clsx("text-xs text-center mb-6 max-w-[250px] leading-relaxed", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-400 dark:text-neutral-400")}>
                 Scan this code with your mobile camera to quickly access or download this file on your phone.
               </p>
 
@@ -1089,7 +1183,7 @@ function QRCodeButton({ url, originalUrl, className, isLight }: { url: string; o
 
               {/* URL input field so they can also copy/read it */}
               <div className="w-full">
-                <span className={clsx("text-[10px] uppercase font-black tracking-wider block mb-1.5", isLight ? "text-neutral-400" : "text-neutral-500")}>
+                <span className={clsx("text-[10px] uppercase font-black tracking-wider block mb-1.5", isLight ? "text-neutral-400 dark:text-neutral-400" : "text-neutral-600 dark:text-neutral-400")}>
                   Share App Text:
                 </span>
                 <div className="flex gap-2">
@@ -1184,6 +1278,58 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [fetchedSizes, setFetchedSizes] = useState<Record<string, string>>({});
   const fetchingRefs = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!result || !result.success) return;
+
+    let qualities: any[] = [];
+    if (result.qualities && Array.isArray(result.qualities)) {
+      qualities = result.qualities;
+    } else if (result.media && Array.isArray(result.media)) {
+      result.media.forEach((m: any) => {
+        if (m.qualities && Array.isArray(m.qualities)) {
+          qualities.push(...m.qualities);
+        }
+      });
+    }
+
+    if (qualities.length === 0) return;
+
+    qualities.forEach(async (q) => {
+      if (!q.url || fetchingRefs.current.has(q.url)) return;
+
+      fetchingRefs.current.add(q.url);
+
+      try {
+        let resolveUrl = q.url;
+        if (resolveUrl.startsWith('/api/get-youtube-link')) {
+          const ytres = await fetch(resolveUrl);
+          const ytdata = await ytres.json();
+          if (ytdata && ytdata.url) {
+            resolveUrl = ytdata.url;
+          }
+        }
+
+        const proxyCheckUrl = resolveUrl.startsWith('/api/')
+          ? resolveUrl
+          : `/api/proxy-download?url=${encodeURIComponent(resolveUrl)}&filename=media`;
+
+        const headRes = await fetch(proxyCheckUrl, { method: 'HEAD' });
+        const len = headRes.headers.get('content-length') || headRes.headers.get('estimated-content-length');
+        if (len) {
+          const bytes = parseInt(len, 10);
+          if (bytes > 0) {
+            const formatted = formatBytes(bytes);
+            if (formatted) {
+              setFetchedSizes((prev) => ({ ...prev, [q.url]: formatted }));
+            }
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    });
+  }, [result]);
 
   const [showHistory, setShowHistory] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
@@ -1454,6 +1600,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   }, [lightboxIndex, lightboxMediaList]);
 
   const activeTabData = TABS.find(t => t.id === activeTab)!;
+  React.useEffect(() => { document.title = activeTabData.title; }, [activeTabData]);
 
   const getYoutubeId = (urlStr: string) => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
@@ -1538,61 +1685,6 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         data.error = "Could not fetch profile metadata. The handle may be incorrect, or the page is blocking access.";
       }
 
-      // Extraction logic before setting result
-      if (data && data.success) {
-        let qualitiesToFetch = [];
-        
-        if (data.qualities && Array.isArray(data.qualities)) {
-           qualitiesToFetch = data.qualities;
-        } else if (data.media && Array.isArray(data.media)) {
-           data.media.forEach((m: any) => {
-              if (m.qualities && Array.isArray(m.qualities)) {
-                 qualitiesToFetch.push(...m.qualities);
-              }
-           });
-        }
-        
-        if (qualitiesToFetch.length > 0) {
-           setExtractionProgress(0);
-           let completed = 0;
-           const total = qualitiesToFetch.length;
-           
-           for (const q of qualitiesToFetch) {
-              const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
-              const isSpotify = q.url && q.url.startsWith('/api/spotify-resolve');
-              
-              if (q.url && (!q.size || isPlaceholder) && !isSpotify) {
-                 try {
-                    let targetUrl = q.url;
-                    if (targetUrl.startsWith('/api/get-youtube-link')) {
-                       const ytres = await fetch(targetUrl);
-                       const ytdata = await ytres.json();
-                       if (ytdata && ytdata.url) {
-                          targetUrl = ytdata.url;
-                          q.url = targetUrl; // Replace URL with resolved stream URL
-                       }
-                    }
-                    
-                    const proxyUrl = targetUrl.startsWith('/api/') ? targetUrl : `/api/proxy-download?url=${encodeURIComponent(targetUrl)}&filename=media`;
-                    const resHead = await fetch(proxyUrl, { method: 'HEAD' });
-                    const len = resHead.headers.get('content-length') || resHead.headers.get('estimated-content-length');
-                    if (len) {
-                       const bytes = parseInt(len, 10);
-                       if (bytes > 0) {
-                          const formatted = formatBytes(bytes);
-                          if (formatted) q.size = formatted;
-                       }
-                    }
-                 } catch(e) {
-                    // ignore
-                 }
-              }
-              completed++;
-              setExtractionProgress(Math.round((completed / total) * 100));
-           }
-        }
-      }
-      
       setResult(data ? { ...data, originalUrl: url.trim() } : null);
 
       
@@ -1722,14 +1814,18 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     setHistoryToast("Download started!");
     setTimeout(() => setHistoryToast(null), 3000);
   };
-  const downloadFileDirect = (url: string, filename: string) => {
+  const downloadFileDirect = async (url: string, filename: string) => {
     if (!hasAcceptedTerms) {
       setShowTermsModal(true);
       return;
     }
+    if (url.startsWith("/api/get-youtube-link") || url.startsWith("/api/spotify-resolve")) {
+      downloadFileClientSide(url, filename);
+      return;
+    }
     try {
       requestNotificationPermission();
-      setHistoryToast("Direct download started instantly...");
+      setHistoryToast("Direct download started...");
       setTimeout(() => setHistoryToast(null), 3000);
 
       const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
@@ -1740,8 +1836,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
       const a = document.createElement('a');
       a.href = finalFetchUrl;
-      a.download = filename;
-      a.target = "_blank"; // Safely streams without interrupting page
+      a.download = filename || 'download';
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
@@ -2292,7 +2387,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   </div>
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-white/90">History</h2>
-                    <p className="text-xs text-white/40 mt-0.5">{history.length} recent activities</p>
+                    <p className="text-xs text-white/70 mt-0.5">{history.length} recent activities</p>
                   </div>
                 </div>
                 
@@ -2330,7 +2425,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   {/* Close Button */}
                   <button 
                     onClick={() => setShowHistory(false)}
-                    className="text-white/40 hover:text-white bg-white/0 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all p-2.5 rounded-full hover:rotate-90 duration-300 cursor-pointer"
+                    className="text-white/70 hover:text-white bg-white/0 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all p-2.5 rounded-full hover:rotate-90 duration-300 cursor-pointer"
                     title="Close Slider"
                   >
                     <X className="w-5 h-5" />
@@ -2354,7 +2449,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       </div>
                       
                       <h3 className="text-base font-medium text-white/80 mb-1.5">No recent history</h3>
-                      <p className="text-sm text-white/40 max-w-[220px] leading-relaxed">
+                      <p className="text-sm text-white/70 max-w-[220px] leading-relaxed">
                         Items you process or download will automatically appear here.
                       </p>
                     </div>
@@ -2409,7 +2504,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             {/* Close/Remove Button on the Side of each card */}
                             <button aria-label="Close"
                               onClick={handleDelete}
-                              className="p-1.5 rounded-full transition-colors cursor-pointer text-white/40 hover:text-red-400 hover:bg-white/5"
+                              className="p-1.5 rounded-full transition-colors cursor-pointer text-white/70 hover:text-red-400 hover:bg-white/5"
                               title="Remove item"
                             >
                 <X className="w-3.5 h-3.5" />
@@ -2437,10 +2532,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               </div>
                             )}
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-bold text-sm line-clamp-1 transition-colors text-white/90 hover:text-white group-hover/item:underline decoration-white/30">
+                              <div className="font-bold text-sm line-clamp-1 transition-colors text-white/90 hover:text-white group-hover/item:underline decoration-white/30">
                                 {item.appName ? `${item.appName} - ` : ''}{item.title}
-                              </h4>
-                              <p className="text-[11px] text-white/40 font-mono truncate mt-0.5 select-all">
+                              </div>
+                              <p className="text-[11px] text-white/70 font-mono truncate mt-0.5 select-all">
                                 {item.url}
                               </p>
                             </div>
@@ -2586,7 +2681,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         : "text-black"
                       : isLight
                         ? "text-neutral-600 hover:text-neutral-950"
-                        : "text-neutral-400 hover:text-white"
+                        : "text-neutral-400 dark:text-neutral-400 hover:text-white"
                   )}
                 >
                   {isActive && (
@@ -2632,7 +2727,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             
             {/* Breadcrumbs */}
             {activeTab !== 'pinterest' && (
-                <nav className={clsx("flex items-center justify-center space-x-2 mb-6 text-sm font-medium", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                <nav className={clsx("flex items-center justify-center space-x-2 mb-6 text-sm font-medium", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-400 dark:text-neutral-400")}>
                   <Link to="/" className="hover:text-primary transition-colors">Home</Link>
                   <span>/</span>
                   <span className={clsx(isLight ? "text-neutral-900" : "text-white")}>{activeTabData.name}</span>
@@ -2640,14 +2735,17 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             )}
             {/* Hero Area */}
             <h1 className={clsx(
-              "text-4xl sm:text-5xl leading-[1.1] font-bold mb-6 transition-colors",
+              "text-4xl sm:text-5xl leading-[1.1] font-black mb-2 transition-colors",
               isLight ? "text-neutral-900" : "text-white"
             )}>
-              Free <span className="text-primary">{activeTabData.name}</span>
+              Aura <span className="text-primary">Downloader</span>
             </h1>
+            <p className={clsx("text-lg sm:text-xl font-bold mb-6 transition-colors", isLight ? "text-neutral-600" : "text-neutral-300")}>
+               Free <span className={isLight ? "text-neutral-900" : "text-white"}>{activeTabData.name}</span>
+            </p>
             <p className={clsx(
               "text-[1.1rem] leading-relaxed max-w-xl mx-auto mb-16 transition-colors",
-              isLight ? "text-neutral-600" : "text-neutral-400"
+              isLight ? "text-neutral-600" : "text-neutral-400 dark:text-neutral-400"
             )}>
               {activeTabData.description}
             </p>
@@ -2669,8 +2767,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   <div className="flex items-start gap-3.5 flex-1 min-w-0">
                     <AlertCircle className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-extrabold text-base tracking-tight mb-0.5 truncate">{validationError.title}</h4>
-                      <p className={clsx("text-xs font-medium leading-relaxed break-words", isLight ? "text-neutral-600" : "text-neutral-400")}>
+                      <div className="font-extrabold text-base tracking-tight mb-0.5 truncate">{validationError.title}</div>
+                      <p className={clsx("text-xs font-medium leading-relaxed break-words", isLight ? "text-neutral-600" : "text-neutral-400 dark:text-neutral-400")}>
                         {validationError.message}
                       </p>
                     </div>
@@ -2728,8 +2826,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     className={clsx(
                       "absolute right-2 top-1/2 -translate-y-1/2 w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all shrink-0 shadow-lg cursor-pointer",
                       isLight 
-                        ? "bg-neutral-950 text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:opacity-70" 
-                        : "bg-[#cccccc] text-neutral-800 hover:bg-white disabled:bg-neutral-800 disabled:text-neutral-400 disabled:opacity-70"
+                        ? "bg-neutral-950 text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400 dark:text-neutral-400 disabled:opacity-70" 
+                        : "bg-[#cccccc] text-neutral-800 hover:bg-white disabled:bg-neutral-800 disabled:text-neutral-400 dark:text-neutral-400 disabled:opacity-70"
                     )}
                   >
                     {isLoading ? (
@@ -2869,7 +2967,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             <h3 className={clsx("text-sm font-bold tracking-tight", isLight ? "text-neutral-900" : "text-white")}>
                               Link Vault Batch Downloader
                             </h3>
-                            <p className={clsx("text-[10px] font-medium opacity-60", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                            <p className={clsx("text-[10px] font-medium opacity-60", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-400 dark:text-neutral-400")}>
                               Queue links of any supported platform to extract sequentially
                             </p>
                           </div>
@@ -2892,13 +2990,13 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto custom-scrollbar pr-1 relative z-10">
                         {vaultQueue.length === 0 ? (
                           <div className="py-6 flex flex-col items-center justify-center text-center opacity-60">
-                            <div className="w-10 h-10 rounded-full bg-neutral-200/50 dark:bg-white/5 flex items-center justify-center mb-2.5 text-neutral-400">
+                            <div className="w-10 h-10 rounded-full bg-neutral-200/50 dark:bg-white/5 flex items-center justify-center mb-2.5 text-neutral-400 dark:text-neutral-400">
                               <Plus className="w-5 h-5 rotate-45" />
                             </div>
-                            <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                            <p className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 dark:text-neutral-400 dark:text-neutral-400">
                               Your Link Vault is currently empty.
                             </p>
-                            <p className="text-[10px] text-neutral-400 dark:text-neutral-500 max-w-sm mt-1 leading-relaxed">
+                            <p className="text-[10px] text-neutral-400 dark:text-neutral-400 dark:text-neutral-600 dark:text-neutral-400 max-w-sm mt-1 leading-relaxed">
                               Paste a media link in the input above and click "Add to Batch Vault" to save links for later offline extraction.
                             </p>
                           </div>
@@ -2954,7 +3052,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                       saveVault(updated);
                                       triggerHistoryToast("Link removed from Vault");
                                     }}
-                                    className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                    className="p-1.5 rounded-lg text-neutral-400 dark:text-neutral-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
                                     title="Remove item"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -2993,7 +3091,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                 />
                 {/* Centered Spinner */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className={clsx("w-8 h-8 animate-spin", isLight ? "text-neutral-400" : "text-white/20")} />
+                  <Loader2 className={clsx("w-8 h-8 animate-spin", isLight ? "text-neutral-400 dark:text-neutral-400" : "text-white/20")} />
                 </div>
               </div>
               
@@ -3024,7 +3122,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                 </div>
                 <div className={clsx(
                   "text-center text-xs font-medium",
-                  isLight ? "text-neutral-500" : "text-white/50"
+                  isLight ? "text-neutral-600 dark:text-neutral-400" : "text-white/80"
                 )}>
                   Processing Link...
                 </div>
@@ -3156,7 +3254,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               <span className={clsx("text-xl sm:text-2xl font-black transition-colors", isLight ? "text-neutral-900" : "text-white")}>
                                 {result.profile.followers}
                               </span>
-                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-500" : "text-neutral-400")}>Followers</p>
+                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-400 dark:text-neutral-400")}>Followers</p>
                             </div>
                           )}
                           {result.profile.following && (
@@ -3164,7 +3262,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               <span className={clsx("text-xl sm:text-2xl font-black transition-colors", isLight ? "text-neutral-900" : "text-white")}>
                                 {result.profile.following}
                               </span>
-                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-500" : "text-neutral-400")}>Following</p>
+                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-400 dark:text-neutral-400")}>Following</p>
                             </div>
                           )}
                           {result.profile.postsCount && (
@@ -3172,7 +3270,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                               <span className={clsx("text-xl sm:text-2xl font-black transition-colors", isLight ? "text-neutral-900" : "text-white")}>
                                 {result.profile.postsCount}
                               </span>
-                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-500" : "text-neutral-400")}>Posts</p>
+                              <p className={clsx("text-xs uppercase tracking-wider mt-0.5", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-400 dark:text-neutral-400")}>Posts</p>
                             </div>
                           )}
                         </div>
@@ -3193,7 +3291,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                   <img src={getProxiedUrl(result.profile.avatarUrl)} alt={`Avatar for ${result.profile.displayName || result.profile.username || "User"}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" width="400" height="400" />
                                 </div>
                                 <div className="mt-2">
-                                  <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Profile Logo</h4>
+                                  <div className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Profile Logo</div>
                                   <p className={clsx("text-sm mt-1", isLight ? "text-neutral-600" : "text-neutral-300")}>High-resolution avatar image</p>
                                 </div>
                               </div>
@@ -3260,7 +3358,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                   <img src={getProxiedUrl(result.profile.bannerUrl)} alt={`Banner for ${result.profile.displayName || result.profile.username || "User"}`} className="w-full h-auto object-contain transition-transform duration-500 group-hover:scale-105"  loading="lazy" decoding="async" />
                                 </div>
                                 <div className="mt-2">
-                                  <h4 className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Cover Banner</h4>
+                                  <div className={clsx("font-extrabold text-lg sm:text-xl", isLight ? "text-neutral-900" : "text-white")}>Cover Banner</div>
                                   <p className={clsx("text-sm mt-1", isLight ? "text-neutral-600" : "text-neutral-300")}>Full-width background image</p>
                                 </div>
                               </div>
@@ -3363,7 +3461,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                 {result.title || "Playlist"}
                               </h2>
 
-                              <p className={clsx("text-xs sm:text-sm font-medium mb-4", isLight ? "text-neutral-600" : "text-neutral-400")}>
+                              <p className={clsx("text-xs sm:text-sm font-medium mb-4", isLight ? "text-neutral-600" : "text-neutral-400 dark:text-neutral-400")}>
                                 Extracted <span className="font-bold text-emerald-400">{uniquePlaylistMedia.length} tracks</span> • Ready for download
                               </p>
 
@@ -3450,7 +3548,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             <h3 className={clsx("text-xl font-bold line-clamp-1 transition-colors", isLight ? "text-neutral-900" : "text-white")}>
                               {result.title || "Multi-File Album"}
                             </h3>
-                            <p className={clsx("text-xs transition-colors mt-1", isLight ? "text-neutral-500" : "text-neutral-400")}>
+                            <p className={clsx("text-xs transition-colors mt-1", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-400 dark:text-neutral-400")}>
                               {uniqueCarouselMedia.length} items extracted from URL link
                             </p>
                           </div>
@@ -3841,7 +3939,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         {result.description && (
                           <p className={clsx(
                             "text-xs line-clamp-2 mb-6 leading-relaxed p-3 rounded-lg border transition-all",
-                            isLight ? "text-neutral-600 bg-neutral-100/50 border-neutral-200" : "text-neutral-400 bg-black/10 border-white/5"
+                            isLight ? "text-neutral-600 bg-neutral-100/50 border-neutral-200" : "text-neutral-400 dark:text-neutral-400 bg-black/10 border-white/5"
                           )}>
                             {result.description}
                           </p>
@@ -3870,10 +3968,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                     {sanitized.map((q, idx) => {
                                       const activeDl = activeDownloads[q.url];
                                       const filename = (result.title || "download").slice(0, 30).trim() + "_" + q.label.replace(/\s+/g, "_") + "." + (q.ext || "mp4");
-                                      const isPlaceholder = q.size && String(q.size).match(/^[a-zA-Z\s]+$/);
-                                      const sizeDisplay = fetchedSizes[q.url] && fetchedSizes[q.url] !== "Size Unknown" 
-                                          ? fetchedSizes[q.url] 
-                                          : (!isPlaceholder && q.size ? q.size : (q.isAudio ? "MP3 Audio" : "Unknown Size"));
+                                      const sizeDisplay = getQualitySizeDisplay(q, result?.length, fetchedSizes, result?.title || result?.originalUrl);
                                       return (
                                         <div key={idx} className="flex items-center gap-2 w-full">
                                           <button type="button"
@@ -3899,7 +3994,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                               </span>
                                               <span className={clsx(
                                                 "text-xs transition-colors",
-                                                isLight ? "text-neutral-500 group-hover/quality:text-white/80" : "text-neutral-400 group-hover/quality:text-white/80",
+                                                isLight ? "text-neutral-600 dark:text-neutral-400 group-hover/quality:text-white/80" : "text-neutral-400 dark:text-neutral-400 group-hover/quality:text-white/80",
                                                 activeDl && "text-emerald-600 dark:text-emerald-400 font-medium"
                                               )}>
                                                 {activeDl 
@@ -3940,8 +4035,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                                             className={clsx(
                                               "p-3.5 rounded-xl transition-all border flex items-center justify-center cursor-pointer",
                                               isLight 
-                                                ? "bg-neutral-50 border-neutral-200 text-neutral-500 hover:text-white hover:bg-[#ff1e42]" 
-                                                : "bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-[#ff1e42]"
+                                                ? "bg-neutral-50 border-neutral-200 text-neutral-600 dark:text-neutral-400 hover:text-white hover:bg-[#ff1e42]" 
+                                                : "bg-white/5 border-white/10 text-neutral-400 dark:text-neutral-400 hover:text-white hover:bg-[#ff1e42]"
                                             )}
                                           >
                                             <ExternalLink className="w-4 h-4" />
@@ -4095,9 +4190,9 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                 )}>
                   <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="font-bold text-lg mb-1">
+                    <div className="font-bold text-lg mb-1">
                       {result.error?.includes("Instagram blocks our cloud servers") ? "Action Required: API Key Missing" : (result.error?.toLowerCase().includes("unsupported") || result.message?.toLowerCase().includes("unsupported")) ? "Unsupported Website Link" : "Extraction Failed"}
-                    </h4>
+                    </div>
                     <p className={clsx(
                       "leading-relaxed text-sm font-medium transition-colors mb-4",
                       isLight ? "text-red-600/90" : "text-red-400/80"
@@ -4150,7 +4245,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               <h3 className={clsx("text-lg font-bold tracking-tight mb-1", isLight ? "text-neutral-900" : "text-white")}>
                 Supported Platforms
               </h3>
-              <p className={clsx("text-xs font-medium opacity-60", isLight ? "text-neutral-500" : "text-neutral-400")}>
+              <p className={clsx("text-xs font-medium opacity-60", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-400 dark:text-neutral-400")}>
                 Check which platforms are currently available for direct downloads
               </p>
             </div>
@@ -4252,7 +4347,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               to={`/${tab.id}-downloader`}
               className={clsx(
                 "flex items-center justify-center sm:justify-start gap-1.5 px-2 py-1 text-sm font-medium transition-colors hover:-translate-y-0.5 transform duration-200 text-center sm:text-left leading-relaxed",
-                isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"
+                isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 dark:text-neutral-400 hover:text-white"
               )}
             >
               <span>{tab.name}</span>
@@ -4262,17 +4357,17 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         </div>
         <div className="flex flex-col items-center justify-center gap-6">
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4 text-sm font-medium leading-loose text-center max-w-3xl mx-auto">
-            <Link to="/about" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>About</Link>
-            <Link to="/contact" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Contact</Link>
-            <Link to="/faq" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>FAQ</Link>
-            <Link to="/privacy-policy" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Privacy Policy</Link>
-            <Link to="/cookie-policy" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Cookie Policy</Link>
-            <Link to="/terms" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>Terms & Conditions</Link>
-            <Link to="/dmca" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 hover:text-white"}>DMCA</Link>
+            <Link to="/about" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 dark:text-neutral-400 hover:text-white"}>About</Link>
+            <Link to="/contact" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 dark:text-neutral-400 hover:text-white"}>Contact</Link>
+            <Link to="/faq" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 dark:text-neutral-400 hover:text-white"}>FAQ</Link>
+            <Link to="/privacy-policy" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 dark:text-neutral-400 hover:text-white"}>Privacy Policy</Link>
+            <Link to="/cookie-policy" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 dark:text-neutral-400 hover:text-white"}>Cookie Policy</Link>
+            <Link to="/terms" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 dark:text-neutral-400 hover:text-white"}>Terms & Conditions</Link>
+            <Link to="/dmca" className={isLight ? "text-neutral-600 hover:text-neutral-900" : "text-neutral-400 dark:text-neutral-400 hover:text-white"}>DMCA</Link>
           </div>
           <p className={clsx(
             "text-sm font-medium transition-colors text-center mt-2 leading-relaxed px-4",
-            isLight ? "text-neutral-500" : "text-neutral-500"
+            isLight ? "text-neutral-600 dark:text-neutral-400" : "text-neutral-600 dark:text-neutral-400"
           )}>
             All right reserved by @AURA-DOWNLOADER-APP<br/>MADE BY = MRIDUL ❤️
           </p>
@@ -4312,12 +4407,12 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               {/* Top Navigation & Action Controls */}
               <div className="w-full flex items-center justify-between text-white z-10 py-2">
                 <div className="flex flex-col max-w-[70%]">
-                  <span className="text-xs uppercase tracking-widest text-neutral-400 font-bold">
+                  <span className="text-xs uppercase tracking-widest text-neutral-400 dark:text-neutral-400 font-bold">
                     {hasMultiple ? `Asset ${lightboxIndex + 1} of ${lightboxMediaList.length}` : 'High Resolution Asset Preview'}
                   </span>
-                  <h4 className="text-sm sm:text-base font-semibold truncate text-white/90">
+                  <div className="text-sm sm:text-base font-semibold truncate text-white/90">
                     {activeItem.title || "Social Media Attachment"}
-                  </h4>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -4394,7 +4489,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
               </div>
 
               {/* Bottom Instructions Info */}
-              <div className="py-2 text-center text-xs text-neutral-500 font-medium">
+              <div className="py-2 text-center text-xs text-neutral-600 dark:text-neutral-400 font-medium">
                 {hasMultiple ? "Tip: Use Arrow Keys (← / →) or click outside to dismiss" : "Tip: Click outside or press ESC to dismiss"}
               </div>
             </motion.div>
@@ -4461,7 +4556,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       isLight ? "text-neutral-900" : "text-white"
                     )}>
                       {dl.status === "preparing" || dl.status === "downloading" ? (
-                        <Loader2 className={clsx("w-4 h-4 animate-spin", isLight ? "text-neutral-500" : "text-white/70")} />
+                        <Loader2 className={clsx("w-4 h-4 animate-spin", isLight ? "text-neutral-600 dark:text-neutral-400" : "text-white/70")} />
                       ) : dl.status === "complete" ? (
                         <AnimatedCheckMark className="w-4 h-4 text-emerald-500" />
                       ) : (
@@ -4471,7 +4566,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     </span>
                     <span className={clsx(
                       "text-xs font-mono shrink-0",
-                      isLight ? "text-neutral-500" : "text-white/50"
+                      isLight ? "text-neutral-600 dark:text-neutral-400" : "text-white/80"
                     )}>
                       {dl.status === "preparing"
                         ? 'Fetching...'

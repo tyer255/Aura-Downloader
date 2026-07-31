@@ -1,0 +1,39 @@
+# Aura Downloader
+> Free online all-in-one social media video, photo, and audio downloader.
+
+## Supported Platforms
+- YouTube (Videos, Shorts, Playlists, Audio MP3)
+- Instagram (Reels, Posts, Stories, Carousels)
+- Facebook (Videos, Reels)
+- TikTok (Videos without watermark, MP3 audio)
+- Pinterest (Video pins, Image pins)
+- X / Twitter (Videos, GIFs)
+- LinkedIn (Videos, Documents)
+- Snapchat (Spotlight, Stories)
+- Spotify (Tracks, Playlists metadata)
+- Threads (Photos, Videos, Carousels)
+- Reddit (Videos, Audio, GIFs)
+
+## Key Features
+- High-definition video downloads (1080p, 4K, 720p, 360p)
+- Audio extraction (MP3 / AAC format)
+- No registration or login required
+- Instant media extraction with fast download speeds
+- Safe, private, and free to use
+
+## Links
+- [Homepage](https://aura-downloader-yg40.onrender.com/)
+- [YouTube Downloader](https://aura-downloader-yg40.onrender.com/youtube-downloader)
+- [Instagram Downloader](https://aura-downloader-yg40.onrender.com/instagram-downloader)
+- [TikTok Downloader](https://aura-downloader-yg40.onrender.com/tiktok-downloader)
+- [Facebook Downloader](https://aura-downloader-yg40.onrender.com/facebook-downloader)
+- [Pinterest Downloader](https://aura-downloader-yg40.onrender.com/pinterest-downloader)
+- [X Downloader](https://aura-downloader-yg40.onrender.com/x-downloader)
+- [Reddit Downloader](https://aura-downloader-yg40.onrender.com/reddit-downloader)
+- [LinkedIn Downloader](https://aura-downloader-yg40.onrender.com/linkedin-downloader)
+- [Spotify Downloader](https://aura-downloader-yg40.onrender.com/spotify-downloader)
+- [Threads Downloader](https://aura-downloader-yg40.onrender.com/threads-downloader)
+- [Snapchat Downloader](https://aura-downloader-yg40.onrender.com/snapchat-downloader)
+- [FAQ](https://aura-downloader-yg40.onrender.com/faq)
+- [Terms of Service](https://aura-downloader-yg40.onrender.com/terms)
+- [Privacy Policy](https://aura-downloader-yg40.onrender.com/privacy-policy)

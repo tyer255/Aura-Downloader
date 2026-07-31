@@ -1,0 +1,6 @@
+{
+  "name": "Aura Downloader",
+  "description": "All social media video, photo, and audio downloader supporting YouTube, Instagram, Facebook, TikTok, Pinterest, X, Spotify, Threads, Snapchat, LinkedIn, and Reddit.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
