@@ -17,6 +17,12 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api/, /^\/sitemap\.xml$/, /^\/robots\.txt$/],
         importScripts: ['/push-sw.js'],
         cleanupOutdatedCaches: true,
+        runtimeCaching: [
+          {
+            urlPattern: /^\/api\/.*/i,
+            handler: 'NetworkOnly'
+          }
+        ]
       }
     })
   ],

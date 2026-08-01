@@ -54,6 +54,86 @@ import { requestNotificationPermission, showNotification } from './lib/notificat
 import { TermsModal } from './components/TermsModal';
 import { SpotifyAudioPlayer } from './components/SpotifyAudioPlayer';
 
+export function prewarmBackendConnection() {
+  try {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      try {
+        navigator.serviceWorker.controller.postMessage({ type: 'PING' });
+      } catch (e) {}
+    }
+
+    fetch('/api/health?_w=' + Date.now(), {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+export async function fetchWithTimeoutAndRetry(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 20000,
+  maxRetries: number = 2
+): Promise<Response> {
+  let attempt = 0;
+  let lastError: any = null;
+
+  // Wake up SW or dormant network socket before starting
+  prewarmBackendConnection();
+
+  while (attempt <= maxRetries) {
+    attempt++;
+    // For attempt 1, use a snappy 6.5s timeout so if PWA/Chrome connection was dormant, it aborts quickly and retries on a fresh socket
+    const currentTimeout = attempt === 1 ? Math.min(timeoutMs, 6500) : timeoutMs;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      try { controller.abort(); } catch(e) {}
+    }, currentTimeout);
+
+    try {
+      const sep = url.includes('?') ? '&' : '?';
+      const cacheBustUrl = `${url}${sep}_t=${Date.now()}_a=${attempt}_pwa=1`;
+
+      const res = await fetch(cacheBustUrl, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(options.headers || {})
+        }
+      });
+
+      clearTimeout(timer);
+
+      if (res.ok) {
+        return res;
+      }
+
+      if (attempt <= maxRetries && (res.status >= 500 || res.status === 408)) {
+        await new Promise(r => setTimeout(r, 150));
+        continue;
+      }
+      return res;
+    } catch (err: any) {
+      clearTimeout(timer);
+      lastError = err;
+      console.warn(`Fetch attempt ${attempt} for ${url} failed or timed out:`, err?.message || err);
+      if (attempt <= maxRetries) {
+        await new Promise(r => setTimeout(r, 150));
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  throw lastError || new Error('Request timed out or failed');
+}
+
 function getThumbnailQualities(thumbnailUrl?: string) {
   if (!thumbnailUrl || /\.(mp4|webm|mkv|mov|avi)(\?|$)/i.test(thumbnailUrl)) return [];
   
@@ -880,11 +960,11 @@ function PlaylistItem({ item, index, isLight, onDownloadQueue, activeDownloads }
     const observer = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) {
         setLoading(true);
-        fetch('/api/download', {
+        fetchWithTimeoutAndRetry('/api/download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: item.url })
-        })
+        }, 15000, 1)
         .then(res => res.json())
         .then(data => {
           setLoading(false);
@@ -1279,6 +1359,57 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   const [fetchedSizes, setFetchedSizes] = useState<Record<string, string>>({});
   const fetchingRefs = useRef<Set<string>>(new Set());
 
+  // Handle PWA / Chrome background wake-up and socket connection recovery
+  const lastActiveTimeRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    const handleWakeUp = () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        lastActiveTimeRef.current = now;
+
+        // Reset stuck loading state if a request was stalled while tab or PWA was dormant
+        setIsLoading(false);
+        setExtractionProgress(null);
+        fetchingRefs.current.clear();
+
+        // Check SW update if in Service Worker mode
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            regs.forEach(r => r.update().catch(() => {}));
+          }).catch(() => {});
+        }
+
+        // Immediately ping backend health endpoint to establish a fresh TCP connection
+        prewarmBackendConnection();
+      } else {
+        lastActiveTimeRef.current = Date.now();
+      }
+    };
+
+    // Heartbeat ticker to keep PWA webview socket alive while app is visible
+    const heartbeatTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        prewarmBackendConnection();
+      }
+    }, 25000);
+
+    document.addEventListener('visibilitychange', handleWakeUp);
+    window.addEventListener('pageshow', handleWakeUp);
+    window.addEventListener('focus', handleWakeUp);
+    window.addEventListener('online', handleWakeUp);
+    window.addEventListener('touchstart', handleWakeUp, { passive: true });
+
+    return () => {
+      clearInterval(heartbeatTimer);
+      document.removeEventListener('visibilitychange', handleWakeUp);
+      window.removeEventListener('pageshow', handleWakeUp);
+      window.removeEventListener('focus', handleWakeUp);
+      window.removeEventListener('online', handleWakeUp);
+      window.removeEventListener('touchstart', handleWakeUp);
+    };
+  }, []);
+
   useEffect(() => {
     if (!result || !result.success) return;
 
@@ -1647,16 +1778,29 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     setResult(null);
 
     // Default multi-platform downloader
+    let safetyTimer: any = null;
+
     try {
       const detectedPlatform = detectPlatformFromUrl(targetUrl) || activeTab;
 
-      // Internal Production Backend API endpoint usage
-      // This routes directly to the existing robust server backend (server.ts)
-      const res = await fetch('/api/download', {
+      // Hard safety timer: guarantee loading state clears after 28 seconds
+      safetyTimer = setTimeout(() => {
+        setIsLoading(false);
+        setExtractionProgress(null);
+        setResult({
+          success: false,
+          error: "Request timed out on background tab. Please tap Download again."
+        });
+      }, 28000);
+
+      const res = await fetchWithTimeoutAndRetry('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: targetUrl })
-      });
+      }, 22000, 1);
+
+      if (safetyTimer) clearTimeout(safetyTimer);
+
       const data = await res.json();
       
       // Filter out duplicate media items before updating state or history
@@ -2802,8 +2946,14 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     
                     id="tour-input" type="url"
                     value={url}
-                    onChange={(e) => handleUrlChange(e.target.value)}
+                    onChange={(e) => {
+                      prewarmBackendConnection();
+                      handleUrlChange(e.target.value);
+                    }}
+                    onFocus={() => prewarmBackendConnection()}
+                    onPointerDown={() => prewarmBackendConnection()}
                     onPaste={(e) => {
+                      prewarmBackendConnection();
                       const pastedText = e.clipboardData.getData('text');
                       if (pastedText && (pastedText.startsWith('http://') || pastedText.startsWith('https://'))) {
                         handleUrlChange(pastedText);

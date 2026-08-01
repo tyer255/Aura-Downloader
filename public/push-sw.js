@@ -16,3 +16,11 @@ self.addEventListener('notificationclick', function (event) {
     event.waitUntil(clients.openWindow(event.notification.data));
   }
 });
+
+self.addEventListener('message', function (event) {
+  if (event.data && event.data.type === 'PING') {
+    if (event.ports && event.ports[0]) {
+      event.ports[0].postMessage({ status: 'PONG' });
+    }
+  }
+});

@@ -3405,9 +3405,11 @@ app.post("/api/download", async (req, res) => {
   }
 
   if (!process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
+    const server = app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
   }
   return app;
 }
