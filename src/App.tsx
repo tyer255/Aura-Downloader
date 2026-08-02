@@ -75,19 +75,42 @@ export function prewarmBackendConnection() {
 export async function fetchWithTimeoutAndRetry(
   url: string,
   options: RequestInit = {},
-  timeoutMs: number = 20000,
-  maxRetries: number = 2
+  timeoutMs: number = 28000,
+  maxRetries: number = 3,
+  onStatusChange?: (msg: string) => void
 ): Promise<Response> {
   let attempt = 0;
   let lastError: any = null;
 
-  // Wake up SW or dormant network socket before starting
-  prewarmBackendConnection();
+  if (onStatusChange) onStatusChange("Waking up server...");
+  
+  let healthAttempts = 0;
+  while (healthAttempts < 25) {
+    healthAttempts++;
+    const hc = new AbortController();
+    const ht = setTimeout(() => { try { hc.abort(); } catch(e){} }, 2500);
+    try {
+      const healthRes = await fetch('/api/health?_w=' + Date.now(), {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' },
+        signal: hc.signal
+      });
+      clearTimeout(ht);
+      if (healthRes.ok) {
+        if (onStatusChange) onStatusChange("Preparing extraction...");
+        await new Promise(r => setTimeout(r, 150));
+        break;
+      }
+    } catch (e) {
+      clearTimeout(ht);
+      if (healthAttempts === 2 && onStatusChange) onStatusChange("Reconnecting...");
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
 
   while (attempt <= maxRetries) {
     attempt++;
-    // For attempt 1, use a snappy 6.5s timeout so if PWA/Chrome connection was dormant, it aborts quickly and retries on a fresh socket
-    const currentTimeout = attempt === 1 ? Math.min(timeoutMs, 6500) : timeoutMs;
+    const currentTimeout = timeoutMs;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       try { controller.abort(); } catch(e) {}
@@ -114,8 +137,9 @@ export async function fetchWithTimeoutAndRetry(
         return res;
       }
 
-      if (attempt <= maxRetries && (res.status >= 500 || res.status === 408)) {
-        await new Promise(r => setTimeout(r, 150));
+      if (attempt <= maxRetries && (res.status >= 500 || res.status === 408 || res.status === 502 || res.status === 504)) {
+        if (onStatusChange) onStatusChange("Reconnecting...");
+        await new Promise(r => setTimeout(r, 1000));
         continue;
       }
       return res;
@@ -124,7 +148,8 @@ export async function fetchWithTimeoutAndRetry(
       lastError = err;
       console.warn(`Fetch attempt ${attempt} for ${url} failed or timed out:`, err?.message || err);
       if (attempt <= maxRetries) {
-        await new Promise(r => setTimeout(r, 150));
+        if (onStatusChange) onStatusChange("Reconnecting...");
+        await new Promise(r => setTimeout(r, 1000));
       } else {
         throw err;
       }
@@ -1345,6 +1370,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     if (detected && detected !== currentActive) {
       setActiveTab(detected);
       setValidationError(null);
+      const targetPath = detected === 'pinterest' ? '/' : `/${detected}-downloader`;
+      if (window.location.pathname !== targetPath) {
+        navigate(targetPath, { replace: true });
+      }
     } else {
       setValidationError(null);
     }
@@ -1354,6 +1383,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
   
   
   const [loadingStep, setLoadingStep] = useState(0);
+  const [loadingStatusMsg, setLoadingStatusMsg] = useState<string | null>(null);
   const [extractionProgress, setExtractionProgress] = useState<number | null>(null);
   const [result, setResult] = useState<DownloadResult | null>(null);
   const [fetchedSizes, setFetchedSizes] = useState<Record<string, string>>({});
@@ -1366,12 +1396,15 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     const handleWakeUp = () => {
       if (document.visibilityState === 'visible') {
         const now = Date.now();
+        const timeSinceLastActive = now - lastActiveTimeRef.current;
         lastActiveTimeRef.current = now;
 
-        // Reset stuck loading state if a request was stalled while tab or PWA was dormant
-        setIsLoading(false);
-        setExtractionProgress(null);
-        fetchingRefs.current.clear();
+        // Only reset if tab was dormant for over 15 minutes, otherwise it cancels active downloads
+        if (timeSinceLastActive > 15 * 60 * 1000) {
+          setIsLoading(false);
+          setExtractionProgress(null);
+          fetchingRefs.current.clear();
+        }
 
         // Check SW update if in Service Worker mode
         if ('serviceWorker' in navigator) {
@@ -1398,7 +1431,6 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     window.addEventListener('pageshow', handleWakeUp);
     window.addEventListener('focus', handleWakeUp);
     window.addEventListener('online', handleWakeUp);
-    window.addEventListener('touchstart', handleWakeUp, { passive: true });
 
     return () => {
       clearInterval(heartbeatTimer);
@@ -1406,7 +1438,6 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       window.removeEventListener('pageshow', handleWakeUp);
       window.removeEventListener('focus', handleWakeUp);
       window.removeEventListener('online', handleWakeUp);
-      window.removeEventListener('touchstart', handleWakeUp);
     };
   }, []);
 
@@ -1434,7 +1465,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       try {
         let resolveUrl = q.url;
         if (resolveUrl.startsWith('/api/get-youtube-link')) {
-          const ytres = await fetch(resolveUrl);
+          const ytres = await fetchWithTimeoutAndRetry(resolveUrl, {}, 15000, 1);
           const ytdata = await ytres.json();
           if (ytdata && ytdata.url) {
             resolveUrl = ytdata.url;
@@ -1445,7 +1476,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           ? resolveUrl
           : `/api/proxy-download?url=${encodeURIComponent(resolveUrl)}&filename=media`;
 
-        const headRes = await fetch(proxyCheckUrl, { method: 'HEAD' });
+        const headRes = await fetchWithTimeoutAndRetry(proxyCheckUrl, { method: 'HEAD' }, 10000, 1);
         const len = headRes.headers.get('content-length') || headRes.headers.get('estimated-content-length');
         if (len) {
           const bytes = parseInt(len, 10);
@@ -1771,11 +1802,16 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     if (detected !== activeTab) {
       setActiveTab(detected);
       setValidationError(null);
+      const targetPath = detected === 'pinterest' ? '/' : `/${detected}-downloader`;
+      if (window.location.pathname !== targetPath) {
+        navigate(targetPath, { replace: true });
+      }
     }
     
     setLoadingStep(0);
     setIsLoading(true);
     setResult(null);
+    setLoadingStatusMsg(null);
 
     // Default multi-platform downloader
     let safetyTimer: any = null;
@@ -1783,23 +1819,13 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     try {
       const detectedPlatform = detectPlatformFromUrl(targetUrl) || activeTab;
 
-      // Hard safety timer: guarantee loading state clears after 28 seconds
-      safetyTimer = setTimeout(() => {
-        setIsLoading(false);
-        setExtractionProgress(null);
-        setResult({
-          success: false,
-          error: "Request timed out on background tab. Please tap Download again."
-        });
-      }, 28000);
-
       const res = await fetchWithTimeoutAndRetry('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: targetUrl })
-      }, 22000, 1);
-
-      if (safetyTimer) clearTimeout(safetyTimer);
+      }, 60000, 2, (msg) => {
+        setLoadingStatusMsg(msg);
+      });
 
       const data = await res.json();
       
@@ -1896,7 +1922,9 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       }, 500);
 
       try {
-        const res = await fetch(url);
+        const res = await fetchWithTimeoutAndRetry(url, {}, 35000, 2, (msg) => {
+           setHistoryToast("Waking up server... (takes ~10 seconds)");
+        });
         const data = await res.json();
         clearInterval(interval);
         
@@ -2061,7 +2089,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
             streamUrl = streamUrl + (streamUrl.includes('?') ? '&stream=true' : '?stream=true');
           }
           try {
-            const response = await fetch(streamUrl);
+            const response = await fetchWithTimeoutAndRetry(streamUrl, {}, 60000, 2);
             if (response.ok) {
               fileBlob = await response.blob();
             }
@@ -2069,10 +2097,10 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
 
           if (!fileBlob && item.url) {
             try {
-              const res1 = await fetch(item.url);
+              const res1 = await fetchWithTimeoutAndRetry(item.url, {}, 60000, 2);
               const json = await res1.json();
               if (json.url) {
-                const res2 = await fetch(json.url);
+                const res2 = await fetchWithTimeoutAndRetry(json.url, {}, 60000, 2);
                 if (res2.ok) fileBlob = await res2.blob();
               }
             } catch(e) {}
@@ -2081,21 +2109,21 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
           extension = 'mp4';
           if (item.url && item.url.startsWith('http')) {
             try {
-              const res = await fetch(item.url);
+              const res = await fetchWithTimeoutAndRetry(item.url, {}, 60000, 2);
               if (res.ok) fileBlob = await res.blob();
             } catch(e) {}
           }
           if (!fileBlob) {
             try {
-              const apiRes = await fetch('/api/download', {
+              const apiRes = await fetchWithTimeoutAndRetry('/api/download', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: item.url })
-              });
+              }, 25000, 2);
               const data = await apiRes.json();
               const downloadUrl = data.qualities?.[0]?.url || data.url || item.url;
               if (downloadUrl) {
-                const res2 = await fetch(downloadUrl);
+                const res2 = await fetchWithTimeoutAndRetry(downloadUrl, {}, 60000, 2);
                 if (res2.ok) fileBlob = await res2.blob();
               }
             } catch(e) {}
@@ -2806,15 +2834,17 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     tabRefs.current[tab.id] = el;
                   }}
                   onClick={() => {
-                    setActiveTab(tab.id);
-                    setResult(null);
-                    setValidationError(null);
-                    // Retain the URL if it happens to match the newly selected tab, or clear it if it doesn't
-                    const detected = detectPlatformFromUrl(url);
-                    if (detected !== tab.id) {
-                      setUrl('');
-                    } else {
+                    if (activeTab !== tab.id) {
+                      setActiveTab(tab.id);
+                      setResult(null);
                       setValidationError(null);
+                      // Retain the URL if it happens to match the newly selected tab, or clear it if it doesn't
+                      const detected = detectPlatformFromUrl(url);
+                      if (detected !== tab.id) {
+                        setUrl('');
+                      } else {
+                        setValidationError(null);
+                      }
                     }
                   }}
                   className={clsx(
@@ -3002,9 +3032,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                       <Link
                         to={tab.id === 'pinterest' ? '/' : `/${tab.id}-downloader`}
                         onClick={() => {
-                           setActiveTab(tab.id);
-                           setResult(null);
-                           setValidationError(null);
+                           if (activeTab !== tab.id) {
+                             setActiveTab(tab.id);
+                             setResult(null);
+                             setValidationError(null);
+                           }
                         }}
                         title={"Switch to " + tab.label}
                         className={clsx(
@@ -3274,7 +3306,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   "text-center text-xs font-medium",
                   isLight ? "text-neutral-600 dark:text-neutral-400" : "text-white/80"
                 )}>
-                  Processing Link...
+                  {loadingStatusMsg || "Processing Link..."}
                 </div>
               </div>
             </motion.div>
@@ -3944,7 +3976,11 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                           {/* Video player element */}
                           <video
                             id="studio-video-element"
-                            src={getProxiedUrl(result.url)}
+                            src={
+                              result.url?.includes('/api/get-youtube-link')
+                                ? `/api/youtube-stream?url=${encodeURIComponent(result.originalUrl || url)}&quality=720p`
+                                : getProxiedUrl(result.url)
+                            }
                             poster={result.thumbnail ? getProxiedUrl(result.thumbnail) : undefined}
                             controls
                             playsInline
@@ -4441,9 +4477,12 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                     }}
                     whileTap={{ scale: 0.97 }}
                     onClick={() => {
-                       setActiveTab(tab.id);
-                       setResult(null);
-                       setValidationError(null);
+                       if (activeTab !== tab.id) {
+                         setActiveTab(tab.id);
+                         setResult(null);
+                         setValidationError(null);
+                         navigate(tab.id === 'pinterest' ? '/' : `/${tab.id}-downloader`);
+                       }
                        window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     className={clsx(
