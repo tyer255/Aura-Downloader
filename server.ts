@@ -2992,6 +2992,16 @@ app.post("/api/download", async (req, res) => {
       let trimmedUrl = url.trim();
       const lowerUrl = trimmedUrl.toLowerCase();
       const { platform, type } = classifyUrl(trimmedUrl);
+      
+      if (platform === 'instagram') {
+        if (/\/(stories|s)\//.test(lowerUrl) || lowerUrl.includes('story_item_share')) {
+          return res.status(400).json({
+            success: false,
+            message: "For Instagram, only Reels and Posts are supported. Stories and Highlights are not supported."
+          });
+        }
+      }
+      
       if (platform === 'unknown') {
         return res.status(400).json({
           success: false,
@@ -3031,10 +3041,7 @@ app.post("/api/download", async (req, res) => {
                     return res.json({ success: true, ...rapidResult });
                 }
             } catch (err: any) {
-                // If we get a subscription error, send it to the UI!
-                if (err.message.includes("subscribed")) {
-                     return res.status(500).json({ success: false, message: err.message });
-                }
+                console.error("Twitter RapidAPI Error:", err.message);
             }
         }
 
@@ -3044,13 +3051,7 @@ app.post("/api/download", async (req, res) => {
         if (xtractorResult && xtractorResult.media && xtractorResult.media.length > 0) {
             return res.json({ success: true, ...xtractorResult });
         } else {
-            let msg = "Twitter blocked our server IP. ";
-            if (rapidKey) {
-                 msg += "We tried RapidAPI but it failed. Please ensure you are subscribed to the 'Twitter135' API on RapidAPI (it's free).";
-            } else {
-                 msg += "To fix this, add your RAPIDAPI_KEY to AI Studio Secrets and subscribe to 'Twitter135' on RapidAPI, OR set your TWITTER_AUTH_TOKEN.";
-            }
-            return res.status(500).json({ success: false, message: msg });
+            return res.status(500).json({ success: false, message: "Twitter download failed. The post might be private or unavailable." });
         }
       }
       } else {
@@ -3149,9 +3150,9 @@ app.post("/api/download", async (req, res) => {
                url: trimmedUrl
              });
           }
-          errorMsg = "Instagram blocks our cloud servers from downloading posts. Please check your RapidAPI subscription.";
+          errorMsg = "Instagram download failed. Please ensure the link is a public Reel or Post.";
         } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
-          errorMsg = "Twitter blocked our server IP for unauthenticated requests. Add your RAPIDAPI_KEY to AI Studio Secrets and subscribe to 'Twitter135' on RapidAPI, OR set your TWITTER_AUTH_TOKEN.";
+          errorMsg = "Twitter download failed. The post might be private or unavailable.";
         } else if (platform === 'snapchat') {
           if (!trimmedUrl.includes("/spotlight/") && !trimmedUrl.includes("/s/") && !trimmedUrl.includes("/p/") && !trimmedUrl.includes("/add/") && !trimmedUrl.includes("@")) {
             errorMsg = "Invalid Snapchat URL.";

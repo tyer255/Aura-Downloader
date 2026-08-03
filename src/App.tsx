@@ -18,7 +18,7 @@ const CookiePolicy = lazy(() => import('./pages/StaticPages').then(m => ({ defau
 
 import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Search, Loader2, AlertCircle, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera, Headphones, HelpCircle, Settings, DownloadCloud } from 'lucide-react';
+import { Search, Loader2, AlertCircle, Info, CheckCircle2, Youtube, History, Download, Film, Music, Tv, MessageSquare, Image as ImageIcon, Instagram, Facebook, ListVideo, User, X, ChevronLeft, ChevronRight, Maximize2, Copy, Check, Sparkles, Sun, Moon, QrCode, Star, Trash2, Upload, ExternalLink, Filter, Calendar, Lock, Archive, Linkedin, Twitter, Plus, Play, Pause, Activity, Scissors, Bookmark, ArrowRight, Share2, Camera, Headphones, HelpCircle, Settings, DownloadCloud } from 'lucide-react';
 import { m as motion, LazyMotion, domMax, AnimatePresence } from 'motion/react';
 import { subscribeUserToPush } from './push';
 
@@ -4354,43 +4354,71 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   )}
 
                 </div>
-              ) : (
-                <div className={clsx(
-                  "border rounded-3xl p-6 flex items-start gap-4 backdrop-blur-sm shadow-xl transition-colors",
-                  isLight ? "bg-red-50/70 border-red-200 text-red-600" : "bg-red-500/10 border border-red-500/20 text-red-400"
-                )}>
-                  <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-bold text-lg mb-1">
-                      {result.error?.includes("Instagram blocks our cloud servers") ? "Action Required: API Key Missing" : (result.error?.toLowerCase().includes("unsupported") || result.message?.toLowerCase().includes("unsupported")) ? "Unsupported Website Link" : "Extraction Failed"}
-                    </div>
-                    <p className={clsx(
-                      "leading-relaxed text-sm font-medium transition-colors mb-4",
-                      isLight ? "text-red-600/90" : "text-red-400/80"
-                    )}>
-                      {result.error?.includes("Instagram blocks our cloud servers") 
-                        ? "Instagram restricts automated requests from cloud hosting IP addresses like Render.com. To fix this on your live app, you must configure your RAPIDAPI_KEY in your Render environment variables."
-                        : (result.error || result.message || "The URL link is unsupported, private, or being blocked by the origin servers.")}
-                    </p>
-                    {(result.thumbnail || result.title) && (
-                      <div className={clsx(
-                        "mt-4 p-4 rounded-xl border flex gap-4 items-center bg-black/20 group",
-                        isLight ? "border-red-200" : "border-red-500/20"
-                      )}>
-                        {result.thumbnail && (
-                          <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 group-hover:scale-110 transition-transform">
-                            <img src={getProxiedUrl(result.thumbnail)} alt={result.title || "Media thumbnail"} className="w-full h-full object-cover"  loading="lazy" decoding="async" width="400" height="400" />
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-wider opacity-60 mb-1">Recovered Metadata</p>
-                          {result.title && <p className="text-sm font-semibold line-clamp-2">{result.title}</p>}
-                        </div>
-                      </div>
+              ) : (() => {
+                const errorOrMsg = (result.error || result.message || "").toLowerCase();
+                const isNotice = errorOrMsg.includes("stories") || 
+                                 errorOrMsg.includes("highlights") || 
+                                 errorOrMsg.includes("only reels and posts") || 
+                                 errorOrMsg.includes("notice");
+
+                return (
+                  <div className={clsx(
+                    "border rounded-3xl p-6 flex items-start gap-4 backdrop-blur-sm shadow-xl transition-colors",
+                    isNotice
+                      ? (isLight 
+                          ? "bg-blue-50/90 border-blue-200/90 text-blue-900 shadow-blue-500/5" 
+                          : "bg-blue-950/40 border border-blue-800/50 text-blue-200 shadow-blue-950/20")
+                      : (isLight 
+                          ? "bg-red-50/70 border-red-200 text-red-600" 
+                          : "bg-red-500/10 border border-red-500/20 text-red-400")
+                  )}>
+                    {isNotice ? (
+                      <Info className="w-6 h-6 flex-shrink-0 mt-0.5 text-blue-500 dark:text-blue-400" />
+                    ) : (
+                      <AlertCircle className="w-6 h-6 flex-shrink-0 mt-0.5" />
                     )}
+                    <div>
+                      <div className="font-bold text-lg mb-1">
+                        {isNotice 
+                          ? "Notice" 
+                          : result.error?.includes("Instagram blocks our cloud servers") 
+                            ? "Action Required: API Key Missing" 
+                            : (result.error?.toLowerCase().includes("unsupported") || result.message?.toLowerCase().includes("unsupported")) 
+                              ? "Unsupported Website Link" 
+                              : "Extraction Failed"}
+                      </div>
+                      <p className={clsx(
+                        "leading-relaxed text-sm font-medium transition-colors mb-4",
+                        isNotice
+                          ? (isLight ? "text-blue-800" : "text-blue-200/90")
+                          : (isLight ? "text-red-600/90" : "text-red-400/80")
+                      )}>
+                        {result.error?.includes("Instagram blocks our cloud servers") 
+                          ? "Instagram restricts automated requests from cloud hosting IP addresses like Render.com. To fix this on your live app, you must configure your RAPIDAPI_KEY in your Render environment variables."
+                          : (result.error || result.message || "The URL link is unsupported, private, or being blocked by the origin servers.")}
+                      </p>
+                      {(result.thumbnail || result.title) && (
+                        <div className={clsx(
+                          "mt-4 p-4 rounded-xl border flex gap-4 items-center bg-black/20 group",
+                          isNotice
+                            ? (isLight ? "border-blue-200" : "border-blue-500/20")
+                            : (isLight ? "border-red-200" : "border-red-500/20")
+                        )}>
+                          {result.thumbnail && (
+                            <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 group-hover:scale-110 transition-transform">
+                              <img src={getProxiedUrl(result.thumbnail)} alt={result.title || "Media thumbnail"} className="w-full h-full object-cover" loading="lazy" decoding="async" width="400" height="400" />
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider opacity-60 mb-1">Recovered Metadata</p>
+                            {result.title && <p className="text-sm font-semibold line-clamp-2">{result.title}</p>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </motion.div>
           )}
         </AnimatePresence>
