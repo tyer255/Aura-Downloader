@@ -317,21 +317,7 @@ export interface ProcessedQuality {
 function getMediaKey(item: any): string | null {
   if (!item || typeof item !== 'object') return null;
 
-  // 1. Specific unique media item ID (mediaId, id, child_id, pk, media_id, nodeId)
-  const directId = item.mediaId || item.id || item.child_id || item.pk || item.media_id || item.nodeId || item.node_id;
-  if (directId !== undefined && directId !== null) {
-    const idStr = String(directId).trim();
-    if (idStr) return `id:${idStr}`;
-  }
-
-  // 2. Shortcode + position/index for carousel slides
-  const idx = item.index ?? item.position;
-  if (item.shortcode && idx !== undefined && idx !== null) {
-    const scStr = String(item.shortcode).trim();
-    if (scStr) return `shortcode_idx:${scStr}_${idx}`;
-  }
-
-  // 3. Exact download / media / display / url string
+  // 1. Primary check: Exact underlying CDN media URL base (without query params)
   const rawUrl = item.downloadUrl || item.mediaUrl || item.displayUrl || item.url;
   if (rawUrl && typeof rawUrl === 'string') {
     let cleanUrl = rawUrl.trim();
@@ -345,27 +331,34 @@ function getMediaKey(item: any): string | null {
         // fallback
       }
     }
-    if (cleanUrl) return `url:${cleanUrl}`;
-  }
-
-  // 4. Exact thumbnail URL
-  const rawThumb = item.thumbnailUrl || item.thumbnail;
-  if (rawThumb && typeof rawThumb === 'string') {
-    let cleanThumb = rawThumb.trim();
-    if (cleanThumb.includes('/api/proxy-download')) {
-      try {
-        const match = cleanThumb.match(/[?&]url=([^&]+)/);
-        if (match && match[1]) {
-          cleanThumb = decodeURIComponent(match[1]);
-        }
-      } catch (e) {
-        // fallback
+    let baseUrl = cleanUrl;
+    try {
+      const parsed = new URL(cleanUrl);
+      if (parsed.hostname.includes('instagram.com') || parsed.hostname.includes('cdninstagram.com') || parsed.hostname.includes('fbcdn.net')) {
+        baseUrl = parsed.origin + parsed.pathname;
       }
+    } catch (e) {
+      baseUrl = cleanUrl.split('?')[0].trim();
     }
-    if (cleanThumb) return `thumb:${cleanThumb}`;
+    if (baseUrl) {
+      return `url:${baseUrl}`;
+    }
   }
 
-  // NEVER collapse items based on shortcode alone or parent post URL
+  // 2. Specific unique media item ID (mediaId, id, child_id, pk, media_id, nodeId)
+  const directId = item.mediaId || item.id || item.child_id || item.pk || item.media_id || item.nodeId || item.node_id;
+  if (directId !== undefined && directId !== null) {
+    const idStr = String(directId).trim();
+    if (idStr) return `id:${idStr}`;
+  }
+
+  // 3. Shortcode + position/index for carousel slides
+  const idx = item.index ?? item.position;
+  if (idx !== undefined && idx !== null) {
+    const scStr = item.shortcode ? String(item.shortcode).trim() : 'carousel';
+    return `shortcode_idx:${scStr}_${idx}`;
+  }
+
   return null;
 }
 

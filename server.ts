@@ -1887,7 +1887,7 @@ async function extractPinterestBtch(url: string) {
        }
     }
   } catch (e) {
-    console.log("btch-downloader pinterest error:", e);
+    // silently ignore btch-downloader errors
   }
   return null;
 }
@@ -1937,94 +1937,184 @@ async function extractTiktokTikwm(url: string) {
     return null;
 }
 
+function extractCarouselItemsFromNode(postObj: any, shortcodeStr?: string): any[] {
+  if (!postObj || typeof postObj !== 'object') return [];
+
+  let childrenNodes: any[] = [];
+
+  // 1. Direct properties check
+  if (Array.isArray(postObj.carousel_media) && postObj.carousel_media.length > 0) {
+    childrenNodes = postObj.carousel_media;
+  } else if (postObj.edge_sidecar_to_children && Array.isArray(postObj.edge_sidecar_to_children.edges) && postObj.edge_sidecar_to_children.edges.length > 0) {
+    childrenNodes = postObj.edge_sidecar_to_children.edges.map((e: any) => e.node || e);
+  } else if (Array.isArray(postObj.sidecar_media) && postObj.sidecar_media.length > 0) {
+    childrenNodes = postObj.sidecar_media;
+  } else if (Array.isArray(postObj.resources) && postObj.resources.length > 0) {
+    childrenNodes = postObj.resources;
+  } else if (Array.isArray(postObj.media_list) && postObj.media_list.length > 0) {
+    childrenNodes = postObj.media_list;
+  } else if (Array.isArray(postObj.items) && postObj.items.length > 0) {
+    const firstItem = postObj.items[0];
+    if (firstItem && (firstItem.carousel_media || firstItem.edge_sidecar_to_children || firstItem.sidecar_media)) {
+      return extractCarouselItemsFromNode(firstItem, shortcodeStr);
+    }
+  }
+
+  // 2. Recursive fallback search if children nodes not found at top level
+  if (childrenNodes.length === 0) {
+    const foundNodes: any[] = [];
+    function searchRecursive(curr: any) {
+      if (!curr || typeof curr !== 'object' || foundNodes.length > 0) return;
+      if (Array.isArray(curr.carousel_media) && curr.carousel_media.length > 0) {
+        foundNodes.push(...curr.carousel_media);
+        return;
+      }
+      if (curr.edge_sidecar_to_children && Array.isArray(curr.edge_sidecar_to_children.edges) && curr.edge_sidecar_to_children.edges.length > 0) {
+        foundNodes.push(...curr.edge_sidecar_to_children.edges.map((e: any) => e.node || e));
+        return;
+      }
+      if (Array.isArray(curr.sidecar_media) && curr.sidecar_media.length > 0) {
+        foundNodes.push(...curr.sidecar_media);
+        return;
+      }
+      if (Array.isArray(curr)) {
+        for (const el of curr) searchRecursive(el);
+      } else {
+        for (const k of Object.keys(curr)) {
+          if (k !== 'parent' && k !== 'prev') {
+            searchRecursive(curr[k]);
+            if (foundNodes.length > 0) return;
+          }
+        }
+      }
+    }
+    searchRecursive(postObj);
+    if (foundNodes.length > 0) {
+      childrenNodes = foundNodes;
+    }
+  }
+
+  if (childrenNodes.length === 0) return [];
+
+  const expectedCount = childrenNodes.length;
+  console.log(`[Instagram Extractor] Found ${expectedCount} carousel child nodes in Instagram payload.`);
+
+  const items: any[] = [];
+
+  for (let idx = 0; idx < childrenNodes.length; idx++) {
+    const child = childrenNodes[idx];
+    if (!child || typeof child !== 'object') continue;
+
+    let isVideo = false;
+    let url = "";
+
+    if (child.is_video || child.media_type === 2 || child.type === "video") {
+      isVideo = true;
+    }
+
+    if (child.video_versions && Array.isArray(child.video_versions) && child.video_versions.length > 0) {
+      isVideo = true;
+      url = child.video_versions[0].url || "";
+    } else if (child.video_url) {
+      isVideo = true;
+      url = child.video_url;
+    } else if (child.url && isVideo) {
+      url = child.url;
+    }
+
+    if (!url) {
+      if (child.image_versions2 && child.image_versions2.candidates && Array.isArray(child.image_versions2.candidates) && child.image_versions2.candidates.length > 0) {
+        url = child.image_versions2.candidates[0].url || "";
+      } else if (child.display_url) {
+        url = child.display_url;
+      } else if (child.display_resources && Array.isArray(child.display_resources) && child.display_resources.length > 0) {
+        url = child.display_resources[child.display_resources.length - 1].src || "";
+      } else if (child.display_src) {
+        url = child.display_src;
+      } else if (child.url) {
+        url = child.url;
+      }
+    }
+
+    if (!url || typeof url !== 'string' || !url.startsWith('http')) continue;
+
+    let thumb = "";
+    if (child.image_versions2 && child.image_versions2.candidates && Array.isArray(child.image_versions2.candidates) && child.image_versions2.candidates.length > 0) {
+      thumb = child.image_versions2.candidates[0].url;
+    } else if (child.display_url) {
+      thumb = child.display_url;
+    } else if (child.display_resources && Array.isArray(child.display_resources) && child.display_resources.length > 0) {
+      thumb = child.display_resources[0].src;
+    } else if (child.thumbnail) {
+      thumb = child.thumbnail;
+    } else {
+      thumb = url;
+    }
+
+    const type = isVideo ? "video" : "image";
+    const childId = String(child.id || child.pk || child.shortcode || `slide_${idx + 1}`);
+    const proxyUrl = url.startsWith('/') ? url : `/api/proxy-download?url=${encodeURIComponent(url)}&filename=instagram_${type}_item_${idx + 1}`;
+
+    items.push({
+      type,
+      url: proxyUrl,
+      thumbnail: thumb,
+      id: childId,
+      mediaId: childId,
+      index: idx,
+      shortcode: shortcodeStr || ""
+    });
+  }
+
+  console.log(`[Instagram Extractor] Successfully created ${items.length} out of ${expectedCount} carousel media items.`);
+  return items;
+}
+
 async function extractInstagramBtch(url: string) {
   console.log("Trying btch-downloader for Instagram...");
   try {
     const b = await getBtch();
     const r = await b.igdl(url);
-    if (r && r.status && r.result && r.result.length > 0) {
-      const items: any[] = r.result.filter((i: any) => i.url && i.url.trim() !== "");
-      if (items.length === 0) throw new Error("Empty media returned");
-      const media = items.map((item: any) => {
-        const type = inferInstagramType(item, url);
-        return { type, url: item.url, thumbnail: item.thumbnail || item.url };
-      });
-      const primary = media[0];
-      const qualities = primary.type === "video" ? getFallbackQualities(primary.url, "video") : undefined;
-      
-      return {
-        success: true,
-        title: primary.type === "video" ? "Instagram Reel" : "Instagram Post",
-        thumbnail: primary.thumbnail || primary.url,
-        url: primary.url,
-        mediaType: media.length > 1 ? "carousel" : primary.type,
-        media,
-        qualities
-      };
+    if (r && r.status && r.result && Array.isArray(r.result) && r.result.length > 0) {
+      const carouselItems = extractCarouselItemsFromNode({ carousel_media: r.result });
+      if (carouselItems.length > 0) {
+        return {
+          success: true,
+          title: carouselItems.length > 1 ? "Instagram Carousel" : (carouselItems[0].type === "video" ? "Instagram Reel" : "Instagram Post"),
+          thumbnail: carouselItems[0].thumbnail,
+          url: carouselItems[0].url,
+          mediaType: carouselItems.length > 1 ? "carousel" : carouselItems[0].type,
+          media: carouselItems,
+          source: "btch"
+        };
+      }
     }
   } catch (e) {
-    console.log("btch-downloader error:", e);
+    // silently ignore btch-downloader errors
   }
-  
-  console.log("Falling back to Instagram embed page scraping...");
-  try {
-    const sc = getInstagramShortcode(url);
-    if (!sc) return null;
-    
-    const res = await fetch(`https://www.instagram.com/p/${sc}/embed/captioned/`, {
-      signal: AbortSignal.timeout(5000),
-      headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1" }
-    });
-    const html = await res.text();
-    const videoMatch = html.match(/"video_url":"([^"]+)"/);
-    const thumbMatch = html.match(/"display_url":"([^"]+)"/);
-    
-    if (videoMatch || thumbMatch) {
-      const type = videoMatch ? "video" : "image";
-      const mediaUrl = videoMatch ? videoMatch[1].replace(/\\\//g, "/") : thumbMatch![1].replace(/\\\//g, "/");
-      const thumbUrl = thumbMatch ? thumbMatch[1].replace(/\\\//g, "/") : mediaUrl;
-      const qualities = type === "video" ? getFallbackQualities(mediaUrl, "video") : undefined;
-      
-      return {
-        success: true,
-        title: type === "video" ? "Instagram Reel" : "Instagram Post",
-        thumbnail: thumbUrl,
-        url: mediaUrl,
-        mediaType: type,
-        media: [{ type, url: mediaUrl, thumbnail: thumbUrl }],
-        qualities
-      };
-    }
-  } catch (e) {
-    console.log("Instagram embed fallback error:", e);
-  }
-  
   return null;
 }
 
 async function fastRace(promises: Promise<any>[]): Promise<any> {
-    try {
-        return await Promise.any(promises.map(async p => {
-            const res = await p;
-            if (res && res.success) {
-                // Return if valid format
-                if ((res.media && res.media.length > 0) || res.url || (res.qualities && res.qualities.length > 0)) {
-                    return res;
-                }
-            }
-            throw new Error("fail");
-        }));
-    } catch {
-        return null;
-    }
+  try {
+    return await Promise.any(promises.map(async p => {
+      const res = await p;
+      if (res && res.success) {
+        if ((res.media && res.media.length > 0) || res.url || (res.qualities && res.qualities.length > 0)) {
+          return res;
+        }
+      }
+      throw new Error("fail");
+    }));
+  } catch {
+    return null;
+  }
 }
-
 
 async function extractInstagramRapidAPI(url: string) {
   const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
   if (!rapidKey) return null;
   
-  // Default to instagram-scraper-api2.p.rapidapi.com as documented in .env.example
   const host = process.env.RAPIDAPI_IG_HOST && process.env.RAPIDAPI_IG_HOST.includes("rapidapi.com") 
       ? process.env.RAPIDAPI_IG_HOST 
       : "instagram-scraper-api2.p.rapidapi.com";
@@ -2032,7 +2122,6 @@ async function extractInstagramRapidAPI(url: string) {
   console.log(`Attempting RapidAPI extraction with host: ${host}`);
   
   try {
-    
     let response;
     
     if (host === 'instagram120.p.rapidapi.com') {
@@ -2056,235 +2145,351 @@ async function extractInstagramRapidAPI(url: string) {
       });
     }
     
-    if (!response.ok) {
-      // console.warn removed to avoid AI Studio false positive error reporting
-      const text = await response.text();
-      console.log("RapidAPI response:", text);
-      let errorDetails = text;
-      try {
-         const json = JSON.parse(text);
-         if (json.message) errorDetails = json.message;
-      } catch (e) {}
-      
-      if (response.status === 403 && errorDetails.includes("not subscribed")) {
-         return {
-            success: false,
-            errorMsg: `You are not subscribed to the RapidAPI host (${host}). Please go to RapidAPI, search for this API, and subscribe to its free tier. Alternatively, set RAPIDAPI_IG_HOST to an API you are subscribed to.`
-         };
-      }
-      
-      return {
-         success: false,
-         errorMsg: `RapidAPI Fallback Failed (${response.status}): ${errorDetails}`
-      };
-    }
+    if (!response.ok) return null;
     
     const data = (await response.json()) as any;
-    
-    // Parse instagram-scraper-api2 format
+    const postNode = data?.data?.items?.[0] || data?.items?.[0] || data?.data || data;
+    if (!postNode) return null;
+
+    const carouselItems = extractCarouselItemsFromNode(postNode);
+    const title = postNode.caption?.text ? postNode.caption.text.substring(0, 50) : "Instagram Post";
+
+    if (carouselItems.length > 0) {
+      return {
+        success: true,
+        title: carouselItems.length > 1 ? "Instagram Carousel" : title,
+        url: carouselItems[0].url,
+        thumbnail: carouselItems[0].thumbnail,
+        mediaType: carouselItems.length > 1 ? "carousel" : carouselItems[0].type,
+        media: carouselItems,
+        source: "rapidapi"
+      };
+    }
+
     let mediaUrl = "";
-    let thumbnail = "";
     let mediaType = "video";
-    let title = "Instagram Post";
-    
-    if (data && data.data && data.data.items && data.data.items.length > 0) {
-      const item = data.data.items[0];
-      
-      if (item.caption && item.caption.text) {
-        title = item.caption.text.substring(0, 50);
-      }
-      
-      if (item.carousel_media && item.carousel_media.length > 0) {
-        const items = item.carousel_media.map((child: any) => {
-          let url = "";
-          let type = "image";
-          let thumb = "";
-          
-          if (child.video_versions && child.video_versions.length > 0) {
-             url = child.video_versions[0].url;
-             type = "video";
-          } else if (child.image_versions2 && child.image_versions2.candidates && child.image_versions2.candidates.length > 0) {
-             url = child.image_versions2.candidates[0].url;
-          }
-          
-          if (child.image_versions2 && child.image_versions2.candidates && child.image_versions2.candidates.length > 0) {
-             thumb = child.image_versions2.candidates[0].url;
-          } else {
-             thumb = url;
-          }
-          
-          return {
-             type: type,
-             url: `/api/proxy-download?url=${encodeURIComponent(url)}&filename=instagram_${type}`,
-             thumbnail: thumb,
-             id: child.id || child.pk
-          };
-        });
-        
-        if (items.length > 0 && items[0].url) {
-           return {
-              success: true,
-              title: title || "Instagram Carousel",
-              url: items[0].url,
-              thumbnail: items[0].thumbnail,
-              mediaType: "carousel",
-              media: items,
-              source: "rapidapi"
-           };
-        }
-      }
-      
-      // Video
-      if (item.video_versions && item.video_versions.length > 0) {
-        mediaUrl = item.video_versions[0].url;
-        mediaType = "video";
-      } 
-      // Single Image
-      else if (item.image_versions2 && item.image_versions2.candidates && item.image_versions2.candidates.length > 0) {
-        mediaUrl = item.image_versions2.candidates[0].url;
-        mediaType = "image";
-      }
-      
-      // Thumbnail
-      if (item.image_versions2 && item.image_versions2.candidates && item.image_versions2.candidates.length > 0) {
-         thumbnail = item.image_versions2.candidates[0].url;
-      }
+    if (postNode.video_versions && postNode.video_versions.length > 0) {
+      mediaUrl = postNode.video_versions[0].url;
+      mediaType = "video";
+    } else if (postNode.image_versions2 && postNode.image_versions2.candidates && postNode.image_versions2.candidates.length > 0) {
+      mediaUrl = postNode.image_versions2.candidates[0].url;
+      mediaType = "image";
     }
-    
+
     if (mediaUrl) {
-       return {
-          success: true,
-          title: title,
-          url: `/api/proxy-download?url=${encodeURIComponent(mediaUrl)}&filename=instagram_${mediaType}`,
-          thumbnail: thumbnail,
-          mediaType: mediaType,
-          source: "rapidapi"
-       };
+      const thumb = postNode.image_versions2?.candidates?.[0]?.url || mediaUrl;
+      const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(mediaUrl)}&filename=instagram_${mediaType}`;
+      return {
+        success: true,
+        title,
+        url: proxyUrl,
+        thumbnail: thumb,
+        mediaType,
+        media: [{
+          type: mediaType,
+          url: proxyUrl,
+          thumbnail: thumb,
+          id: String(postNode.id || postNode.pk || "post"),
+          mediaId: String(postNode.id || postNode.pk || "post"),
+          index: 0
+        }],
+        source: "rapidapi"
+      };
     }
-    
-    console.log("RapidAPI extraction found no media");
-    return null;
   } catch (error) {
-    // console.error removed
     return null;
   }
+  return null;
+}
+
+async function extractInstagramWebApi(url: string) {
+  const match = url.match(/(?:p|reel|tv|stories\/[^\/?#&]+)\/([^\/?#&]+)/);
+  if (!match || !match[1]) return null;
+  const shortcode = match[1];
+
+  try {
+    const apiUrl = `https://www.instagram.com/api/v1/media/by/code/${shortcode}/`;
+    const response = await fetch(apiUrl, {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'X-IG-App-ID': '936619743392459',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    });
+
+    if (!response.ok) return null;
+    const data: any = await response.json();
+    if (!data || !data.items || !Array.isArray(data.items) || data.items.length === 0) return null;
+
+    const item = data.items[0];
+    const carouselItems = extractCarouselItemsFromNode(item);
+
+    if (carouselItems.length > 0) {
+      const title = item.caption?.text ? item.caption.text.substring(0, 50) : "Instagram Carousel";
+      return {
+        success: true,
+        title: carouselItems.length > 1 ? "Instagram Carousel" : title,
+        thumbnail: carouselItems[0].thumbnail,
+        url: carouselItems[0].url,
+        mediaType: carouselItems.length > 1 ? "carousel" : carouselItems[0].type,
+        media: carouselItems,
+        source: "web_api"
+      };
+    }
+
+    let mediaUrl = "";
+    let type = "image";
+    if (item.video_versions && item.video_versions.length > 0) {
+      mediaUrl = item.video_versions[0].url;
+      type = "video";
+    } else if (item.image_versions2?.candidates?.length > 0) {
+      mediaUrl = item.image_versions2.candidates[0].url;
+      type = "image";
+    }
+
+    if (mediaUrl) {
+      const title = item.caption?.text ? item.caption.text.substring(0, 50) : "Instagram Post";
+      const thumb = item.image_versions2?.candidates?.[0]?.url || mediaUrl;
+      const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(mediaUrl)}&filename=instagram_${type}`;
+      return {
+        success: true,
+        title,
+        thumbnail: thumb,
+        url: proxyUrl,
+        mediaType: type,
+        media: [{
+          type,
+          url: proxyUrl,
+          thumbnail: thumb,
+          id: String(item.id || item.pk || shortcode),
+          mediaId: String(item.id || item.pk || shortcode),
+          index: 0
+        }],
+        source: "web_api"
+      };
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+}
+
+async function extractInstagramEmbedScraper(url: string) {
+  const match = url.match(/(?:p|reel|tv|stories\/[^\/?#&]+)\/([^\/?#&]+)/);
+  if (!match || !match[1]) return null;
+  const shortcode = match[1];
+
+  try {
+    const res = await fetch(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, {
+      signal: AbortSignal.timeout(6000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+      }
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const scriptRegex = /<script[^>]*>(.*?)<\/script>/gs;
+    let scriptMatch: RegExpExecArray | null;
+
+    while ((scriptMatch = scriptRegex.exec(html)) !== null) {
+      const scriptContent = scriptMatch[1];
+      if (!scriptContent) continue;
+
+      if (scriptContent.includes('carousel_media') || scriptContent.includes('edge_sidecar_to_children') || scriptContent.includes('xdt_shortcode_media') || scriptContent.includes('shortcode_media')) {
+        let startIdx = scriptContent.indexOf('{"');
+        if (startIdx !== -1) {
+          const jsonCandidate = scriptContent.substring(startIdx);
+
+          const findAndExtract = (obj: any): any[] => {
+            if (!obj || typeof obj !== 'object') return [];
+            const items = extractCarouselItemsFromNode(obj);
+            if (items.length > 0) return items;
+
+            if (obj.xdt_shortcode_media) {
+              const res = extractCarouselItemsFromNode(obj.xdt_shortcode_media);
+              if (res.length > 0) return res;
+            }
+            if (obj.shortcode_media) {
+              const res = extractCarouselItemsFromNode(obj.shortcode_media);
+              if (res.length > 0) return res;
+            }
+            if (Array.isArray(obj)) {
+              for (const elem of obj) {
+                const res = findAndExtract(elem);
+                if (res.length > 0) return res;
+              }
+            } else {
+              for (const key of Object.keys(obj)) {
+                if (key !== 'parent' && key !== 'prev') {
+                  const res = findAndExtract(obj[key]);
+                  if (res.length > 0) return res;
+                }
+              }
+            }
+            return [];
+          };
+
+          let parsedJson: any = null;
+          try {
+            parsedJson = JSON.parse(jsonCandidate);
+          } catch (e) {
+            const lastBrace = jsonCandidate.lastIndexOf('}');
+            if (lastBrace !== -1) {
+              try {
+                parsedJson = JSON.parse(jsonCandidate.substring(0, lastBrace + 1));
+              } catch (e2) {}
+            }
+          }
+
+          if (parsedJson) {
+            const carouselItems = findAndExtract(parsedJson);
+            if (carouselItems.length > 0) {
+              return {
+                success: true,
+                title: carouselItems.length > 1 ? "Instagram Carousel" : "Instagram Post",
+                thumbnail: carouselItems[0].thumbnail,
+                url: carouselItems[0].url,
+                mediaType: carouselItems.length > 1 ? "carousel" : carouselItems[0].type,
+                media: carouselItems,
+                source: "embed_json"
+              };
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  return null;
 }
 
 async function extractInstagramRepoBackend(url: string) {
   console.log(`Attempting Repository Backend extraction for: ${url}`);
   try {
-    
-    
-    // Extract shortcode
-    const match = url.match(/(?:p|reel|tv)\/([^\/?#&]+)/);
-    if (!match || !match[1]) {
-       console.log("Could not extract shortcode from Instagram URL");
-       return null;
-    }
+    const match = url.match(/(?:p|reel|tv|stories\/[^\/?#&]+)\/([^\/?#&]+)/);
+    if (!match || !match[1]) return null;
     const shortcode = match[1];
-    
-    // The exact GraphQL query used by the yasinatesim repository
+
     const graphqlUrl = `https://www.instagram.com/graphql/query/?doc_id=24368985919464652&variables=${encodeURIComponent(`{"shortcode":"${shortcode}","fetch_tagged_user_count":null,"hoisted_comment_id":null,"hoisted_reply_id":null}`)}`;
-    
+
     const response = await fetch(graphqlUrl, {
       signal: AbortSignal.timeout(5000),
       method: 'GET',
       headers: {
-          accept: '*/*',
-          'accept-language': 'en-US,en;q=0.9',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-origin',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        accept: '*/*',
+        'accept-language': 'en-US,en;q=0.9',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
-    
-    if (!response.ok) {
-      console.log(`Repo GraphQL error: ${response.status} ${response.statusText}`);
-      const text = await response.text();
-      console.log("Response:", text.substring(0, 200));
+
+    if (!response.ok) return null;
+    const data: any = await response.json();
+    const media = data?.data?.xdt_shortcode_media;
+    if (!media) return null;
+
+    const carouselItems = extractCarouselItemsFromNode(media);
+    if (carouselItems.length > 0) {
       return {
-         success: false,
-         errorMsg: `Instagram blocked the repository's API request (${response.status}). Instagram blocks cloud server IPs from accessing this endpoint without a logged-in user session.`
+        success: true,
+        title: carouselItems.length > 1 ? "Instagram Carousel" : "Instagram Post",
+        url: carouselItems[0].url,
+        thumbnail: carouselItems[0].thumbnail,
+        mediaType: carouselItems.length > 1 ? "carousel" : carouselItems[0].type,
+        media: carouselItems,
+        source: "repo_backend"
       };
     }
-    
-    const data: any = await response.json();
-    
-    // Check for execution error
-    if (data.errors && data.errors.length > 0) {
-       console.log("Repo GraphQL returned execution error:", data.errors[0].message);
-       return {
-          success: false,
-          errorMsg: `Instagram returned an execution error. This occurs because the repository's GraphQL endpoint requires authentication (a logged-in browser session) when called from a cloud server.`
-       };
-    }
-    
-    // Parse xdt_shortcode_media
-    const media = data?.data?.xdt_shortcode_media;
-    if (!media) {
-       return {
-          success: false,
-          errorMsg: `Could not find media data in the repository's API response.`
-       };
-    }
-    
-    if (media.edge_sidecar_to_children && media.edge_sidecar_to_children.edges.length > 0) {
-       const children = media.edge_sidecar_to_children.edges.map((e: any) => e.node);
-       const items = children.map((child: any) => {
-          let url = child.display_url;
-          let type = "image";
-          if (child.is_video) {
-             url = child.video_url;
-             type = "video";
-          }
-          return {
-             type: type,
-             url: `/api/proxy-download?url=${encodeURIComponent(url)}&filename=instagram_${type}`,
-             thumbnail: child.display_url || url,
-             id: child.id
-          };
-       });
-       
-       return {
-          success: true,
-          title: "Instagram Carousel",
-          url: items[0].url,
-          thumbnail: items[0].thumbnail,
-          mediaType: "carousel",
-          media: items,
-          source: "repo_backend"
-       };
-    }
-    
-    let mediaUrl = "";
-    let mediaType = "video";
-    let thumbnail = media.display_url || "";
-    
-    if (media.is_video) {
-       mediaUrl = media.video_url;
-       mediaType = "video";
-    } else {
-       mediaUrl = media.display_url;
-       mediaType = "image";
-    }
-    
+
+    let mediaUrl = media.is_video ? media.video_url : media.display_url;
+    let mediaType = media.is_video ? "video" : "image";
+    let thumbnail = media.display_url || mediaUrl;
+
     if (mediaUrl) {
-       return {
-          success: true,
-          title: "Instagram Post",
-          url: `/api/proxy-download?url=${encodeURIComponent(mediaUrl)}&filename=instagram_${mediaType}`,
-          thumbnail: thumbnail,
-          mediaType: mediaType,
-          source: "repo_backend"
-       };
+      const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(mediaUrl)}&filename=instagram_${mediaType}`;
+      return {
+        success: true,
+        title: "Instagram Post",
+        url: proxyUrl,
+        thumbnail,
+        mediaType,
+        media: [{
+          type: mediaType,
+          url: proxyUrl,
+          thumbnail,
+          id: String(media.id || shortcode),
+          mediaId: String(media.id || shortcode),
+          index: 0
+        }],
+        source: "repo_backend"
+      };
     }
-    
-    return null;
   } catch (error) {
-    console.log("Repo extraction error:", error);
     return null;
   }
+  return null;
+}
+
+async function extractInstagramMaster(url: string): Promise<any> {
+  console.log(`[Instagram Master] Starting complete extraction for: ${url}`);
+
+  const candidates = [
+    extractInstagramWebApi(url),
+    extractInstagramRapidAPI(url),
+    extractInstagramRepoBackend(url),
+    extractInstagramEmbedScraper(url),
+    extractInstagramBtch(url),
+    extractWithYtDlp(url)
+  ];
+
+  const results = await Promise.allSettled(candidates);
+  const successful: any[] = [];
+
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value && r.value.success) {
+      const sanitized = sanitizeExtractorResult(r.value);
+      if (sanitized && (sanitized.url || (sanitized.media && sanitized.media.length > 0))) {
+        successful.push(sanitized);
+      }
+    }
+  }
+
+  if (successful.length === 0) {
+    console.log("[Instagram Master] Primary extractors produced no result, trying AI extraction...");
+    const aiFallback = await extractWithAI(url, false);
+    if (aiFallback && aiFallback.success) {
+      return sanitizeExtractorResult(aiFallback);
+    }
+    return null;
+  }
+
+  let bestResult = successful[0];
+  let maxCount = 0;
+
+  for (const res of successful) {
+    const itemCount = res.media ? res.media.length : (res.url ? 1 : 0);
+    const isCarousel = res.mediaType === 'carousel' || itemCount > 1;
+
+    if (isCarousel) {
+      if (itemCount > maxCount) {
+        maxCount = itemCount;
+        bestResult = res;
+      }
+    } else if (maxCount === 0) {
+      if (itemCount > (bestResult.media ? bestResult.media.length : (bestResult.url ? 1 : 0))) {
+        bestResult = res;
+      }
+    }
+  }
+
+  console.log(`[Instagram Master] Selected best extraction source: ${bestResult.source || 'unknown'} with ${bestResult.media?.length || 1} items.`);
+  return bestResult;
 }
 
 // ==================== THREADS NATIVE EXTRACTOR ====================
@@ -2501,11 +2706,89 @@ async function extractThreadsPost(urlStr: string): Promise<any> {
   };
 }
 
-function parseBboxObject(obj: any, addMediaFn: Function, postInfo: any, targetCode?: string | null) {
+function sanitizeExtractorResult(result: any): any {
+  if (!result || typeof result !== 'object') return result;
+
+  if (Array.isArray(result.media) && result.media.length > 0) {
+    const seenKeys = new Set<string>();
+    const deduplicatedMedia: any[] = [];
+
+    for (let i = 0; i < result.media.length; i++) {
+      const item = result.media[i];
+      if (!item || typeof item !== 'object') continue;
+
+      const directId = item.id || item.mediaId || item.pk || item.child_id;
+      const idx = item.index !== undefined ? item.index : i;
+
+      let rawUrl = item.url || item.downloadUrl || item.mediaUrl || "";
+      let cleanUrl = rawUrl;
+      if (cleanUrl.includes('/api/proxy-download')) {
+        try {
+          const match = cleanUrl.match(/[?&]url=([^&]+)/);
+          if (match && match[1]) {
+            cleanUrl = decodeURIComponent(match[1]);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      let urlKey = cleanUrl;
+      if (cleanUrl) {
+        try {
+          const parsed = new URL(cleanUrl);
+          if (parsed.hostname.includes('instagram.com') || parsed.hostname.includes('cdninstagram.com') || parsed.hostname.includes('fbcdn.net')) {
+            urlKey = parsed.origin + parsed.pathname;
+          }
+        } catch (e) {
+          urlKey = cleanUrl.split('?')[0].trim();
+        }
+      }
+
+      let key = "";
+      if (urlKey && urlKey.startsWith('http')) {
+        key = `url:${urlKey}`;
+      } else if (directId) {
+        key = `id:${directId}`;
+      } else {
+        key = `idx:${idx}`;
+      }
+
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        deduplicatedMedia.push({
+          ...item,
+          index: deduplicatedMedia.length
+        });
+      }
+    }
+
+    result.media = deduplicatedMedia;
+
+    if (result.media.length > 1) {
+      result.mediaType = "carousel";
+      if (!result.url && result.media[0].url) {
+        result.url = result.media[0].url;
+      }
+      if (!result.thumbnail && result.media[0].thumbnail) {
+        result.thumbnail = result.media[0].thumbnail;
+      }
+    } else if (result.media.length === 1 && result.mediaType === "carousel") {
+      result.mediaType = result.media[0].type || "image";
+      result.url = result.media[0].url || result.url;
+      result.thumbnail = result.media[0].thumbnail || result.thumbnail;
+    }
+  }
+
+  return result;
+}
+
+function parseBboxObject(obj: any, addMediaFn: Function, postInfo: any, targetCode?: string | null, processedPosts?: Set<string>) {
   if (!obj || typeof obj !== 'object') return;
+  const postsSet = processedPosts || new Set<string>();
 
   if (Array.isArray(obj)) {
-    for (const item of obj) parseBboxObject(item, addMediaFn, postInfo, targetCode);
+    for (const item of obj) parseBboxObject(item, addMediaFn, postInfo, targetCode, postsSet);
     return;
   }
 
@@ -2514,7 +2797,7 @@ function parseBboxObject(obj: any, addMediaFn: Function, postInfo: any, targetCo
     if (targetCode) {
       for (const item of obj.thread_items) {
         if (item.post && item.post.code === targetCode) {
-          processPostData(item.post, addMediaFn, postInfo);
+          processPostData(item.post, addMediaFn, postInfo, postsSet);
           matchedInThread = true;
         }
       }
@@ -2522,25 +2805,32 @@ function parseBboxObject(obj: any, addMediaFn: Function, postInfo: any, targetCo
     if (!matchedInThread) {
       for (const item of obj.thread_items) {
         if (item.post) {
-          processPostData(item.post, addMediaFn, postInfo);
+          processPostData(item.post, addMediaFn, postInfo, postsSet);
         }
       }
     }
   } else if (obj.post) {
     if (!targetCode || obj.post.code === targetCode) {
-      processPostData(obj.post, addMediaFn, postInfo);
+      processPostData(obj.post, addMediaFn, postInfo, postsSet);
     }
   }
 
   for (const key of Object.keys(obj)) {
     if (key !== 'thread_items' && key !== 'post') {
-      parseBboxObject(obj[key], addMediaFn, postInfo, targetCode);
+      parseBboxObject(obj[key], addMediaFn, postInfo, targetCode, postsSet);
     }
   }
 }
 
-function processPostData(post: any, addMediaFn: Function, postInfo: any) {
+function processPostData(post: any, addMediaFn: Function, postInfo: any, processedPosts?: Set<string>) {
   if (!post) return;
+
+  const postId = post.id || post.pk || post.code;
+  if (postId && processedPosts) {
+    const pStr = String(postId);
+    if (processedPosts.has(pStr)) return;
+    processedPosts.add(pStr);
+  }
 
   if (post.caption && post.caption.text && !postInfo.title) {
     postInfo.title = post.caption.text;
@@ -2559,6 +2849,10 @@ function processPostData(post: any, addMediaFn: Function, postInfo: any) {
     for (const cItem of post.carousel_media) {
       processSingleMediaItem(cItem, addMediaFn);
     }
+  } else if (post.edge_sidecar_to_children?.edges && Array.isArray(post.edge_sidecar_to_children.edges)) {
+    for (const edge of post.edge_sidecar_to_children.edges) {
+      if (edge.node) processSingleMediaItem(edge.node, addMediaFn);
+    }
   } else {
     processSingleMediaItem(post, addMediaFn);
   }
@@ -2572,11 +2866,20 @@ function processSingleMediaItem(item: any, addMediaFn: Function) {
     let thumb = "";
     if (item.image_versions2?.candidates?.length > 0) {
       thumb = item.image_versions2.candidates[0].url;
+    } else if (item.display_url) {
+      thumb = item.display_url;
     }
     addMediaFn("video", bestVid.url, thumb || bestVid.url, bestVid.width, bestVid.height);
+  } else if (item.is_video && item.video_url) {
+    addMediaFn("video", item.video_url, item.display_url || item.video_url);
   } else if (item.image_versions2?.candidates?.length > 0) {
     const bestImg = item.image_versions2.candidates[0];
     addMediaFn("image", bestImg.url, bestImg.url, bestImg.width, bestImg.height);
+  } else if (item.display_url) {
+    addMediaFn("image", item.display_url, item.display_url);
+  } else if (item.display_resources && item.display_resources.length > 0) {
+    const bestRes = item.display_resources[item.display_resources.length - 1].src;
+    addMediaFn("image", bestRes, item.display_resources[0].src || bestRes);
   }
 }
 
@@ -2793,10 +3096,11 @@ app.post("/api/download", async (req, res) => {
             racePromises.push(extractYoutubeBtch(trimmedUrl));
             racePromises.push(extractWithYtDlpWithTimeout(trimmedUrl, 3000));
         } else if (trimmedUrl.includes("instagram.com") || trimmedUrl.includes("instagr.am")) {
-            racePromises.push(extractInstagramRapidAPI(trimmedUrl));
-            racePromises.push(extractInstagramRepoBackend(trimmedUrl));
-            racePromises.push(extractInstagramBtch(trimmedUrl));
-            racePromises.push(extractWithYtDlp(trimmedUrl));
+            console.log("[Route] Instagram URL detected, using extractInstagramMaster...");
+            const igResult = await extractInstagramMaster(trimmedUrl);
+            if (igResult && igResult.success) {
+                return res.json(sanitizeExtractorResult(igResult));
+            }
         } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
             const rapidKey = process.env.RAPIDAPI_KEY || process.env.RAPID_API_KEY;
             if (rapidKey) racePromises.push(extractTwitterRapidAPI(trimmedUrl, rapidKey));
@@ -2832,7 +3136,7 @@ app.post("/api/download", async (req, res) => {
         }
         
         if (raceResult && raceResult.success) {
-            return res.json(raceResult);
+            return res.json(sanitizeExtractorResult(raceResult));
         }
 
         let errorMsg = "The media content could not be retrieved. Please verify the link is public and try again.";

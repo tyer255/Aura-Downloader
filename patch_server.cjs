@@ -1,23 +1,14 @@
 const fs = require('fs');
-let code = fs.readFileSync('server.ts', 'utf8');
+let content = fs.readFileSync('server.ts', 'utf8');
 
-// For extractYoutubeBtch
-code = code.replace(
-  /size: "High Definition"/g,
-  `size: undefined`
-).replace(
-  /size: "Audio Only"/g,
-  `size: undefined`
+content = content.replace(
+  'if (items.length === 0) throw new Error("Empty media returned");',
+  'if (items.length === 0) { console.log("btch-downloader returned empty media."); return null; }'
 );
 
-// For extractWithVreden
-code = code.replace(
-  /size: q >= 720 \? "High Definition" : "Standard Quality"/g,
-  `size: undefined`
-).replace(
-  /size: "Ready"/g,
-  `size: undefined`
+content = content.replace(
+  'console.log("btch-downloader error:", e);',
+  '// silently ignore btch-downloader errors to avoid log noise'
 );
 
-fs.writeFileSync('server.ts', code);
-console.log("Updated server.ts sizes");
+fs.writeFileSync('server.ts', content);
