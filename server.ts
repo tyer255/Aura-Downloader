@@ -1184,12 +1184,26 @@ async function extractSpotify(url: string) {
 
             const resolveUrl = `/api/spotify-resolve?trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(trackName)}&artist=${encodeURIComponent(artistName)}&durationMs=${durationMs}`;
             
+            let lyrics = "";
+            let syncedLyrics = "";
+            try {
+              const lyricsRes = await axios.get(`https://lrclib.net/api/search?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistName)}`);
+              if (lyricsRes.data && lyricsRes.data.length > 0) {
+                lyrics = lyricsRes.data[0].plainLyrics || "";
+                syncedLyrics = lyricsRes.data[0].syncedLyrics || "";
+              }
+            } catch (e) {
+              // Ignore lyrics fetch errors
+            }
+            
             return {
                 success: true,
                 mediaType: 'audio',
                 title: trackName + (artistName ? ` - ${artistName}` : ""),
                 thumbnail: thumb,
                 source: "spotify",
+                lyrics,
+                syncedLyrics,
                 qualities: [
                     { label: "MP3 Audio", url: resolveUrl, ext: "mp3", isAudio: true, size: "Unknown Size", _query: `${trackName} ${artistName}` }
                 ]

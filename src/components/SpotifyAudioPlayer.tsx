@@ -92,9 +92,15 @@ export function SpotifyAudioPlayer({
       if (idx !== activeLyricIndex) {
         setActiveLyricIndex(idx);
         if (lyricsContainerRef.current) {
-          const activeEl = lyricsContainerRef.current.children[idx] as HTMLElement;
+          const container = lyricsContainerRef.current;
+          const activeEl = container.children[idx] as HTMLElement;
           if (activeEl) {
-            activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const containerCenter = container.clientHeight / 2;
+            const elCenter = activeEl.offsetTop + (activeEl.clientHeight / 2);
+            container.scrollTo({
+              top: elCenter - containerCenter,
+              behavior: 'smooth'
+            });
           }
         }
       }
@@ -668,8 +674,8 @@ export function SpotifyAudioPlayer({
         </div>
 
         {/* Volume & Download CTA */}
-        <div className="flex items-center gap-3 order-3 w-full sm:w-auto justify-between sm:justify-end">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-center gap-3 order-3 w-full sm:w-auto justify-center sm:justify-end mt-2 sm:mt-0">
+          <div className="flex items-center justify-center gap-2 w-full sm:w-auto">
             {parsedLyrics.length > 0 && (
               <button
                 type="button"
@@ -688,7 +694,7 @@ export function SpotifyAudioPlayer({
               type="button"
               onClick={toggleMute}
               className={clsx(
-                "p-1.5 rounded-lg transition-colors cursor-pointer",
+                "p-1.5 rounded-lg transition-colors cursor-pointer shrink-0",
                 isLight ? "hover:bg-neutral-200 text-neutral-700" : "hover:bg-white/10 text-neutral-300"
               )}
             >
@@ -701,7 +707,7 @@ export function SpotifyAudioPlayer({
               step="0.05"
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
-              className="w-16 sm:w-20 h-1.5 accent-[#1DB954] bg-neutral-700/50 rounded-lg cursor-pointer"
+              className="w-16 sm:w-20 h-1.5 accent-[#1DB954] bg-neutral-700/50 rounded-lg cursor-pointer shrink-0"
             />
           </div>
 
@@ -711,7 +717,7 @@ export function SpotifyAudioPlayer({
               onClick={onDownload}
               disabled={downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading"}
               className={clsx(
-                "px-6 py-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-md uppercase tracking-wider cursor-pointer shrink-0 disabled:cursor-not-allowed active:scale-95 hover:shadow-lg",
+                "w-full sm:w-auto justify-center px-6 py-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-md uppercase tracking-wider cursor-pointer shrink-0 disabled:cursor-not-allowed active:scale-95 hover:shadow-lg",
                 downloadStatus?.status === "complete"
                   ? "bg-emerald-600 text-white"
                   : isLight
@@ -746,11 +752,11 @@ export function SpotifyAudioPlayer({
         {showLyrics && parsedLyrics.length > 0 && (
           <motion.div
             initial={{ opacity: 0, height: 0, y: -10 }}
-            animate={{ opacity: 1, height: 320, y: 0 }}
+            animate={{ opacity: 1, height: "auto", y: 0 }}
             exit={{ opacity: 0, height: 0, y: -10 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
             className={clsx(
-              "mt-4 rounded-xl overflow-hidden relative group/lyrics shadow-inner",
+              "mt-4 rounded-xl overflow-hidden relative group/lyrics shadow-inner w-full",
               isLight ? "bg-white/80 border border-neutral-200" : "bg-black/40 border border-white/5"
             )}
           >
@@ -779,13 +785,13 @@ export function SpotifyAudioPlayer({
             
             <div 
               ref={lyricsContainerRef}
-              className="h-full overflow-y-auto scroll-smooth py-32 px-6 sm:px-10 space-y-6 no-scrollbar relative flex flex-col"
+              className="max-h-[400px] overflow-y-auto scroll-smooth py-20 px-6 sm:px-10 space-y-6 no-scrollbar relative flex flex-col w-full"
             >
               {parsedLyrics.map((lyric, idx) => (
                 <div
                   key={idx}
                   className={clsx(
-                    "transition-all duration-700 ease-out font-black text-2xl sm:text-3xl cursor-pointer origin-left",
+                    "transition-all duration-700 ease-out font-black text-2xl sm:text-3xl cursor-pointer origin-left break-words whitespace-pre-wrap",
                     activeLyricIndex === idx 
                       ? (isLight ? "text-neutral-900 opacity-100 scale-105 translate-x-2" : "text-white opacity-100 scale-105 translate-x-2 drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]") 
                       : (isLight ? "text-neutral-400 opacity-30 hover:opacity-60" : "text-neutral-500 opacity-20 hover:opacity-60 blur-[1px]")
