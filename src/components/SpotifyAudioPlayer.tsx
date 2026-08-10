@@ -32,6 +32,8 @@ interface SpotifyAudioPlayerProps {
   onDownload?: () => void;
   downloadStatus?: { status: "preparing" | "downloading" | "complete" | "failed"; progress: number | null } | null;
   compact?: boolean;
+  lyrics?: string;
+  syncedLyrics?: string;
 }
 
 export function SpotifyAudioPlayer({
@@ -41,7 +43,9 @@ export function SpotifyAudioPlayer({
   isLight = false,
   onDownload,
   downloadStatus,
-  compact = false
+  compact = false,
+  lyrics,
+  syncedLyrics
 }: SpotifyAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -57,6 +61,45 @@ export function SpotifyAudioPlayer({
   const [isLooping, setIsLooping] = useState(false);
   const [resolveProgress, setResolveProgress] = useState(0);
   const [resolveMessage, setResolveMessage] = useState("Resolving Spotify source...");
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [parsedLyrics, setParsedLyrics] = useState<{time: number, text: string}[]>([]);
+  const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
+  const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (syncedLyrics) {
+      const lines = syncedLyrics.split('\n');
+      const parsed = lines.map(line => {
+        const match = line.match(/\[(\d+):(\d+\.\d+)\](.*)/);
+        if (match) {
+          const minutes = parseInt(match[1]);
+          const seconds = parseFloat(match[2]);
+          const text = match[3].trim();
+          return { time: minutes * 60 + seconds, text };
+        }
+        return null;
+      }).filter(Boolean) as {time: number, text: string}[];
+      setParsedLyrics(parsed);
+    }
+  }, [syncedLyrics]);
+
+  useEffect(() => {
+    if (showLyrics && parsedLyrics.length > 0) {
+      const idx = parsedLyrics.findIndex((l, i) => {
+        const next = parsedLyrics[i + 1];
+        return currentTime >= l.time && (!next || currentTime < next.time);
+      });
+      if (idx !== activeLyricIndex) {
+        setActiveLyricIndex(idx);
+        if (lyricsContainerRef.current) {
+          const activeEl = lyricsContainerRef.current.children[idx] as HTMLElement;
+          if (activeEl) {
+            activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+      }
+    }
+  }, [currentTime, showLyrics, parsedLyrics, activeLyricIndex]);
 
   const toggleLoop = () => {
     const next = !isLooping;
@@ -627,6 +670,20 @@ export function SpotifyAudioPlayer({
         {/* Volume & Download CTA */}
         <div className="flex items-center gap-3 order-3 w-full sm:w-auto justify-between sm:justify-end">
           <div className="flex items-center gap-2">
+            {parsedLyrics.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowLyrics(!showLyrics)}
+                className={clsx(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm",
+                  showLyrics 
+                    ? "bg-[#1DB954] text-black" 
+                    : isLight ? "bg-neutral-200 text-neutral-800 hover:bg-neutral-300" : "bg-white/10 text-white hover:bg-white/20"
+                )}
+              >
+                Lyrics
+              </button>
+            )}
             <button
               type="button"
               onClick={toggleMute}
@@ -683,6 +740,69 @@ export function SpotifyAudioPlayer({
         </div>
 
       </div>
+
+      {/* Lyrics Pane */}
+      <AnimatePresence>
+        {showLyrics && parsedLyrics.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, y: -10 }}
+            animate={{ opacity: 1, height: 320, y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -10 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className={clsx(
+              "mt-4 rounded-xl overflow-hidden relative group/lyrics shadow-inner",
+              isLight ? "bg-white/80 border border-neutral-200" : "bg-black/40 border border-white/5"
+            )}
+          >
+            {/* Action Buttons Overlay */}
+            <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover/lyrics:opacity-100 transition-opacity">
+              <button
+                type="button"
+                onClick={() => {
+                  const fullLyrics = lyrics || parsedLyrics.map(l => l.text).join('\n');
+                  if (fullLyrics) navigator.clipboard.writeText(fullLyrics);
+                }}
+                className={clsx(
+                  "p-2 rounded-lg backdrop-blur-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95",
+                  isLight ? "bg-white/90 hover:bg-white text-neutral-800" : "bg-black/60 hover:bg-black/80 text-white"
+                )}
+                title="Copy Lyrics"
+              >
+                <Download className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-wider">Extract</span>
+              </button>
+            </div>
+
+            {/* Top/Bottom Fade Gradients */}
+            <div className={clsx("absolute top-0 left-0 right-0 h-16 z-10 pointer-events-none bg-gradient-to-b", isLight ? "from-white/90 to-transparent" : "from-black/90 to-transparent")} />
+            <div className={clsx("absolute bottom-0 left-0 right-0 h-16 z-10 pointer-events-none bg-gradient-to-t", isLight ? "from-white/90 to-transparent" : "from-black/90 to-transparent")} />
+            
+            <div 
+              ref={lyricsContainerRef}
+              className="h-full overflow-y-auto scroll-smooth py-32 px-6 sm:px-10 space-y-6 no-scrollbar relative flex flex-col"
+            >
+              {parsedLyrics.map((lyric, idx) => (
+                <div
+                  key={idx}
+                  className={clsx(
+                    "transition-all duration-700 ease-out font-black text-2xl sm:text-3xl cursor-pointer origin-left",
+                    activeLyricIndex === idx 
+                      ? (isLight ? "text-neutral-900 opacity-100 scale-105 translate-x-2" : "text-white opacity-100 scale-105 translate-x-2 drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]") 
+                      : (isLight ? "text-neutral-400 opacity-30 hover:opacity-60" : "text-neutral-500 opacity-20 hover:opacity-60 blur-[1px]")
+                  )}
+                  onClick={() => {
+                    if (audioRef.current) {
+                      audioRef.current.currentTime = lyric.time;
+                    }
+                  }}
+                >
+                  {lyric.text || "♪"}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

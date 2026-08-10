@@ -3933,6 +3933,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                         thumbnail={result.thumbnail}
                         audioUrl={result.qualities?.[0]?.url || result.url || ''}
                         isLight={isLight}
+                        lyrics={result.lyrics}
+                        syncedLyrics={result.syncedLyrics}
                         onDownload={() => {
                           const dlUrl = result.qualities?.[0]?.url || result.url || '';
                           const fn = (result.title || "spotify_track").slice(0, 30).trim() + ".mp3";

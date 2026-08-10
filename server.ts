@@ -1071,6 +1071,18 @@ async function extractSpotify(url: string) {
               ? details.trackName + (details.primaryArtist ? ` - ${details.primaryArtist}` : "")
               : "Spotify Track";
 
+            let lyrics = "";
+            let syncedLyrics = "";
+            try {
+              const lyricsRes = await axios.get(`https://lrclib.net/api/search?track_name=${encodeURIComponent(details.trackName)}&artist_name=${encodeURIComponent(details.primaryArtist)}`);
+              if (lyricsRes.data && lyricsRes.data.length > 0) {
+                lyrics = lyricsRes.data[0].plainLyrics || "";
+                syncedLyrics = lyricsRes.data[0].syncedLyrics || "";
+              }
+            } catch (e) {
+              // Ignore lyrics fetch errors
+            }
+
             const resolveUrl = `/api/spotify-resolve?trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(details.trackName)}&artist=${encodeURIComponent(details.primaryArtist)}&artists=${encodeURIComponent(details.allArtists.join(','))}&durationMs=${details.durationMs}&isrc=${encodeURIComponent(details.isrc)}`;
 
             return {
@@ -1079,6 +1091,8 @@ async function extractSpotify(url: string) {
               title: title,
               thumbnail: details.thumbnail,
               source: "spotify",
+              lyrics,
+              syncedLyrics,
               qualities: [
                 {
                   label: "MP3 Audio",
@@ -3334,6 +3348,38 @@ app.post("/api/download", async (req, res) => {
   });
 
   
+
+  app.get("/api/lyrics", async (req, res) => {
+    try {
+      const trackName = (req.query.track_name as string) || (req.query.title as string) || "";
+      const artistName = (req.query.artist_name as string) || (req.query.artist as string) || "";
+
+      if (!trackName) {
+        return res.status(400).json({ success: false, message: "Missing track name" });
+      }
+
+      const axios = (await import('axios')).default;
+      let lyrics = "";
+      let syncedLyrics = "";
+
+      const queryUrl = `https://lrclib.net/api/search?track_name=${encodeURIComponent(trackName)}${artistName ? `&artist_name=${encodeURIComponent(artistName)}` : ""}`;
+      const lyricsRes = await axios.get(queryUrl);
+
+      if (lyricsRes.data && lyricsRes.data.length > 0) {
+        lyrics = lyricsRes.data[0].plainLyrics || "";
+        syncedLyrics = lyricsRes.data[0].syncedLyrics || "";
+      }
+
+      return res.json({
+        success: true,
+        lyrics,
+        syncedLyrics
+      });
+    } catch (e: any) {
+      console.error("Lyrics fetch error:", e.message);
+      return res.status(500).json({ success: false, message: "Failed to fetch lyrics" });
+    }
+  });
 
   app.get("/api/proxy-image", async (req, res) => {
     const imageUrl = req.query.url;

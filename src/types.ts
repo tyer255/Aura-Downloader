@@ -11,8 +11,10 @@ export interface DownloadResult {
     title?: string;
     description?: string;
     thumbnail?: string;
-    mediaType?: 'video' | 'image' | 'profile' | 'carousel' | 'playlist';
+    mediaType?: 'video' | 'image' | 'profile' | 'carousel' | 'playlist' | 'audio';
     qualities?: MediaQuality[];
+    lyrics?: string;
+    syncedLyrics?: string;
     media?: Array<{
         url: string;
         type: 'video' | 'image';
