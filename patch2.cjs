@@ -1,18 +1,45 @@
 const fs = require('fs');
-let serverContent = fs.readFileSync('server.ts', 'utf8');
+let code = fs.readFileSync('server.ts', 'utf8');
 
-serverContent = serverContent.replace(
-  `        } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {`,
-  `        } else if (platform === 'snapchat') {
-           console.log("Snapchat URL detected as profile/story, extracting with yt-dlp playlist.");
-           const ytDlpResult = await extractWithYtDlp(trimmedUrl, true);
-           if (ytDlpResult && ytDlpResult.success) {
-             return res.json(ytDlpResult);
-           } else {
-             return res.status(400).json({ success: false, message: "Could not extract Snapchat content. It may be private or unavailable." });
-           }
-        } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {`
-);
+const target = `    }
+  } catch (e) {}
 
-fs.writeFileSync('server.ts', serverContent);
-console.log("Patched server.ts for snapchat profile block");
+  return null;
+}
+
+async function extractInstagramRepoBackend(url: string) {`;
+
+const replacement = `    }
+
+    const videoMatch = html.match(/"video_url":"([^"]+)"/);
+    const thumbMatch = html.match(/"display_url":"([^"]+)"/);
+    
+    if (videoMatch || thumbMatch) {
+      const mediaUrl = videoMatch ? videoMatch[1].replace(/\\\\u0026/g, '&') : (thumbMatch ? thumbMatch[1].replace(/\\\\u0026/g, '&') : "");
+      const thumbnail = thumbMatch ? thumbMatch[1].replace(/\\\\u0026/g, '&') : mediaUrl;
+      const mediaType = videoMatch ? "video" : "image";
+      return {
+        success: true,
+        title: videoMatch ? "Instagram Reel" : "Instagram Post",
+        thumbnail,
+        url: mediaUrl,
+        mediaType,
+        media: [{ type: mediaType, url: mediaUrl, thumbnail }],
+        source: "embed_regex"
+      };
+    }
+
+  } catch (e) {}
+
+  return null;
+}
+
+async function extractInstagramRepoBackend(url: string) {`;
+
+if (code.includes(target)) {
+  code = code.replace(target, replacement);
+  fs.writeFileSync('server.ts', code);
+  console.log("Patched fallback successfully!");
+} else {
+  console.log("Target not found!");
+}

@@ -1299,14 +1299,14 @@ ${cleanedHtml.substring(0, 800000)}
       if (!text && lastError) throw lastError;
       if (text) {
         text = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-        const parsed = JSON.parse(text);
+        console.log("GEMINI TEXT:", text); const parsed = JSON.parse(text);
         if (parsed) {
           console.log("Gemini metadata extraction successful. Parsed keys:", Object.keys(parsed));
           
           // Fix: Prevent returning broken image URL if extraction failed to find actual media
           if (!parsed.directUrl && !parsed.thumbnail) {
             console.log("Gemini parsed response but found no directUrl or thumbnail. Failing extraction.");
-            return null; // fallback to generic error instead of returning a broken URL
+            return { success: false, message: "Gemini parsed response but found no directUrl or thumbnail.", parsed, raw: text };
           }
 
           return {
@@ -1356,10 +1356,7 @@ function getFallbackQualities(url: string, mediaType: string = "video") {
   if (mediaType === "video") {
     const mp3Url = `/api/proxy-download?url=${encodeURIComponent(url)}&filename=audio.mp3&extractAudio=true`;
     return [
-      { label: "1080p (Full HD)", url: url, ext: "mp4", size: "High Definition" },
-      { label: "720p (HD Video)", url: url, ext: "mp4", size: "Standard HD" },
-      { label: "480p (SD Video)", url: url, ext: "mp4", size: "Standard Definition" },
-      { label: "360p (Mobile Video)", url: url, ext: "mp4", size: "Low Bandwidth" },
+      { label: "HD Video (Original)", url: url, ext: "mp4", size: "Original Quality" },
       { label: "MP3 Audio", url: mp3Url, ext: "mp3", size: "Audio Only" }
     ];
   }
@@ -1495,6 +1492,11 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
       }
 
       const contentType = response.headers["content-type"] || "application/octet-stream";
+      if (contentType.toLowerCase().includes("text/html")) {
+        console.error(`Source server returned HTML instead of media for URL: ${targetUrl}`);
+        response.destroy();
+        return res.status(403).send(`Error 403: Link expired or access denied by source server.`);
+      }
       const contentLength = response.headers["content-length"];
 
       let ext = "mp4";
@@ -1527,10 +1529,25 @@ function pipeUrlStream(fileUrl: string, res: any, customFilename: string, inline
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "*");
 
-      const encodedFilename = encodeURIComponent(((customFilename || "download") as string).replace(/[\r\n]+/g, ''));
-      const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
+      
+      // Fully encode for filename* according to RFC 5987
+      const encodedFilename = encodeURIComponent(filename.replace(/[\r\n]+/g, ''))
+          .replace(/['()]/g, escape)
+          .replace(/\*/g, '%2A');
+      const safeFilename = filename.replace(/[^a-zA-Z0-9_.-]/g, "_"); 
+      const disposition = inline ? "inline" : `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`;
       res.setHeader("Content-Disposition", disposition);
-      res.setHeader("Content-Type", contentType);
+      let finalContentType = contentType;
+      if (filename.toLowerCase().endsWith(".mp4")) {
+        finalContentType = "video/mp4";
+      } else if (filename.toLowerCase().endsWith(".mp3")) {
+        finalContentType = "audio/mpeg";
+      } else if (filename.toLowerCase().endsWith(".jpg") || filename.toLowerCase().endsWith(".jpeg")) {
+        finalContentType = "image/jpeg";
+      } else if (filename.toLowerCase().endsWith(".png")) {
+        finalContentType = "image/png";
+      }
+      res.setHeader("Content-Type", finalContentType);
       if (contentLength) {
         res.setHeader("Content-Length", contentLength);
       }
@@ -2065,6 +2082,7 @@ function extractCarouselItemsFromNode(postObj: any, shortcodeStr?: string): any[
     }
 
     if (!url || typeof url !== 'string' || !url.startsWith('http')) continue;
+    if (!isVideo && (url.includes('mp4') || url.includes('webm') || url.includes('video'))) { isVideo = true; }
 
     let thumb = "";
     if (child.image_versions2 && child.image_versions2.candidates && Array.isArray(child.image_versions2.candidates) && child.image_versions2.candidates.length > 0) {
@@ -2275,18 +2293,27 @@ async function extractInstagramBtch(url: string) {
     const b = await getBtch();
     const r = await b.igdl(url);
     if (r && r.status && r.result && Array.isArray(r.result) && r.result.length > 0) {
-      const carouselItems = extractCarouselItemsFromNode({ carousel_media: r.result });
-      if (carouselItems.length > 0) {
-        return {
-          success: true,
-          title: carouselItems.length > 1 ? "Instagram Carousel" : (carouselItems[0].type === "video" ? "Instagram Reel" : "Instagram Post"),
-          thumbnail: carouselItems[0].thumbnail,
-          url: carouselItems[0].url,
-          mediaType: carouselItems.length > 1 ? "carousel" : carouselItems[0].type,
-          media: carouselItems,
-          source: "btch"
-        };
-      }
+      const items: any[] = r.result.filter((i: any) => i.url); // filter out empty URLs
+      if (items.length === 0) throw new Error("No valid items");
+      const media = items.map((item: any) => {
+        const type = inferInstagramType(item, url);
+        return { type, url: item.url, thumbnail: item.thumbnail || item.url };
+      });
+      const primary = media[0];
+      const qualities = primary.type === "video"
+        ? getFallbackQualities(primary.url, "video")
+        : undefined;
+
+      return {
+        success: true,
+        title: media.length > 1 ? "Instagram Carousel" : (primary.type === "video" ? "Instagram Reel" : "Instagram Post"),
+        thumbnail: primary.thumbnail,
+        url: primary.url,
+        mediaType: media.length > 1 ? "carousel" : primary.type,
+        media: media,
+        qualities,
+        source: "btch"
+      };
     }
   } catch (e) {
     // silently ignore btch-downloader errors
@@ -2561,6 +2588,25 @@ async function extractInstagramEmbedScraper(url: string) {
         }
       }
     }
+
+    const videoMatch = html.match(/"video_url":"([^"]+)"/);
+    const thumbMatch = html.match(/"display_url":"([^"]+)"/);
+    
+    if (videoMatch || thumbMatch) {
+      const mediaUrl = videoMatch ? videoMatch[1].replace(/\\u0026/g, '&') : (thumbMatch ? thumbMatch[1].replace(/\\u0026/g, '&') : "");
+      const thumbnail = thumbMatch ? thumbMatch[1].replace(/\\u0026/g, '&') : mediaUrl;
+      const mediaType = videoMatch ? "video" : "image";
+      return {
+        success: true,
+        title: videoMatch ? "Instagram Reel" : "Instagram Post",
+        thumbnail,
+        url: mediaUrl,
+        mediaType,
+        media: [{ type: mediaType, url: mediaUrl, thumbnail }],
+        source: "embed_regex"
+      };
+    }
+
   } catch (e) {}
 
   return null;
@@ -2645,10 +2691,42 @@ async function extractInstagramMaster(url: string): Promise<any> {
     extractInstagramRapidAPI(url),
     extractInstagramRepoBackend(url),
     extractInstagramEmbedScraper(url),
-    extractInstagramBtch(url),
-    extractWithYtDlp(url)
+    extractInstagramBtch(url)
   ];
 
+  // Try to return early if we find a good match fast
+  try {
+    const fastWinner = await Promise.any(candidates.map(async (p) => {
+      const r = await p;
+      if (r && r.success) {
+        const sanitized = sanitizeExtractorResult(r);
+        if (sanitized && (sanitized.url || (sanitized.media && sanitized.media.length > 0))) {
+          const itemCount = sanitized.media ? sanitized.media.length : (sanitized.url ? 1 : 0);
+          const isCarousel = sanitized.mediaType === 'carousel' || itemCount > 1;
+          const isVideo = sanitized.mediaType === 'video' || (sanitized.media && sanitized.media.length > 0 && sanitized.media[0].type === 'video');
+          
+          if (isCarousel) {
+             return sanitized; // Great result
+          } else if (isReel && isVideo) {
+             return sanitized; // Great result for reels
+          } else if (!isReel) {
+             return sanitized; // Great result for posts
+          }
+        }
+      }
+      throw new Error("Not a perfect match");
+    }));
+    
+    if (fastWinner) {
+       console.log(`[Instagram Master] Fast resolved via ${fastWinner.source || 'unknown'} (mediaType: ${fastWinner.mediaType})`);
+       return fastWinner;
+    }
+  } catch(e) {
+    // All fast promises threw or didn't meet perfect criteria, wait for all.
+  }
+
+  // Fallback: wait for yt-dlp and others if all fast ones failed
+  candidates.push(extractWithYtDlp(url));
   const results = await Promise.allSettled(candidates);
   const successful: any[] = [];
 
@@ -3627,8 +3705,16 @@ app.post("/api/download", async (req, res) => {
 
     if (extractAudio) {
       res.setHeader('Content-Type', 'audio/mpeg');
-      const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
-      const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
+      let finalFilename = typeof customFilename === "string" ? customFilename : "download";
+      if (!finalFilename.includes(".")) {
+          finalFilename += ".mp3"; // audio fallback
+      }
+      const encodedFilename = encodeURIComponent(finalFilename.replace(/[\r\n]+/g, ''))
+          .replace(/['()]/g, escape)
+          .replace(/\*/g, '%2A');
+      const safeFilename = finalFilename.replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const disposition = inline ? "inline" : `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`;
+  
       res.setHeader('Content-Disposition', disposition);
 
       const ffmpeg = spawn('ffmpeg', [
@@ -3651,8 +3737,17 @@ app.post("/api/download", async (req, res) => {
       });
     } else if (mux && audioUrl) {
       res.setHeader('Content-Type', 'video/mp4');
-      const encodedFilename = encodeURIComponent((customFilename as string).replace(/[\r\n]+/g, ''));
-      const disposition = inline ? "inline" : `attachment; filename*=UTF-8''${encodedFilename}`;
+      
+      let finalFilename = typeof customFilename === "string" ? customFilename : "download";
+      if (!finalFilename.includes(".")) {
+          finalFilename += ".mp4"; // generic fallback
+      }
+      const encodedFilename = encodeURIComponent(finalFilename.replace(/[\r\n]+/g, ''))
+          .replace(/['()]/g, escape)
+          .replace(/\*/g, '%2A');
+      const safeFilename = finalFilename.replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const disposition = inline ? "inline" : `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`;
+  
       res.setHeader('Content-Disposition', disposition);
 
       // Mux using ffmpeg safely with spawn

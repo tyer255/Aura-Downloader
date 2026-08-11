@@ -1,16 +1,33 @@
 const fs = require('fs');
-let serverContent = fs.readFileSync('server.ts', 'utf8');
+let code = fs.readFileSync('server.ts', 'utf8');
 
-serverContent = serverContent.replace(
-  `        } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
-          errorMsg = "Twitter blocked our server IP for unauthenticated requests. Add your RAPIDAPI_KEY to AI Studio Secrets and subscribe to 'Twitter135' on RapidAPI, OR set your TWITTER_AUTH_TOKEN.";
-        }`,
-  `        } else if (platform === 'x' || lowerUrl.includes("x.com") || lowerUrl.includes("twitter.com")) {
-          errorMsg = "Twitter blocked our server IP for unauthenticated requests. Add your RAPIDAPI_KEY to AI Studio Secrets and subscribe to 'Twitter135' on RapidAPI, OR set your TWITTER_AUTH_TOKEN.";
-        } else if (platform === 'snapchat') {
-          errorMsg = "This Snapchat content is private or unavailable.";
-        }`
-);
+const target = `    if (r && r.status && r.result && Array.isArray(r.result) && r.result.length > 0) {
+      const items: any[] = r.result;
+      const media = items.map((item: any) => {
+        const type = inferInstagramType(item, url);
+        return { type, url: item.url, thumbnail: item.thumbnail || item.url };
+      });
+      const primary = media[0];
+      const qualities = primary.type === "video"
+        ? getFallbackQualities(primary.url, "video")
+        : undefined;`;
 
-fs.writeFileSync('server.ts', serverContent);
-console.log("Patched server.ts for snapchat error msg");
+const replacement = `    if (r && r.status && r.result && Array.isArray(r.result) && r.result.length > 0) {
+      const items: any[] = r.result.filter((i: any) => i.url); // filter out empty URLs
+      if (items.length === 0) throw new Error("No valid items");
+      const media = items.map((item: any) => {
+        const type = inferInstagramType(item, url);
+        return { type, url: item.url, thumbnail: item.thumbnail || item.url };
+      });
+      const primary = media[0];
+      const qualities = primary.type === "video"
+        ? getFallbackQualities(primary.url, "video")
+        : undefined;`;
+
+if (code.includes(target)) {
+  code = code.replace(target, replacement);
+  fs.writeFileSync('server.ts', code);
+  console.log("Patched filter successfully!");
+} else {
+  console.log("Target not found!");
+}

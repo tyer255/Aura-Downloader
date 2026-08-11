@@ -1923,12 +1923,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         
         if (data && data.url) {
            const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(filename)}`;
-           const a = document.createElement('a');
-           a.href = proxyUrl;
-           a.download = filename || 'download';
-           document.body.appendChild(a);
-           a.click();
-           document.body.removeChild(a);
+           window.location.href = proxyUrl;
            
            setActiveDownloads(prev => ({
              ...prev,
@@ -1969,12 +1964,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
     const throttleParam = throttleSetting !== "unlimited" ? `&throttle=${throttleSetting}` : "";
     const finalFetchUrl = fetchUrl.includes("?") ? `${fetchUrl}${throttleParam}` : `${fetchUrl}?${throttleParam}`;
 
-    const a = document.createElement('a');
-    a.href = finalFetchUrl;
-    a.download = filename || 'download';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    window.location.href = finalFetchUrl;
     
     setHistoryToast("Download started!");
     setTimeout(() => setHistoryToast(null), 3000);
@@ -1999,16 +1989,8 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       const throttleParam = throttleSetting !== "unlimited" ? `&throttle=${throttleSetting}` : "";
       const finalFetchUrl = fetchUrl.includes("?") ? `${fetchUrl}${throttleParam}` : `${fetchUrl}?${throttleParam}`;
 
-      const a = document.createElement('a');
-      a.href = finalFetchUrl;
-      a.download = filename || 'download';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      
-      setTimeout(() => {
-        if (document.body.contains(a)) document.body.removeChild(a);
-      }, 1000);
+      // Use window.location.href for better native Android WebView download interception
+      window.location.href = finalFetchUrl;
 
       showNotification("Download Started", {
         body: `Direct download started for: ${filename}`,
@@ -4117,10 +4099,17 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                             {result.description}
                           </p>
                         )}
-                        {(result.qualities && result.qualities.length > 0) ? (() => {
+                        {((result.qualities && result.qualities.length > 0) || result.url) ? (() => {
                           const sanitized = sanitizeQualities(result.qualities, result.url);
                           
-
+                          if (result.mediaType === 'video' && !sanitized.some(q => q.ext === 'mp3' || (q.label && q.label.toLowerCase().includes('mp3')))) {
+                            sanitized.push({
+                              label: "MP3 Audio",
+                              url: `/api/proxy-download?url=${encodeURIComponent(result.url)}&filename=audio.mp3&extractAudio=true`,
+                              ext: "mp3",
+                              size: "Audio Only"
+                            });
+                          }
 
                           if (sanitized.length > 0) {
                             const videoOptions = sanitized.filter(q => !q.isAudio);
