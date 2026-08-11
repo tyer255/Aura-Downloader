@@ -2098,6 +2098,177 @@ function extractCarouselItemsFromNode(postObj: any, shortcodeStr?: string): any[
   return items;
 }
 
+async function extractInstagramGraphQL(urlStr: string): Promise<any> {
+  console.log(`[Instagram GraphQL] Attempting GraphQL query for: ${urlStr}`);
+  const match = urlStr.match(/(?:p|reel|tv|stories\/[^\/?#&]+)\/([^\/?#&]+)/);
+  if (!match || !match[1]) return null;
+  const shortcode = match[1];
+
+  const docIds = [
+    "10015901848480474", // xdt_shortcode_media
+    "24368985919464652", // xdt_api__v1__media__shortcode__web_info
+    "8845758582119845"
+  ];
+
+  for (const docId of docIds) {
+    try {
+      const gqlUrl = `https://www.instagram.com/graphql/query/?doc_id=${docId}&variables=${encodeURIComponent(JSON.stringify({ shortcode }))}`;
+      const res = await fetch(gqlUrl, {
+        signal: AbortSignal.timeout(6000),
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          "X-IG-App-ID": "936619743392459",
+          "Sec-Fetch-Mode": "cors",
+          "Accept": "*/*"
+        }
+      });
+      if (!res.ok) continue;
+
+      const data: any = await res.json();
+      if (!data || !data.data) continue;
+
+      // 1. Handle doc_id 10015901848480474 (xdt_shortcode_media)
+      if (data.data.xdt_shortcode_media) {
+        const media = data.data.xdt_shortcode_media;
+        
+        // Caption
+        const captionNode = media.edge_media_to_caption?.edges?.[0]?.node;
+        const captionText = captionNode?.text || media.title || "";
+        const title = captionText ? captionText.substring(0, 60) : (urlStr.toLowerCase().includes('/reel/') ? "Instagram Reel" : "Instagram Post");
+
+        // Check carousel sidecar
+        if (media.edge_sidecar_to_children?.edges?.length > 0) {
+          const carouselItems = media.edge_sidecar_to_children.edges.map((edge: any, idx: number) => {
+            const n = edge.node || edge;
+            const isVid = n.is_video || !!n.video_url || n.__typename === 'XDTGraphVideo';
+            const itemRawUrl = isVid ? (n.video_url || n.display_url) : n.display_url;
+            const itemThumb = n.display_url || itemRawUrl;
+            const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(itemRawUrl)}&filename=instagram_${isVid ? 'video' : 'image'}_${idx + 1}`;
+            return {
+              type: isVid ? "video" : "image",
+              url: proxyUrl,
+              thumbnail: itemThumb,
+              id: String(n.id || `item_${idx}`),
+              mediaId: String(n.id || `item_${idx}`),
+              index: idx
+            };
+          }).filter((i: any) => i.url);
+
+          if (carouselItems.length > 0) {
+            return {
+              success: true,
+              title: carouselItems.length > 1 ? "Instagram Carousel" : title,
+              thumbnail: carouselItems[0].thumbnail,
+              url: carouselItems[0].url,
+              mediaType: carouselItems.length > 1 ? "carousel" : carouselItems[0].type,
+              media: carouselItems,
+              source: "graphql_sidecar"
+            };
+          }
+        }
+
+        // Single media (video / reel or photo)
+        const isVideo = media.is_video || !!media.video_url || media.__typename === "XDTGraphVideo" || urlStr.toLowerCase().includes('/reel/');
+        const rawMediaUrl = isVideo ? (media.video_url || media.display_url) : media.display_url;
+        const thumbnail = media.display_url || rawMediaUrl;
+        const mediaType = isVideo ? "video" : "image";
+
+        if (rawMediaUrl) {
+          const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(rawMediaUrl)}&filename=instagram_${mediaType}`;
+          return {
+            success: true,
+            title,
+            thumbnail,
+            url: proxyUrl,
+            mediaType,
+            media: [{
+              type: mediaType,
+              url: proxyUrl,
+              thumbnail,
+              id: String(media.id || shortcode),
+              mediaId: String(media.id || shortcode),
+              index: 0
+            }],
+            source: "graphql_media"
+          };
+        }
+      }
+
+      // 2. Handle doc_id 24368985919464652 (xdt_api__v1__media__shortcode__web_info)
+      const items = data.data.xdt_api__v1__media__shortcode__web_info?.items;
+      if (items && items.length > 0) {
+        const item = items[0];
+        const captionText = item.caption?.text || "";
+        const title = captionText ? captionText.substring(0, 60) : (urlStr.toLowerCase().includes('/reel/') ? "Instagram Reel" : "Instagram Post");
+
+        if (item.carousel_media && item.carousel_media.length > 0) {
+          const carouselItems = item.carousel_media.map((c: any, idx: number) => {
+            const isVid = c.media_type === 2 || !!c.video_versions;
+            const itemRawUrl = isVid ? (c.video_versions?.[0]?.url || c.image_versions2?.candidates?.[0]?.url) : c.image_versions2?.candidates?.[0]?.url;
+            const itemThumb = c.image_versions2?.candidates?.[0]?.url || itemRawUrl;
+            const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(itemRawUrl)}&filename=instagram_${isVid ? 'video' : 'image'}_${idx + 1}`;
+            return {
+              type: isVid ? "video" : "image",
+              url: proxyUrl,
+              thumbnail: itemThumb,
+              id: String(c.id || `item_${idx}`),
+              mediaId: String(c.id || `item_${idx}`),
+              index: idx
+            };
+          }).filter((i: any) => i.url);
+
+          if (carouselItems.length > 0) {
+            return {
+              success: true,
+              title: carouselItems.length > 1 ? "Instagram Carousel" : title,
+              thumbnail: carouselItems[0].thumbnail,
+              url: carouselItems[0].url,
+              mediaType: carouselItems.length > 1 ? "carousel" : carouselItems[0].type,
+              media: carouselItems,
+              source: "graphql_web_info_carousel"
+            };
+          }
+        }
+
+        const isVideo = item.media_type === 2 || (item.video_versions && item.video_versions.length > 0) || urlStr.toLowerCase().includes('/reel/');
+        let rawMediaUrl = "";
+        if (isVideo && item.video_versions && item.video_versions.length > 0) {
+          rawMediaUrl = item.video_versions[0].url;
+        } else if (item.image_versions2?.candidates?.length > 0) {
+          rawMediaUrl = item.image_versions2.candidates[0].url;
+        }
+
+        const thumbnail = item.image_versions2?.candidates?.[0]?.url || rawMediaUrl;
+        const mediaType = isVideo ? "video" : "image";
+
+        if (rawMediaUrl) {
+          const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(rawMediaUrl)}&filename=instagram_${mediaType}`;
+          return {
+            success: true,
+            title,
+            thumbnail,
+            url: proxyUrl,
+            mediaType,
+            media: [{
+              type: mediaType,
+              url: proxyUrl,
+              thumbnail,
+              id: String(item.id || item.pk || shortcode),
+              mediaId: String(item.id || item.pk || shortcode),
+              index: 0
+            }],
+            source: "graphql_web_info"
+          };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
 async function extractInstagramBtch(url: string) {
   console.log("Trying btch-downloader for Instagram...");
   try {
@@ -2466,8 +2637,10 @@ async function extractInstagramRepoBackend(url: string) {
 
 async function extractInstagramMaster(url: string): Promise<any> {
   console.log(`[Instagram Master] Starting complete extraction for: ${url}`);
+  const isReel = url.toLowerCase().includes('/reel/') || url.toLowerCase().includes('/tv/');
 
   const candidates = [
+    extractInstagramGraphQL(url),
     extractInstagramWebApi(url),
     extractInstagramRapidAPI(url),
     extractInstagramRepoBackend(url),
@@ -2498,25 +2671,35 @@ async function extractInstagramMaster(url: string): Promise<any> {
   }
 
   let bestResult = successful[0];
-  let maxCount = 0;
+  let bestScore = -1;
 
   for (const res of successful) {
     const itemCount = res.media ? res.media.length : (res.url ? 1 : 0);
     const isCarousel = res.mediaType === 'carousel' || itemCount > 1;
+    const isVideo = res.mediaType === 'video' || (res.media && res.media.length > 0 && res.media[0].type === 'video');
 
+    let score = 0;
     if (isCarousel) {
-      if (itemCount > maxCount) {
-        maxCount = itemCount;
-        bestResult = res;
-      }
-    } else if (maxCount === 0) {
-      if (itemCount > (bestResult.media ? bestResult.media.length : (bestResult.url ? 1 : 0))) {
-        bestResult = res;
-      }
+      score += 100 + itemCount;
+    } else if (isReel && isVideo) {
+      score += 200; // Strong preference for video when link is an Instagram reel
+    } else if (isVideo) {
+      score += 50;
+    } else {
+      score += 10;
+    }
+
+    if (res.source === 'graphql_media' || res.source === 'graphql_web_info' || res.source === 'graphql_sidecar') {
+      score += 30;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestResult = res;
     }
   }
 
-  console.log(`[Instagram Master] Selected best extraction source: ${bestResult.source || 'unknown'} with ${bestResult.media?.length || 1} items.`);
+  console.log(`[Instagram Master] Selected best extraction source: ${bestResult.source || 'unknown'} with ${bestResult.media?.length || 1} items (mediaType: ${bestResult.mediaType}).`);
   return bestResult;
 }
 
