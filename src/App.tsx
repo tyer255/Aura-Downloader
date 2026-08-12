@@ -1900,26 +1900,50 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         ...prev,
         [url]: { filename, progress: 0, status: "preparing" }
       }));
-      setHistoryToast(url.startsWith("/api/spotify-resolve") ? "Resolving Spotify audio... (takes ~10 seconds)" : "Preparing YouTube stream... (takes ~10 seconds)");
+      setHistoryToast(url.startsWith("/api/spotify-resolve") ? "Resolving Spotify audio..." : "Preparing YouTube stream...");
       
-      // Simulate progress for preparing
-      const interval = setInterval(() => {
-         setActiveDownloads(prev => {
-            const current = prev[url];
-            if (current && current.status === "preparing") {
-                const nextProg = Math.min((current.progress || 0) + 5, 95);
-                return { ...prev, [url]: { ...current, progress: nextProg } };
-            }
-            return prev;
-         });
-      }, 500);
-
       try {
-        const res = await fetchWithTimeoutAndRetry(url, {}, 35000, 2, (msg) => {
-           setHistoryToast("Waking up server... (takes ~10 seconds)");
+        let finalData: any = null;
+        const sseUrl = url + (url.includes('?') ? '&' : '?') + 'sse=true';
+        const eventSource = new EventSource(sseUrl);
+
+        await new Promise<void>((resolve, reject) => {
+          let timeout = setTimeout(() => {
+            eventSource.close();
+            reject(new Error("Timeout"));
+          }, 35000);
+
+          eventSource.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              if (data.progress !== undefined) {
+                 setActiveDownloads(prev => {
+                    const current = prev[url];
+                    if (current && current.status === "preparing") {
+                        return { ...prev, [url]: { ...current, progress: data.progress } };
+                    }
+                    return prev;
+                 });
+                 if (data.message) setHistoryToast(data.message);
+              }
+              if (data.success !== undefined || data.error !== undefined) {
+                 finalData = data;
+                 clearTimeout(timeout);
+                 eventSource.close();
+                 resolve();
+              }
+            } catch (err) {}
+          };
+
+          eventSource.onerror = (err) => {
+            clearTimeout(timeout);
+            eventSource.close();
+            reject(new Error("SSE Error"));
+          };
         });
-        const data = await res.json();
-        clearInterval(interval);
+
+        const data = finalData;
+
         
         if (data && data.url) {
            const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(data.url)}&filename=${encodeURIComponent(filename)}`;
@@ -1941,7 +1965,6 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
            throw new Error("Failed to resolve link");
         }
       } catch (err) {
-           clearInterval(interval);
            setActiveDownloads(prev => ({
              ...prev,
              [url]: { filename, progress: null, status: "failed" }

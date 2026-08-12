@@ -1,25 +1,7 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/App.tsx', 'utf8');
 
-const oldFuncStart = `  const downloadFileClientSide = async (url: string, filename: string) => {`;
-const oldFuncRegex = /const downloadFileClientSide = async \(url: string, filename: string\) => \{[\s\S]*? setTimeout\(\(\) => setHistoryToast\(null\), 3000\);\n  \};/m;
-
-const newFunc = `  const downloadFileClientSide = async (url: string, filename: string) => {
-    if (!hasAcceptedTerms) {
-      setShowTermsModal(true);
-      return;
-    }
-    
-    requestNotificationPermission();
-
-    if (url.startsWith("/api/get-youtube-link")) {
-      setActiveDownloads(prev => ({
-        ...prev,
-        [url]: { filename, progress: 0, status: "preparing" }
-      }));
-      setHistoryToast("Preparing YouTube stream... (takes ~10 seconds)");
-      
-      // Simulate progress for preparing
+const target = `      // Simulate progress for preparing
       const interval = setInterval(() => {
          setActiveDownloads(prev => {
             const current = prev[url];
@@ -32,73 +14,59 @@ const newFunc = `  const downloadFileClientSide = async (url: string, filename: 
       }, 500);
 
       try {
-        const res = await fetch(url);
+        const res = await fetchWithTimeoutAndRetry(url, {}, 35000, 2, (msg) => {
+           setHistoryToast("Waking up server... (takes ~10 seconds)");
+        });
         const data = await res.json();
-        clearInterval(interval);
-        
-        if (data && data.url) {
-           const proxyUrl = \`/api/proxy-download?url=\${encodeURIComponent(data.url)}&filename=\${encodeURIComponent(filename)}\`;
-           const a = document.createElement('a');
-           a.href = proxyUrl;
-           a.download = filename || 'download';
-           document.body.appendChild(a);
-           a.click();
-           document.body.removeChild(a);
-           
-           setActiveDownloads(prev => ({
-             ...prev,
-             [url]: { filename, progress: 100, status: "complete" }
-           }));
-           setHistoryToast("Download started!");
-           setTimeout(() => {
-              setActiveDownloads(prev => {
-                const next = { ...prev };
-                delete next[url];
-                return next;
-              });
-           }, 3000);
-        } else {
-           throw new Error("Failed to resolve link");
-        }
-      } catch (err) {
-           clearInterval(interval);
-           setActiveDownloads(prev => ({
-             ...prev,
-             [url]: { filename, progress: null, status: "failed" }
-           }));
-           setHistoryToast("Failed to prepare video stream.");
-           setTimeout(() => {
-              setActiveDownloads(prev => {
-                const next = { ...prev };
-                delete next[url];
-                return next;
-              });
-           }, 3000);
-      }
-      return;
-    }
+        clearInterval(interval);`;
 
-    const fetchUrl = url.startsWith("/api/proxy-download") || url.startsWith("/api/youtube-stream") 
-      ? url 
-      : \`/api/proxy-download?url=\${encodeURIComponent(url)}&filename=\${encodeURIComponent(filename)}\`;
-    const throttleParam = throttleSetting !== "unlimited" ? \`&throttle=\${throttleSetting}\` : "";
-    const finalFetchUrl = fetchUrl.includes("?") ? \`\${fetchUrl}\${throttleParam}\` : \`\${fetchUrl}?\${throttleParam}\`;
+const replacement = `      try {
+        let finalData: any = null;
+        const sseUrl = url + (url.includes('?') ? '&' : '?') + 'sse=true';
+        const eventSource = new EventSource(sseUrl);
 
-    const a = document.createElement('a');
-    a.href = finalFetchUrl;
-    a.download = filename || 'download';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    
-    setHistoryToast("Download started!");
-    setTimeout(() => setHistoryToast(null), 3000);
-  };`;
+        await new Promise<void>((resolve, reject) => {
+          let timeout = setTimeout(() => {
+            eventSource.close();
+            reject(new Error("Timeout"));
+          }, 35000);
 
-if (oldFuncRegex.test(code)) {
-    code = code.replace(oldFuncRegex, newFunc);
-    fs.writeFileSync('src/App.tsx', code);
-    console.log("Updated downloadFileClientSide in App.tsx");
+          eventSource.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              if (data.progress !== undefined) {
+                 setActiveDownloads(prev => {
+                    const current = prev[url];
+                    if (current && current.status === "preparing") {
+                        return { ...prev, [url]: { ...current, progress: data.progress } };
+                    }
+                    return prev;
+                 });
+                 if (data.message) setHistoryToast(data.message);
+              }
+              if (data.success !== undefined || data.error !== undefined) {
+                 finalData = data;
+                 clearTimeout(timeout);
+                 eventSource.close();
+                 resolve();
+              }
+            } catch (err) {}
+          };
+
+          eventSource.onerror = (err) => {
+            clearTimeout(timeout);
+            eventSource.close();
+            reject(new Error("SSE Error"));
+          };
+        });
+
+        const data = finalData;
+`;
+
+if (code.includes(target)) {
+  code = code.replace(target, replacement);
+  fs.writeFileSync('src/App.tsx', code);
+  console.log("Patched App.tsx with SSE support!");
 } else {
-    console.log("Could not find downloadFileClientSide in App.tsx");
+  console.log("Target not found!");
 }

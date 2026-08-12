@@ -143,18 +143,22 @@ export function SpotifyAudioPlayer({
             setIsResolving(false);
             if (data.success && data.url) {
               setResolvedUrl(data.url);
+              setIsLoading(false);
             } else {
               setResolvedUrl(`${audioUrl}&stream=true`);
+              setIsLoading(false);
             }
           }
         } catch (e) {
           if (isMounted) {
             setIsResolving(false);
             setResolvedUrl(`${audioUrl}&stream=true`);
+            setIsLoading(false);
           }
         }
       } else {
         setResolvedUrl(audioUrl);
+        setIsLoading(false);
       }
     };
 
@@ -210,13 +214,40 @@ export function SpotifyAudioPlayer({
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration || 0);
-      setIsLoading(false);
     }
   };
 
   const handleCanPlay = () => {
     setIsLoading(false);
   };
+
+  const handleCanPlayThrough = () => {
+    setIsLoading(false);
+  };
+
+  const handlePlaying = () => {
+    setIsLoading(false);
+    setIsPlaying(true);
+  };
+  
+  const handlePause = () => {
+    setIsPlaying(false);
+  };
+
+  const handleWaiting = () => {
+    if (isPlaying) {
+      setIsLoading(true);
+    }
+  };
+
+  const handleStalled = () => {
+    if (isPlaying) {
+      setIsLoading(true);
+    }
+  };
+
+  
+
 
   const handleEnded = () => {
     if (isLooping && audioRef.current) {
@@ -241,9 +272,11 @@ export function SpotifyAudioPlayer({
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
+      setIsLoading(true);
       audioRef.current.play().then(() => {
         setIsPlaying(true);
       }).catch((err) => {
+        setIsLoading(false);
         console.error("Playback error:", err);
         setError("Audio playback blocked by browser or stream unavailable.");
       });
@@ -311,10 +344,12 @@ export function SpotifyAudioPlayer({
         } else {
           setResolvedUrl(`${audioUrl}&stream=true&t=${Date.now()}`);
         }
+        setIsLoading(false);
       })
       .catch(() => {
         setIsResolving(false);
         setResolvedUrl(`${audioUrl}&stream=true&t=${Date.now()}`);
+        setIsLoading(false);
       });
   };
 
@@ -328,6 +363,12 @@ export function SpotifyAudioPlayer({
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onCanPlay={handleCanPlay}
+            onCanPlayThrough={handleCanPlayThrough}
+            onPlaying={handlePlaying}
+            onPause={handlePause}
+            onWaiting={handleWaiting}
+            onStalled={handleStalled}
+            
             onEnded={handleEnded}
             onError={handleError}
             preload="none"
@@ -430,6 +471,12 @@ export function SpotifyAudioPlayer({
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onCanPlay={handleCanPlay}
+          onCanPlayThrough={handleCanPlayThrough}
+          onPlaying={handlePlaying}
+          onPause={handlePause}
+          onWaiting={handleWaiting}
+          onStalled={handleStalled}
+          
           onEnded={handleEnded}
           onError={handleError}
           preload="metadata"

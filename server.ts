@@ -932,109 +932,109 @@ async function resolveSpotifyTrackToYouTube(trackMeta: {
   const candidates: { id: string; title: string; channel: string; durSec: number; score: number; durationDelta: number }[] = [];
   const seenIds = new Set<string>();
 
-  // Fetch all queries concurrently to drastically reduce extraction time
-  const searchPromises = queries.map(q => 
-    axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      timeout: 5000
-    }).then(res => res.data).catch(() => null)
-  );
+  // Fetch queries and resolve early if a highly confident match is found
+  const videoId = await new Promise<string | null>((resolve) => {
+      let completed = 0;
+      let resolved = false;
 
-  const htmlResults = await Promise.all(searchPromises);
-
-  for (const searchHtml of htmlResults) {
-    if (!searchHtml) continue;
-    
-    try {
-      const jsonMatch = searchHtml.match(/var ytInitialData = ({.*?});<\/script>/);
-      if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[1]);
-        const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
-
-        for (let c of contents) {
-          const items = c.itemSectionRenderer?.contents || [];
-          for (let item of items) {
-            if (item.videoRenderer) {
-              const v = item.videoRenderer;
-              if (!v.videoId || seenIds.has(v.videoId)) continue;
-              seenIds.add(v.videoId);
-
-              const title = v.title?.runs?.[0]?.text || "";
-              const channel = v.ownerText?.runs?.[0]?.text || "";
-              const durSec = parseDuration(v.lengthText?.simpleText);
-
-              const titleLower = title.toLowerCase();
-              const channelLower = channel.toLowerCase();
-
-              // Rejection Check 1: Banned Keywords
-              let hasBanned = false;
-              for (const kw of activeBannedKeywords) {
-                if (titleLower.includes(kw) || channelLower.includes(kw)) {
-                  hasBanned = true;
-                  break;
-                }
+      function checkResolve() {
+          if (resolved) return;
+          if (candidates.length > 0) {
+              candidates.sort((a, b) => b.score - a.score);
+              // Strong candidate (score >= 400 means Official Channel or ISRC)
+              if (candidates[0].score >= 400 || completed === queries.length) {
+                  resolved = true;
+                  resolve(candidates[0].id);
               }
-              if (hasBanned) continue;
-
-              // Rejection Check 2: Artist match
-              const isIsrcMatch = isrc && (titleLower.includes(isrc.toLowerCase()) || channelLower.includes(isrc.toLowerCase()));
-              const artistMatched = allArtists.some(artist => 
-                artist && (titleLower.includes(artist.toLowerCase()) || channelLower.includes(artist.toLowerCase()))
-              );
-              if (!artistMatched && !isIsrcMatch && allArtists.length > 0) continue;
-
-              // Rejection Check 3: Duration match (max 6s delta)
-              const maxAllowedDelta = 6;
-              const durationDelta = Math.abs(durSec - targetDurationSec);
-              if (targetDurationSec > 0 && durationDelta > maxAllowedDelta) continue;
-
-              // Candidate Passed! Calculate preference score
-              let score = 0;
-
-              // Priority 0: ISRC Match
-              if (isIsrcMatch) {
-                score += 1000;
-              }
-
-              // Priority 1: Official Artist Channel
-              const isOfficialArtistChannel = allArtists.some(a => a && channelLower.includes(a.toLowerCase()));
-              if (isOfficialArtistChannel && !channelLower.includes("topic")) {
-                score += 400;
-              }
-
-              // Priority 2: Official Audio
-              if (titleLower.includes("official audio") || titleLower.includes("audio")) {
-                score += 300;
-              }
-
-              // Priority 3: Official Music Video
-              if (titleLower.includes("official music video") || titleLower.includes("official video")) {
-                score += 200;
-              }
-
-              // Priority 4: Official Topic Channel
-              if (channelLower.includes("- topic") || channelLower.endsWith("topic")) {
-                score += 100;
-              }
-
-              // Bonus for precise duration match
-              score += (maxAllowedDelta - durationDelta) * 20;
-              if (durationDelta <= 3) {
-                score += 50; // extra bonus for very tight duration match
-              }
-
-              candidates.push({ id: v.videoId, title, channel, durSec, score, durationDelta });
-            }
+          } else if (completed === queries.length) {
+              resolved = true;
+              resolve(null);
           }
-        }
       }
-    } catch (e) {}
-  }
 
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => b.score - a.score);
-    return candidates[0].id;
-  }
+      if (queries.length === 0) {
+          resolve(null);
+          return;
+      }
+
+      queries.forEach(async (q) => {
+          try {
+              const res = await axios.get(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, {
+                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                  timeout: 2500
+              });
+              
+              if (resolved) return;
+              
+              const searchHtml = res.data;
+              const jsonMatch = searchHtml.match(/var ytInitialData = ({.*?});<\/script>/);
+              if (jsonMatch) {
+                  const data = JSON.parse(jsonMatch[1]);
+                  const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+                  for (let c of contents) {
+                      const items = c.itemSectionRenderer?.contents || [];
+                      for (let item of items) {
+                          if (item.videoRenderer) {
+                              const v = item.videoRenderer;
+                              if (!v.videoId || seenIds.has(v.videoId)) continue;
+                              seenIds.add(v.videoId);
+
+                              const title = v.title?.runs?.[0]?.text || "";
+                              const channel = v.ownerText?.runs?.[0]?.text || "";
+                              const durSec = parseDuration(v.lengthText?.simpleText);
+
+                              const titleLower = title.toLowerCase();
+                              const channelLower = channel.toLowerCase();
+
+                              // Rejection Check 1: Banned Keywords
+                              let hasBanned = false;
+                              for (const kw of activeBannedKeywords) {
+                                  if (titleLower.includes(kw) || channelLower.includes(kw)) {
+                                      hasBanned = true;
+                                      break;
+                                  }
+                              }
+                              if (hasBanned) continue;
+
+                              // Rejection Check 2: Artist match
+                              const isIsrcMatch = isrc && (titleLower.includes(isrc.toLowerCase()) || channelLower.includes(isrc.toLowerCase()));
+                              const artistMatched = allArtists.some(artist => 
+                                  artist && (titleLower.includes(artist.toLowerCase()) || channelLower.includes(artist.toLowerCase()))
+                              );
+                              if (!artistMatched && !isIsrcMatch && allArtists.length > 0) continue;
+
+                              // Rejection Check 3: Duration match (max 6s delta)
+                              const maxAllowedDelta = 6;
+                              const durationDelta = Math.abs(durSec - targetDurationSec);
+                              if (targetDurationSec > 0 && durationDelta > maxAllowedDelta) continue;
+
+                              // Candidate Passed! Calculate preference score
+                              let score = 0;
+                              if (isIsrcMatch) score += 1000;
+
+                              const isOfficialArtistChannel = allArtists.some(a => a && channelLower.includes(a.toLowerCase()));
+                              if (isOfficialArtistChannel && !channelLower.includes("topic")) score += 400;
+
+                              if (titleLower.includes("official audio") || titleLower.includes("audio")) score += 300;
+                              if (titleLower.includes("official music video") || titleLower.includes("official video")) score += 200;
+                              if (channelLower.includes("- topic") || channelLower.endsWith("topic")) score += 100;
+
+                              score += (maxAllowedDelta - durationDelta) * 20;
+                              if (durationDelta <= 3) score += 50;
+
+                              candidates.push({ id: v.videoId, title, channel, durSec, score, durationDelta });
+                          }
+                      }
+                  }
+              }
+          } catch(e) {}
+          completed++;
+          checkResolve();
+      });
+  });
+
+  if (videoId) return videoId;
+
 
   // Final fallback to youtube-sr if no candidates matched YouTube HTML search
   try {
@@ -1074,7 +1074,7 @@ async function extractSpotify(url: string) {
             let lyrics = "";
             let syncedLyrics = "";
             try {
-              const lyricsRes = await axios.get(`https://lrclib.net/api/search?track_name=${encodeURIComponent(details.trackName)}&artist_name=${encodeURIComponent(details.primaryArtist)}`);
+              const lyricsRes = await axios.get(`https://lrclib.net/api/search?track_name=${encodeURIComponent(details.trackName)}&artist_name=${encodeURIComponent(details.primaryArtist)}`, { timeout: 1000 });
               if (lyricsRes.data && lyricsRes.data.length > 0) {
                 lyrics = lyricsRes.data[0].plainLyrics || "";
                 syncedLyrics = lyricsRes.data[0].syncedLyrics || "";
@@ -1139,14 +1139,7 @@ async function extractSpotify(url: string) {
                 }
                 let thumb = t.image?.[0]?.url || "";
 
-                if (!thumb && trackId) {
-                    try {
-                        const oemb = await axios.get(`https://open.spotify.com/oembed?url=https://open.spotify.com/track/${trackId}`, { timeout: 2500 });
-                        if (oemb.data && oemb.data.thumbnail_url) {
-                            thumb = oemb.data.thumbnail_url;
-                        }
-                    } catch(e) {}
-                }
+                // Oembed fetch removed for playlist extraction speed, fallback to playlist cover is sufficient
 
                 if (!thumb) {
                     thumb = playlistCover;
@@ -1187,7 +1180,7 @@ async function extractSpotify(url: string) {
             let lyrics = "";
             let syncedLyrics = "";
             try {
-              const lyricsRes = await axios.get(`https://lrclib.net/api/search?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistName)}`);
+              const lyricsRes = await axios.get(`https://lrclib.net/api/search?track_name=${encodeURIComponent(trackName)}&artist_name=${encodeURIComponent(artistName)}`, { timeout: 1000 });
               if (lyricsRes.data && lyricsRes.data.length > 0) {
                 lyrics = lyricsRes.data[0].plainLyrics || "";
                 syncedLyrics = lyricsRes.data[0].syncedLyrics || "";
@@ -3458,14 +3451,45 @@ app.post("/api/download", async (req, res) => {
   });
 
   app.get("/api/spotify-resolve", async (req, res) => {
+    const isSSE = req.query.sse === 'true';
+    if (isSSE) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+    }
+    const sendProgress = (percent, msg) => {
+      if (isSSE) {
+        res.write(`data: ${JSON.stringify({ progress: percent, message: msg })}\n\n`);
+      }
+    };
+    const sendError = (msg) => {
+      if (isSSE) {
+        res.write(`data: ${JSON.stringify({ success: false, message: msg })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ success: false, message: msg });
+      }
+    }
+    const sendSuccess = (data) => {
+      if (isSSE) {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+        res.end();
+      } else {
+        res.json(data);
+      }
+    }
+
     try {
-      let trackId = (req.query.trackId as string) || "";
-      let title = (req.query.title as string) || (req.query.trackName as string) || "";
-      let artist = (req.query.artist as string) || (req.query.artistName as string) || "";
-      let artistsParam = (req.query.artists as string) || "";
-      let durationMs = parseInt((req.query.durationMs as string) || (req.query.duration as string) || "0") || 0;
-      let isrc = (req.query.isrc as string) || "";
-      const query = (req.query.query as string) || "";
+      sendProgress(10, "Initializing...");
+
+      let trackId = (req.query.trackId) || "";
+      let title = (req.query.title) || (req.query.trackName) || "";
+      let artist = (req.query.artist) || (req.query.artistName) || "";
+      let artistsParam = (req.query.artists) || "";
+      let durationMs = parseInt((req.query.durationMs) || (req.query.duration) || "0") || 0;
+      let isrc = (req.query.isrc) || "";
+      const query = (req.query.query) || "";
 
       // Check if query itself contains a Spotify track URL or trackId
       if (!trackId && query) {
@@ -3475,15 +3499,18 @@ app.post("/api/download", async (req, res) => {
         }
       }
 
-      let allArtists: string[] = artistsParam ? artistsParam.split(',').map(s => s.trim()).filter(Boolean) : [];
+      let allArtists = artistsParam ? artistsParam.split(',').map(s => s.trim()).filter(Boolean) : [];
       if (artist && !allArtists.includes(artist)) {
         allArtists.unshift(artist);
       }
 
       let albumName = "";
 
-      // If trackId is available, fetch complete details from Spotify to guarantee 100% accuracy
-      if (trackId) {
+      sendProgress(25, "Resolving metadata...");
+
+      // Optimization: Only fetch details if title is completely missing
+      // If we already have the title and artist from the previous extract step, we don't need to re-fetch NEXT_DATA
+      if (trackId && !title) {
         const details = await getSpotifyTrackDetails(trackId);
         if (details.trackName) {
           title = details.trackName;
@@ -3502,8 +3529,10 @@ app.post("/api/download", async (req, res) => {
 
       // If title or query is still missing, return error
       if (!title && !trackId) {
-        return res.status(400).json({ success: false, message: "Missing track identifiers or query" });
+        return sendError("Missing track identifiers or query");
       }
+
+      sendProgress(40, "Matching tracks...");
 
       const videoId = await resolveSpotifyTrackToYouTube({
         trackName: title,
@@ -3515,14 +3544,18 @@ app.post("/api/download", async (req, res) => {
       });
 
       if (!videoId) {
-        return res.status(404).json({ success: false, message: "Could not resolve Spotify audio track" });
+        return sendError("Could not resolve Spotify audio track");
       }
+
+      sendProgress(65, "Extracting audio...");
 
       const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
       const { ytmp3 } = await import("@vreden/youtube_scraper");
+
       const originalConsoleError = console.error;
       const originalConsoleLog = console.log;
       console.error = () => {}; console.log = () => {};
+
       let result;
       try {
         result = await ytmp3(videoUrl);
@@ -3531,6 +3564,8 @@ app.post("/api/download", async (req, res) => {
         console.log = originalConsoleLog;
       }
 
+      sendProgress(95, "Finalizing extraction...");
+
       let finalAudioUrl = "";
       if (result && result.status && result.download && result.download.url) {
         finalAudioUrl = result.download.url;
@@ -3538,33 +3573,69 @@ app.post("/api/download", async (req, res) => {
         finalAudioUrl = `/api/proxy-download?url=${encodeURIComponent(videoUrl)}`;
       }
 
+      sendProgress(100, "Done!");
+
       if (req.query.stream === 'true') {
         if (finalAudioUrl.startsWith("http")) {
+          // not compatible with SSE, but stream parameter isn't used with SSE right now
           return res.redirect(302, finalAudioUrl);
         } else {
           return pipeUrlStream(finalAudioUrl, res, "spotify_audio.mp3", true);
         }
       }
 
-      return res.json({ success: true, url: finalAudioUrl, videoId });
-    } catch(e: any) {
-      return res.status(500).json({ success: false, message: "Extraction failed. Please try again later." });
+      return sendSuccess({ success: true, url: finalAudioUrl, videoId });
+    } catch(e) {
+      return sendError("Extraction failed. Please try again later.");
     }
   });
 
   app.get("/api/get-youtube-link", async (req, res) => {
-    const videoUrl = req.query.url as string;
-    const quality = (req.query.quality as string) || "360";
+    const isSSE = req.query.sse === 'true';
+    if (isSSE) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+    }
+    const sendProgress = (percent, msg) => {
+      if (isSSE) {
+        res.write(`data: ${JSON.stringify({ progress: percent, message: msg })}\n\n`);
+      }
+    };
+    const sendError = (msg) => {
+      if (isSSE) {
+        res.write(`data: ${JSON.stringify({ success: false, message: msg })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ success: false, message: msg });
+      }
+    }
+    const sendSuccess = (data) => {
+      if (isSSE) {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+        res.end();
+      } else {
+        res.json(data);
+      }
+    }
+
+    const videoUrl = req.query.url;
+    const quality = req.query.quality || "360";
     
-    if (!videoUrl) return res.status(400).json({ success: false, message: "Missing url parameter" });
+    if (!videoUrl) return sendError("Missing url parameter");
     
     try {
+      sendProgress(20, "Initializing scraper...");
+
       const originalConsoleError = console.error;
       const originalConsoleLog = console.log;
       console.error = () => {};
       console.log = () => {};
+
       let result;
       try {
+        sendProgress(50, "Extracting video stream...");
         if (quality === 'audio' || quality === 'mp3') {
           const { ytmp3 } = await import("@vreden/youtube_scraper");
           result = await ytmp3(videoUrl);
@@ -3575,14 +3646,17 @@ app.post("/api/download", async (req, res) => {
         console.error = originalConsoleError;
         console.log = originalConsoleLog;
       }
-      
+
+      sendProgress(90, "Finalizing extraction...");
+
       if (result && result.status && result.download && result.download.url) {
-        return res.json({ success: true, url: result.download.url });
+        sendProgress(100, "Done!");
+        return sendSuccess({ success: true, url: result.download.url });
       } else {
-        return res.status(500).json({ success: false, message: "Failed to fetch direct URL." });
+        return sendError("Failed to fetch direct URL.");
       }
-    } catch (err: any) {
-      return res.status(500).json({ success: false, message: err.message });
+    } catch (err) {
+      return sendError(err.message);
     }
   });
 
