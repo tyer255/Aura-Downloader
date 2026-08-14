@@ -3,6 +3,29 @@
 @tailwind utilities;
 
 @layer utilities {
+  .neo-card {
+    box-shadow: 12px 12px 24px #d1d5db, -12px -12px 24px #ffffff !important;
+    background-color: #f3f4f6 !important; /* Tailwind gray-100 */
+    border: none !important;
+  }
+  .neo-button {
+    box-shadow: 6px 6px 12px #d1d5db, -6px -6px 12px #ffffff !important;
+    background-color: #f3f4f6 !important;
+    border: none !important;
+    transition: all 0.2s ease;
+  }
+  .neo-button:hover {
+    box-shadow: 8px 8px 16px #d1d5db, -8px -8px 16px #ffffff !important;
+    transform: translateY(-1px);
+  }
+  .neo-button:active, .neo-pressed {
+    box-shadow: inset 4px 4px 8px #d1d5db, inset -4px -4px 8px #ffffff !important;
+    background-color: #f3f4f6 !important;
+    transform: translateY(1px);
+  }
+  .neo-bg {
+    background-color: #f3f4f6 !important;
+  }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
@@ -168,3 +191,16 @@ html.dark body {
   @apply text-neutral-50;
 }
 input, textarea { user-select: auto; -webkit-user-select: auto; }
+
+@layer utilities {
+  .neo-morphism {
+    box-shadow: 9px 9px 16px rgba(163, 177, 198, 0.6), -9px -9px 16px rgba(255, 255, 255, 0.8) !important;
+    background-color: #e0e5ec !important;
+    border: none !important;
+  }
+  .neo-morphism-pressed {
+    box-shadow: inset 6px 6px 10px 0 rgba(163, 177, 198, 0.7), inset -6px -6px 10px 0 rgba(255, 255, 255, 0.9) !important;
+    background-color: #e0e5ec !important;
+    border: none !important;
+  }
+}

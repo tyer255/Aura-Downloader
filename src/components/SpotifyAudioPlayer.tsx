@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Play, 
@@ -14,8 +15,9 @@ import {
   FastForward, 
   Rewind,
   Check,
-  Repeat
-} from 'lucide-react';
+  Repeat,
+  ChevronDown
+, Mic2, Gauge, MoreHorizontal, Share2} from 'lucide-react';
 import clsx from 'clsx';
 
 const SpotifyIcon = ({ className }: { className?: string }) => (
@@ -23,6 +25,15 @@ const SpotifyIcon = ({ className }: { className?: string }) => (
     <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.84.24 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.6.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.239.54-.959.72-1.559.3z" />
   </svg>
 );
+
+const bgColors = [
+  '#1e1014', // Subtle Dark Crimson
+  '#0d141f', // Subtle Dark Navy
+  '#170e1c', // Subtle Dark Amethyst
+  '#1c140d', // Subtle Dark Amber
+  '#0e1712', // Subtle Dark Emerald
+  '#121212'  // Classic Spotify Dark
+];
 
 interface SpotifyAudioPlayerProps {
   title: string;
@@ -65,6 +76,59 @@ export function SpotifyAudioPlayer({
   const [parsedLyrics, setParsedLyrics] = useState<{time: number, text: string}[]>([]);
   const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
   const lyricsContainerRef = useRef<HTMLDivElement | null>(null);
+  const animationRef = useRef<number>();
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      const target = e.target;
+      if (!target.closest('#options-menu') && !target.closest('#options-btn')) {
+        setShowOptions(false);
+      }
+    };
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  const cycleSpeed = () => {
+    const speeds = [1, 1.25, 1.5, 2];
+    const nextIdx = (speeds.indexOf(playbackRate) + 1) % speeds.length;
+    setPlaybackRate(speeds[nextIdx]);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speeds[nextIdx];
+    }
+  };
+
+  const updateProgress = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+      animationRef.current = requestAnimationFrame(updateProgress);
+    }
+  };
+
+  useEffect(() => {
+    if (isPlaying) {
+      animationRef.current = requestAnimationFrame(updateProgress);
+    } else if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [isPlaying]);
+
+  
+  useEffect(() => {
+    if (resolvedUrl && isPlaying && audioRef.current && audioRef.current.paused) {
+      audioRef.current.play().catch(err => {
+        console.error("Autoplay failed:", err);
+        setIsPlaying(false);
+      });
+    }
+  }, [resolvedUrl, isPlaying]);
 
   useEffect(() => {
     if (syncedLyrics) {
@@ -87,7 +151,9 @@ export function SpotifyAudioPlayer({
     if (showLyrics && parsedLyrics.length > 0) {
       const idx = parsedLyrics.findIndex((l, i) => {
         const next = parsedLyrics[i + 1];
-        return currentTime >= l.time && (!next || currentTime < next.time);
+        // 0.15s offset for perfect millisecond beat sync
+        const offset = 0.15;
+        return currentTime >= (l.time - offset) && (!next || currentTime < (next.time - offset));
       });
       if (idx !== activeLyricIndex) {
         setActiveLyricIndex(idx);
@@ -131,24 +197,53 @@ export function SpotifyAudioPlayer({
 
     setIsLoading(true);
 
-    const resolveStream = async () => {
+    const resolveStream = () => {
       if (!audioUrl) return;
 
       if (audioUrl.startsWith('/api/spotify-resolve')) {
         setIsResolving(true);
+        setIsLoading(true);
+        setResolveProgress(0);
+        
         try {
-          const res = await fetch(audioUrl);
-          const data = await res.json();
-          if (isMounted) {
-            setIsResolving(false);
-            if (data.success && data.url) {
-              setResolvedUrl(data.url);
-              setIsLoading(false);
-            } else {
+          const sseUrl = audioUrl + (audioUrl.includes('?') ? '&' : '?') + 'sse=true';
+          const source = new EventSource(sseUrl);
+
+          source.onmessage = (event) => {
+            if (!isMounted) {
+                source.close();
+                return;
+            }
+            try {
+                const data = JSON.parse(event.data);
+                if (data.progress !== undefined) {
+                    setResolveProgress(data.progress);
+                    if (data.message) setResolveMessage(data.message);
+                } else if (data.success !== undefined) {
+                    source.close();
+                    setIsResolving(false);
+                    if (data.success && data.url) {
+                        setResolvedUrl(data.url);
+                        setIsLoading(false);
+                        setIsPlaying(true); // Auto-play when ready
+                    } else {
+                        setResolvedUrl(`${audioUrl}&stream=true`);
+                        setIsLoading(false);
+                    }
+                }
+            } catch(e) {}
+          };
+
+          source.onerror = () => {
+            source.close();
+            if (isMounted) {
+              setIsResolving(false);
               setResolvedUrl(`${audioUrl}&stream=true`);
               setIsLoading(false);
             }
-          }
+          };
+          
+          return () => source.close();
         } catch (e) {
           if (isMounted) {
             setIsResolving(false);
@@ -162,47 +257,15 @@ export function SpotifyAudioPlayer({
       }
     };
 
-    resolveStream();
+    const cleanupSSE = resolveStream();
 
     return () => {
       isMounted = false;
+      if (typeof cleanupSSE === "function") cleanupSSE();
     };
   }, [audioUrl, compact]);
 
-  // Handle fake progress animation during resolving
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isResolving) {
-      setResolveProgress(0);
-      setResolveMessage("Resolving Spotify source...");
-      let currentProgress = 0;
-      
-      interval = setInterval(() => {
-        currentProgress += Math.random() * 8 + 2; // Random jump between 2 and 10
-        if (currentProgress > 95) currentProgress = 95; // cap at 95% until done
-        
-        setResolveProgress(Math.floor(currentProgress));
-        
-        if (currentProgress < 25) {
-          setResolveMessage("Resolving Spotify source...");
-        } else if (currentProgress < 50) {
-          setResolveMessage("Extracting audio...");
-        } else if (currentProgress < 75) {
-          setResolveMessage("Processing preview...");
-        } else {
-          setResolveMessage("Finalizing...");
-        }
-      }, 500);
-    } else {
-      if (resolvedUrl) {
-        setResolveProgress(100);
-      }
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isResolving, resolvedUrl]);
+  // Removed fake progress animation in favor of real SSE progress
 
   // Audio Event Handlers
   const handleTimeUpdate = () => {
@@ -453,15 +516,265 @@ export function SpotifyAudioPlayer({
   }
 
   return (
-    <div className={clsx(
-      "w-full rounded-3xl p-5 sm:p-6 border shadow-2xl relative overflow-hidden transition-all backdrop-blur-xl",
-      isLight 
-        ? "bg-gradient-to-br from-white via-emerald-50/40 to-white border-emerald-200" 
-        : "bg-gradient-to-br from-[#121212] via-[#181818] to-[#0a0a0a] border-emerald-500/30 text-white"
-    )}>
-      {/* Spotify Green Glow Background Effect */}
-      <div className="absolute -top-20 -right-20 w-56 h-56 bg-[#1DB954]/15 rounded-full blur-[80px] pointer-events-none" />
-      <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-[#1DB954]/10 rounded-full blur-[80px] pointer-events-none" />
+    <div className={clsx("glass-player-wrapper", isLight && "light-mode")}>
+      <style dangerouslySetInnerHTML={{__html: `
+        .glass-player-wrapper {
+            --bg-gradient: linear-gradient(135deg, #0f172a, #1e1b4b, #312e81);
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.05);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            --text-main: #ffffff;
+            --text-muted: #94a3b8;
+            --accent: #818cf8;
+            --progress-bg: rgba(255, 255, 255, 0.1);
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+        }
+
+        .glass-player-wrapper.light-mode {
+            --bg-gradient: linear-gradient(135deg, #e2e8f0, #c7d2fe, #ddd6fe);
+            --glass-bg: rgba(255, 255, 255, 0.4);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --accent: #4f46e5;
+            --progress-bg: rgba(0, 0, 0, 0.1);
+        }
+
+        .glass-player-wrapper.light-mode .glass-panel {
+            box-shadow: 12px 12px 24px #d1d5db, -12px -12px 24px #ffffff;
+            background: #f3f4f6;
+            border: none;
+        }
+
+        .glass-player-wrapper.light-mode .glass-button {
+            box-shadow: 6px 6px 12px #d1d5db, -6px -6px 12px #ffffff;
+            background: #f3f4f6;
+            border: none;
+        }
+
+        .glass-player-wrapper.light-mode .glass-button:active {
+            box-shadow: inset 4px 4px 8px #d1d5db, inset -4px -4px 8px #ffffff;
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+        }
+
+        .glass-button {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            transition: all 0.3s ease;
+        }
+
+        .glass-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .glass-player-wrapper.light-mode .glass-button:hover {
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .text-gradient {
+            background: linear-gradient(to right, #c7d2fe, #e0e7ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .glass-player-wrapper.light-mode .text-gradient {
+            background: linear-gradient(to right, #312e81, #4f46e5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .active-control {
+            color: var(--accent) !important;
+        }
+        
+        .active-control::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background-color: var(--accent);
+        }
+
+        /* Minimized Player Styles */
+        .minimized-player {
+            width: 100% !important;
+            max-width: 480px !important;
+            height: 90px !important;
+            flex-direction: row !important;
+            padding: 12px 20px !important;
+            justify-content: space-between !important;
+            border-radius: 2.5rem !important;
+            cursor: pointer;
+            align-items: center;
+            gap: 12px;
+            margin: 0 auto;
+        }
+
+        .minimized-player .top-nav, 
+        .minimized-player .progress-section {
+            display: none !important;
+        }
+
+        .minimized-player .album-art {
+            width: 56px !important;
+            height: 56px !important;
+            margin-bottom: 0 !important;
+            border-radius: 50% !important;
+            animation: spin 10s linear infinite;
+            flex-shrink: 0;
+        }
+        
+        .minimized-player .album-art.paused {
+            animation-play-state: paused !important;
+        }
+
+        /* Show track info and align left when minimized */
+        .minimized-player .track-info {
+            min-width: 0;
+            display: flex !important;
+            margin-bottom: 0 !important;
+            padding: 0 !important;
+            flex: 1 !important;
+            justify-content: flex-start !important;
+        }
+        
+        .minimized-player .track-info > div {
+            min-width: 0;
+            align-items: flex-start !important;
+            text-align: left !important;
+            width: 100%;
+        }
+
+        .minimized-player .track-info h2 {
+            font-size: 1rem !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+            margin-bottom: 0 !important;
+            text-align: left;
+        }
+
+        .minimized-player .track-info p {
+            font-size: 0.75rem !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+            text-align: left;
+        }
+
+        /* Adjust controls to fit nicely in minimized mode */
+        .minimized-player .playback-controls {
+            width: auto !important;
+            flex-shrink: 0 !important;
+            margin-bottom: 0 !important;
+            padding: 0 !important;
+            display: flex !important;
+            gap: 10px !important;
+        }
+
+        .minimized-player .playback-controls > div.w-10 {
+            display: none !important;
+        }
+
+        .minimized-player .playback-controls .flex.items-center.gap-4 {
+            gap: 0.5rem !important;
+        }
+
+        .minimized-player .main-play-btn {
+            width: 44px !important;
+            height: 44px !important;
+        }
+        
+        .minimized-player .main-play-btn svg {
+            width: 1.5rem !important;
+            height: 1.5rem !important;
+        }
+
+        @media (max-width: 480px) {
+            .minimized-player .skip-btn.skip-btn-rewind {
+                display: none !important;
+            }
+        }
+        .minimized-player .skip-btn {
+            width: 36px !important;
+            height: 36px !important;
+        }
+        
+        .minimized-player .skip-btn svg {
+            width: 1.1rem !important;
+            height: 1.1rem !important;
+        }
+        
+        .minimized-player .extra-controls {
+            display: none !important;
+            width: 30px !important;
+            padding: 0 !important;
+            margin-left: 4px;
+        }
+        
+        .minimized-player .extra-controls svg {
+            width: 1.1rem !important;
+            height: 1.1rem !important;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        .dimmed {
+            filter: brightness(0.3) blur(4px);
+        }
+        
+        .custom-range {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            cursor: pointer;
+        }
+        .custom-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .group:hover .custom-range::-webkit-slider-thumb {
+            opacity: 1;
+        }
+        .custom-range::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border: none;
+        }
+      `}} />
 
       {resolvedUrl && (
         <audio
@@ -476,386 +789,455 @@ export function SpotifyAudioPlayer({
           onPause={handlePause}
           onWaiting={handleWaiting}
           onStalled={handleStalled}
-          
           onEnded={handleEnded}
           onError={handleError}
           preload="metadata"
         />
       )}
 
-      {/* Header Badge */}
-      <div className="flex items-center justify-between gap-3 mb-4 relative z-10">
-        <div className="flex items-center gap-3">
-          <div className={clsx(
-            "w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center shrink-0 border shadow-md backdrop-blur-md transition-all",
-            isLight
-              ? "bg-[#1DB954]/15 border-[#1DB954]/30 shadow-[#1DB954]/15 text-[#1DB954]"
-              : "bg-[#1DB954]/20 border-[#1DB954]/40 shadow-[#1DB954]/25 text-[#1DB954]"
-          )}>
-            <SpotifyIcon className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-[#1DB954]" />
-          </div>
-          <span className="text-xs font-black uppercase tracking-widest text-[#1DB954]">
-            Spotify Extracted Audio Preview
-          </span>
-        </div>
-
-        {/* Equalizer Visualizer */}
-        <div className="flex items-end gap-0.5 h-4 px-2 py-1 rounded-full bg-[#1DB954]/10 border border-[#1DB954]/20">
-          {[0.6, 1, 0.4, 0.8, 0.5, 0.9, 0.3].map((height, i) => (
-            <div
-              key={i}
-              className={clsx(
-                "w-0.5 bg-[#1DB954] rounded-full transition-all duration-150",
-                isPlaying ? "animate-pulse" : "opacity-40"
-              )}
-              style={{
-                height: isPlaying ? `${Math.floor(Math.random() * 12 + 4)}px` : `${height * 10}px`,
-                animationDelay: `${i * 120}ms`
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Track Details Row */}
-      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 mb-6 relative z-10">
-        {/* Album Artwork */}
-        <div className="relative group shrink-0">
-          {thumbnail ? (
-            <img
-              src={thumbnail}
-              alt={title}
-              className={clsx(
-                "w-28 h-28 sm:w-32 sm:h-32 rounded-2xl object-cover shadow-2xl border border-white/10 transition-transform duration-500",
-                isPlaying && "scale-105 shadow-[#1DB954]/20"
-              )}
-            />
-          ) : (
-            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl bg-neutral-900 flex items-center justify-center border border-white/10">
-              <Music className="w-12 h-12 text-[#1DB954]" />
-            </div>
-          )}
-
-          {isPlaying && (
-            <div className="absolute inset-0 rounded-2xl bg-black/20 backdrop-blur-[2px] flex items-center justify-center">
-              <div className="w-10 h-10 rounded-full bg-[#1DB954] flex items-center justify-center shadow-lg animate-bounce">
-                <Music className="w-5 h-5 text-black" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Track Title and Controls */}
-        <div className="flex-1 min-w-0 w-full text-center sm:text-left flex flex-col justify-center">
-          <h4 className={clsx("text-lg sm:text-xl font-black leading-tight truncate mb-1", isLight ? "text-neutral-900" : "text-white")} title={title}>
-            {title}
-          </h4>
-          <p className={clsx("text-xs font-medium mb-3", isLight ? "text-neutral-600" : "text-neutral-400")}>
-            Testing high-quality 320kbps extracted MP3 track
-          </p>
-
-          {/* Status Indicators */}
-          {isResolving ? (
-            <div className="inline-flex items-center gap-2 text-xs text-[#1DB954] bg-[#1DB954]/10 border border-[#1DB954]/20 px-3 py-1.5 rounded-full font-semibold w-max mx-auto sm:mx-0">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> {resolveMessage}
-            </div>
-          ) : error ? (
-            <div className="flex items-center gap-2 text-xs text-rose-500 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-xl font-medium w-max mx-auto sm:mx-0">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
-              <button onClick={retryResolve} className="underline font-bold hover:text-rose-400 ml-1">Retry</button>
-            </div>
-          ) : (
-            <div className="inline-flex items-center gap-1.5 text-[11px] text-emerald-500 font-bold uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5" /> Audio Stream Loaded & Ready to Test
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Main Seek Bar */}
-      <div className="space-y-1.5 mb-6 relative z-10">
-        <input
-          type="range"
-          min="0"
-          max={duration || 100}
-          value={currentTime}
-          onChange={handleSeek}
-          disabled={!duration || isResolving}
-          className="w-full h-2 accent-[#1DB954] bg-neutral-700/50 rounded-lg cursor-pointer transition-all hover:h-2.5 disabled:opacity-40"
-        />
-        <div className="flex items-center justify-between text-xs font-mono font-medium opacity-70">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
-
-      {/* Interactive Controls Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 pt-2 border-t border-white/5">
-        
-        {/* Playback Speeds */}
-        <div className="flex items-center gap-1 order-2 sm:order-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider opacity-60 mr-1">Speed:</span>
-          {[1, 1.25, 1.5, 2].map((rate) => (
-            <button
-              key={rate}
-              type="button"
-              onClick={() => changeSpeed(rate)}
-              className={clsx(
-                "px-2 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer active:scale-95",
-                playbackRate === rate
-                  ? "bg-[#1DB954] text-black shadow-md shadow-[#1DB954]/20"
-                  : isLight ? "bg-neutral-200/70 text-neutral-800 hover:bg-neutral-300" : "bg-white/10 text-neutral-300 hover:bg-white/20"
-              )}
-            >
-              {rate}x
-            </button>
-          ))}
-        </div>
-
-        {/* Center Play / Pause / Rewind / Fast Forward / Loop */}
-        <div className="flex items-center gap-3 order-1 sm:order-2">
-          <button
-            type="button"
-            onClick={toggleLoop}
-            className={clsx(
-              "p-2.5 rounded-full transition-all cursor-pointer relative",
-              isLooping
-                ? "bg-[#1DB954] text-black shadow-lg shadow-[#1DB954]/30"
-                : isLight ? "hover:bg-neutral-200 text-neutral-600" : "hover:bg-white/10 text-neutral-400"
-            )}
-            title={isLooping ? "Loop On (Repeating track continuously)" : "Loop Off (Click to loop track)"}
-          >
-            <Repeat className="w-5 h-5" />
-            {isLooping && (
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-black animate-pulse" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => skipTime(-10)}
-            disabled={!duration || isResolving}
-            className={clsx(
-              "p-2 rounded-full transition-all cursor-pointer disabled:opacity-40",
-              isLight ? "hover:bg-neutral-200 text-neutral-700" : "hover:bg-white/10 text-neutral-300"
-            )}
-            title="Rewind 10s"
-          >
-            <Rewind className="w-5 h-5" />
-          </button>
-
-          <div className="relative w-14 h-14 flex items-center justify-center">
-            <AnimatePresence mode="wait">
-              {isResolving ? (
-                <motion.div 
-                  key="progress"
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.8, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="w-14 h-14 absolute inset-0 flex items-center justify-center"
-                >
-                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="44"
-                      fill="transparent"
-                      stroke="rgba(29, 185, 84, 0.2)"
-                      strokeWidth="8"
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="44"
-                      fill="transparent"
-                      stroke="#1DB954"
-                      strokeWidth="8"
-                      strokeLinecap="round"
-                      strokeDasharray={2 * Math.PI * 44}
-                      strokeDashoffset={2 * Math.PI * 44 * (1 - resolveProgress / 100)}
-                      className="transition-all duration-500 ease-out"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[11px] font-black text-[#1DB954]">{resolveProgress}%</span>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.button
-                  key="playbtn"
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.8, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  type="button"
-                  onClick={togglePlay}
-                  disabled={!!error}
-                  className="w-14 h-14 absolute inset-0 rounded-full bg-[#1DB954] hover:bg-[#1ed760] text-black font-black flex items-center justify-center shadow-xl shadow-[#1DB954]/30 hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-6 h-6 animate-spin text-black" />
-                  ) : isPlaying ? (
-                    <Pause className="w-6 h-6 fill-black" />
-                  ) : (
-                    <Play className="w-6 h-6 fill-black ml-1" />
-                  )}
-                </motion.button>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => skipTime(10)}
-            disabled={!duration || isResolving}
-            className={clsx(
-              "p-2 rounded-full transition-all cursor-pointer disabled:opacity-40",
-              isLight ? "hover:bg-neutral-200 text-neutral-700" : "hover:bg-white/10 text-neutral-300"
-            )}
-            title="Fast Forward 10s"
-          >
-            <FastForward className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Volume & Download CTA */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 order-3 w-full sm:w-auto justify-center sm:justify-end mt-2 sm:mt-0">
-          <div className="flex items-center justify-center gap-2 w-full sm:w-auto">
-            {parsedLyrics.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowLyrics(!showLyrics)}
-                className={clsx(
-                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm",
-                  showLyrics 
-                    ? "bg-[#1DB954] text-black" 
-                    : isLight ? "bg-neutral-200 text-neutral-800 hover:bg-neutral-300" : "bg-white/10 text-white hover:bg-white/20"
-                )}
-              >
-                Lyrics
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={toggleMute}
-              className={clsx(
-                "p-1.5 rounded-lg transition-colors cursor-pointer shrink-0",
-                isLight ? "hover:bg-neutral-200 text-neutral-700" : "hover:bg-white/10 text-neutral-300"
-              )}
-            >
-              {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-            </button>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={isMuted ? 0 : volume}
-              onChange={handleVolumeChange}
-              className="w-16 sm:w-20 h-1.5 accent-[#1DB954] bg-neutral-700/50 rounded-lg cursor-pointer shrink-0"
-            />
-          </div>
-
-          {onDownload && (
-            <button
-              type="button"
-              onClick={onDownload}
-              disabled={downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading"}
-              className={clsx(
-                "w-full sm:w-auto justify-center px-6 py-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all shadow-md uppercase tracking-wider cursor-pointer shrink-0 disabled:cursor-not-allowed active:scale-95 hover:shadow-lg",
-                downloadStatus?.status === "complete"
-                  ? "bg-emerald-600 text-white"
-                  : isLight
-                    ? "bg-neutral-900 hover:bg-neutral-800 text-white"
-                    : "bg-white hover:bg-neutral-200 text-black"
-              )}
-            >
-              {downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading" ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-current" />
-                  <span>Downloading...</span>
-                </>
-              ) : downloadStatus?.status === "complete" ? (
-                <>
-                  <Check className="w-4 h-4 text-white" />
-                  <span>Saved!</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  <span>Download MP3</span>
-                </>
-              )}
-            </button>
-          )}
-        </div>
-
-      </div>
-
-      {/* Lyrics Pane */}
-      <AnimatePresence>
-        {showLyrics && parsedLyrics.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0, y: -10 }}
-            animate={{ opacity: 1, height: "auto", y: 0 }}
-            exit={{ opacity: 0, height: 0, y: -10 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className={clsx(
-              "mt-4 rounded-xl overflow-hidden relative group/lyrics shadow-inner w-full",
-              isLight ? "bg-white/80 border border-neutral-200" : "bg-black/40 border border-white/5"
-            )}
-          >
-            {/* Action Buttons Overlay */}
-            <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover/lyrics:opacity-100 transition-opacity">
-              <button
-                type="button"
-                onClick={() => {
-                  const fullLyrics = lyrics || parsedLyrics.map(l => l.text).join('\n');
-                  if (fullLyrics) navigator.clipboard.writeText(fullLyrics);
-                }}
-                className={clsx(
-                  "p-2 rounded-lg backdrop-blur-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95",
-                  isLight ? "bg-white/90 hover:bg-white text-neutral-800" : "bg-black/60 hover:bg-black/80 text-white"
-                )}
-                title="Copy Lyrics"
-              >
-                <Download className="w-4 h-4" />
-                <span className="text-xs font-bold uppercase tracking-wider">Extract</span>
-              </button>
-            </div>
-
-            {/* Top/Bottom Fade Gradients */}
-            <div className={clsx("absolute top-0 left-0 right-0 h-16 z-10 pointer-events-none bg-gradient-to-b", isLight ? "from-white/90 to-transparent" : "from-black/90 to-transparent")} />
-            <div className={clsx("absolute bottom-0 left-0 right-0 h-16 z-10 pointer-events-none bg-gradient-to-t", isLight ? "from-white/90 to-transparent" : "from-black/90 to-transparent")} />
-            
-            <div 
-              ref={lyricsContainerRef}
-              className="max-h-[400px] overflow-y-auto scroll-smooth py-20 px-6 sm:px-10 space-y-6 no-scrollbar relative flex flex-col w-full"
-            >
-              {parsedLyrics.map((lyric, idx) => (
-                <div
-                  key={idx}
-                  className={clsx(
-                    "transition-all duration-700 ease-out font-black text-2xl sm:text-3xl cursor-pointer origin-left break-words whitespace-pre-wrap",
-                    activeLyricIndex === idx 
-                      ? (isLight ? "text-neutral-900 opacity-100 scale-105 translate-x-2" : "text-white opacity-100 scale-105 translate-x-2 drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]") 
-                      : (isLight ? "text-neutral-400 opacity-30 hover:opacity-60" : "text-neutral-500 opacity-20 hover:opacity-60 blur-[1px]")
-                  )}
-                  onClick={() => {
-                    if (audioRef.current) {
-                      audioRef.current.currentTime = lyric.time;
-                    }
-                  }}
-                >
-                  {lyric.text || "♪"}
-                </div>
-              ))}
-            </div>
-          </motion.div>
+      <div 
+        id="player-card" 
+        className={clsx(
+          "glass-panel w-full max-w-sm rounded-[2rem] sm:rounded-[2.5rem] p-5 sm:p-8 flex flex-col items-center relative transition-all duration-500",
+          isMinimized ? "minimized-player" : ""
         )}
-      </AnimatePresence>
+        onClick={() => {
+          if (isMinimized) {
+            setIsMinimized(false);
+          }
+        }}
+      >
+        
+        {/* Options Menu Dropdown */}
+        <div id="options-menu" className={clsx(
+          "absolute top-20 right-8 w-48 glass-panel rounded-2xl p-2 z-50 flex flex-col gap-1 transition-all duration-300 transform",
+          showOptions ? "opacity-100 pointer-events-auto translate-y-0" : "opacity-0 pointer-events-none -translate-y-2"
+        )}>
+            {(parsedLyrics.length > 0 || lyrics) && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowLyrics(true);
+                  setShowOptions(false);
+                }}
+                className="w-full text-left px-4 py-2 rounded-xl hover:bg-white/10 text-[var(--text-main)] text-sm transition-colors flex items-center gap-2"
+              >
+                <Mic2 className="w-4 h-4" /> Show Lyrics
+              </button>
+            )}
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                cycleSpeed();
+              }}
+              className="w-full text-left px-4 py-2 rounded-xl hover:bg-white/10 text-[var(--text-main)] text-sm transition-colors flex items-center gap-2"
+            >
+              <Gauge className="w-4 h-4" /> Speed: {playbackRate}x
+            </button>
+            
+            <div className="h-[1px] w-full bg-white/10 my-1"></div>
+            
+            {onDownload && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDownload();
+                  setShowOptions(false);
+                }}
+                disabled={downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading"}
+                className="w-full text-left px-4 py-2 rounded-xl hover:bg-white/10 text-emerald-400 hover:text-emerald-300 disabled:opacity-50 text-sm transition-colors flex items-center gap-2"
+              >
+                {downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )} 
+                Download
+              </button>
+            )}
+        </div>
+
+        <div className="top-nav w-full flex justify-between items-center mb-6 sm:mb-8 relative z-10">
+            <button 
+              id="minimize-btn" 
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMinimized(true);
+              }}
+              className="w-10 h-10 rounded-full flex items-center justify-center glass-button text-[var(--text-main)] transition-colors"
+            >
+                <ChevronDown className="w-5 h-5" />
+            </button>
+            <span className="text-xs font-semibold tracking-widest uppercase text-[var(--text-muted)]">Now Playing</span>
+            <button 
+              id="options-btn" 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowOptions(!showOptions);
+              }}
+              className="w-10 h-10 rounded-full flex items-center justify-center glass-button text-[var(--text-main)] transition-colors"
+            >
+                <MoreHorizontal className="w-5 h-5" />
+            </button>
+        </div>
+
+        <div className={clsx(
+          "album-art relative w-full aspect-square rounded-3xl sm:rounded-[2rem] overflow-hidden mb-6 sm:mb-8 shadow-2xl transition-all duration-500 flex-shrink-0 z-0",
+          !isPlaying && isMinimized ? "paused" : ""
+        )}>
+            {thumbnail ? (
+              <img 
+                  id="album-image"
+                  src={thumbnail} 
+                  alt={title} 
+                  className={clsx(
+                    "w-full h-full object-cover transition-all duration-500",
+                    showOptions ? "dimmed" : "",
+                    isPlaying && !isMinimized ? "scale-105" : "scale-100"
+                  )}
+              />
+            ) : (
+              <div className={clsx(
+                "w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 transition-all duration-500",
+                showOptions ? "dimmed" : "",
+                isPlaying && !isMinimized ? "scale-105" : "scale-100"
+              )}>
+                <Music className="w-16 h-16 text-white/50" />
+              </div>
+            )}
+            
+            {/* Overlay for glass reflection effect */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-black/20 to-transparent pointer-events-none"></div>
+            <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-white/10 transform rotate-45 pointer-events-none filter blur-xl"></div>
+        </div>
+
+        <div className="track-info w-full flex justify-center items-end mb-6 sm:mb-8 px-2 transition-all duration-300 relative z-10">
+            <div className="flex flex-col items-center text-center overflow-hidden whitespace-nowrap min-w-0 w-full">
+                <h2 className="text-2xl font-semibold text-gradient tracking-tight mb-1 truncate w-full">
+                  {isResolving ? resolveMessage : title}
+                </h2>
+                <p className="text-sm text-[var(--text-muted)] font-light truncate w-full">
+                  {isResolving ? "Loading..." : "Spotify Audio"}
+                </p>
+            </div>
+        </div>
+
+        <div className="progress-section w-full mb-6 sm:mb-8 transition-all duration-300 relative z-10">
+            <div className="flex justify-between text-[10px] font-medium text-[var(--text-muted)] mb-2 px-1">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+            </div>
+            <div className="w-full h-1.5 bg-[var(--progress-bg)] rounded-full overflow-hidden relative group">
+                <div 
+                  className="absolute top-0 left-0 h-full bg-[var(--accent)] rounded-full pointer-events-none"
+                  style={{ width: `${(currentTime / Math.max(duration, 1)) * 100}%` }}
+                ></div>
+                
+                <input 
+                  type="range" 
+                  value={currentTime} 
+                  min="0" 
+                  max={duration || 100} 
+                  step="0.01" 
+                  onChange={handleSeek}
+                  className="custom-range"
+                />
+            </div>
+        </div>
+
+        <div className="playback-controls w-full flex justify-between items-center px-1 mb-2 transition-all duration-300 relative z-10">
+            
+            {/* Download Button */}
+            {onDownload ? (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDownload();
+                }}
+                disabled={downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading"}
+                className="extra-controls w-10 transition-colors p-2 flex justify-center relative text-[var(--text-muted)] hover:text-[var(--text-main)] disabled:opacity-50"
+              >
+                {downloadStatus?.status === "preparing" || downloadStatus?.status === "downloading" ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Download className="w-5 h-5" />
+                )}
+              </button>
+            ) : (
+              <div className="w-10"></div>
+            )}
+
+            <div className="flex items-center gap-4">
+                {/* Backward 10s */}
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    skipTime(-10);
+                  }}
+                  disabled={!duration || isResolving}
+                  className="skip-btn skip-btn-rewind w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center glass-button text-[var(--text-main)] hover:text-white disabled:opacity-50" 
+                  title="Rewind 10s"
+                >
+                    <Rewind className="w-5 h-5 fill-current" />
+                </button>
+
+                {/* Play/Pause */}
+                <button 
+                  id="play-pause-btn" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePlay();
+                  }}
+                  disabled={isResolving}
+                  className="main-play-btn w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center glass-button shadow-lg relative group disabled:opacity-50"
+                >
+                    <div className="absolute inset-0 rounded-full bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity blur-md"></div>
+                    {isLoading || isResolving ? (
+                      <div className="relative flex items-center justify-center w-full h-full z-10">
+                        <svg className="absolute inset-0 w-full h-full -rotate-90 p-[2px]" viewBox="0 0 100 100">
+                          <circle 
+                            cx="50" cy="50" r="46" 
+                            fill="transparent" 
+                            stroke="currentColor" 
+                            strokeWidth="4" 
+                            className="text-white/10 dark:text-neutral-900/10" 
+                          />
+                          <circle 
+                            cx="50" cy="50" r="46" 
+                            fill="transparent" 
+                            stroke="currentColor" 
+                            strokeWidth="4" 
+                            strokeDasharray="289.026" 
+                            strokeDashoffset={289.026 - (289.026 * ((resolveProgress || 0) / 100))}
+                            strokeLinecap="round"
+                            className="text-[var(--text-main)] transition-all duration-300 ease-out" 
+                          />
+                        </svg>
+                        <span className="text-xs sm:text-sm font-bold text-[var(--text-main)]">{Math.round(resolveProgress || 0)}%</span>
+                      </div>
+                    ) : isPlaying ? (
+                      <Pause className="w-8 h-8 fill-current text-[var(--text-main)] relative z-10" />
+                    ) : (
+                      <Play className="w-8 h-8 fill-current text-[var(--text-main)] translate-x-[2px] relative z-10" />
+                    )}
+                </button>
+
+                {/* Forward 10s */}
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    skipTime(10);
+                  }}
+                  disabled={!duration || isResolving}
+                  className="skip-btn w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center glass-button text-[var(--text-main)] hover:text-white disabled:opacity-50" 
+                  title="Forward 10s"
+                >
+                    <FastForward className="w-5 h-5 fill-current" />
+                </button>
+            </div>
+
+            {/* Repeat */}
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsLooping(!isLooping);
+              }}
+              className={clsx(
+                "extra-controls w-10 transition-colors p-2 flex justify-center relative",
+                isLooping ? "active-control" : "text-[var(--text-muted)] hover:text-[var(--text-main)]"
+              )}
+            >
+                <Repeat className="w-5 h-5" />
+            </button>
+        </div>
+      </div>
+      {/* Immersive Lyrics Pane */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showLyrics && parsedLyrics.length > 0 && (
+            <motion.div key="immersive-lyrics"
+            initial={{ opacity: 0, y: '100vh' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100vh' }}
+            transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
+            className="fixed inset-0 z-[9999] immersive-lyrics-wrapper flex flex-col items-center justify-between overflow-hidden"
+          >
+            <style>{`
+              @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800;900&display=swap');
+              
+              .immersive-lyrics-wrapper {
+                  font-family: 'Poppins', sans-serif;
+                  background-color: #050505;
+                  color: white;
+              }
+              
+              .immersive-lyrics-wrapper ::-webkit-scrollbar { display: none; }
+              .immersive-lyrics-wrapper * { -ms-overflow-style: none; scrollbar-width: none; }
+              
+              #dynamic-bg {
+                  position: absolute;
+                  inset: 0;
+                  z-index: 0;
+                  transition: background-color 2s ease-in-out;
+              }
+              
+              .lyrics-mask {
+                  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+                  mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+              }
+              
+              .lyric-line {
+                  transition: all 0.5s ease-out;
+                  transform-origin: left center;
+                  opacity: 0.4;
+                  transform: scale(0.98);
+                  filter: blur(1px);
+                  cursor: pointer;
+                  text-align: left;
+                  padding: 0.75rem 0;
+                  letter-spacing: -0.02em;
+              }
+              
+              .lyric-line:hover {
+                  opacity: 0.7;
+              }
+              
+              .lyric-line.active {
+                  opacity: 1;
+                  transform: scale(1);
+                  filter: blur(0px);
+                  color: #ffffff;
+                  font-weight: 800;
+              }
+              
+              .glass-dock {
+                  background: rgba(25, 25, 25, 0.4);
+                  backdrop-filter: blur(24px);
+                  -webkit-backdrop-filter: blur(24px);
+                  border: 1px solid rgba(255, 255, 255, 0.1);
+                  transition: box-shadow 0.3s ease;
+              }
+              
+              .glass-dock input[type=range] {
+                  -webkit-appearance: none;
+                  width: 100%;
+                  background: transparent;
+                  height: 24px;
+              }
+              .glass-dock input[type=range]::-webkit-slider-thumb {
+                  -webkit-appearance: none;
+                  height: 16px;
+                  width: 16px;
+                  border-radius: 50%;
+                  background: #fff;
+                  cursor: pointer;
+                  margin-top: -6px;
+                  box-shadow: 0 0 15px rgba(255,255,255,0.8);
+                  transition: transform 0.2s;
+              }
+              .glass-dock input[type=range]::-webkit-slider-thumb:hover {
+                  transform: scale(1.3);
+              }
+              .glass-dock input[type=range]::-webkit-slider-runnable-track {
+                  width: 100%;
+                  height: 4px;
+                  cursor: pointer;
+                  background: rgba(255, 255, 255, 0.15);
+                  border-radius: 2px;
+              }
+            `}</style>
+            
+            <div id="dynamic-bg" style={{ backgroundColor: bgColors[activeLyricIndex % bgColors.length] || '#121212' }} />
+            
+            {/* Close Button */}
+            <button 
+                onClick={() => setShowLyrics(false)}
+                className="absolute top-6 right-6 z-50 p-3 rounded-full bg-black/20 hover:bg-black/40 backdrop-blur-md transition-all text-white/70 hover:text-white"
+            >
+                <ChevronDown className="w-8 h-8" />
+            </button>
+
+            {/* Lyrics Container */}
+            <div 
+                ref={lyricsContainerRef}
+                className="relative lyrics-mask z-10 flex-1 w-full max-w-4xl px-6 md:px-16 py-[45vh] overflow-y-auto scroll-smooth flex flex-col space-y-6 md:space-y-10"
+            >
+                {parsedLyrics.map((lyric, idx) => (
+                    <div 
+                        key={idx}
+                        className={`lyric-line text-2xl md:text-3xl lg:text-4xl font-bold ${activeLyricIndex === idx ? 'active' : ''}`}
+                        onClick={() => {
+                            if (audioRef.current) {
+                                audioRef.current.currentTime = lyric.time;
+                            }
+                        }}
+                    >
+                        {lyric.text || "♪"}
+                    </div>
+                ))}
+            </div>
+
+            {/* Glass Dock */}
+            <div 
+              className="z-20 w-[95%] md:w-[80%] max-w-3xl mb-6 px-6 py-5 glass-dock rounded-3xl flex flex-col items-center absolute bottom-0"
+              style={{ boxShadow: isPlaying ? '0 -10px 40px rgba(107, 33, 168, 0.4)' : '0 -10px 40px rgba(0,0,0,0.5)' }}
+            >
+                {/* Track Info */}
+                <div className="flex items-center justify-between w-full mb-4">
+                    <div className="flex items-center space-x-4 min-w-0 pr-4">
+                        {thumbnail ? (
+                            <img src={thumbnail} alt="Cover art" className="w-12 h-12 rounded-lg shadow-lg object-cover shrink-0" />
+                        ) : (
+                            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg animate-pulse shrink-0"></div>
+                        )}
+                        <div className="text-left min-w-0 flex-1">
+                            <h2 className="text-lg md:text-xl font-bold text-white leading-tight truncate">{title}</h2>
+                            <p className="text-xs md:text-sm text-gray-300 truncate">Spotify Extracted</p>
+                        </div>
+                    </div>
+                    
+                    {/* Play/Pause Button */}
+                    <button 
+                        onClick={togglePlay}
+                        className="w-14 h-14 shrink-0 bg-white rounded-full flex items-center justify-center text-black hover:scale-110 transition-all duration-300 shadow-[0_0_25px_rgba(255,255,255,0.4)]"
+                    >
+                        {isLoading ? (
+                            <Loader2 className="w-7 h-7 animate-spin text-black" />
+                        ) : isPlaying ? (
+                            <Pause className="w-7 h-7 fill-black" />
+                        ) : (
+                            <Play className="w-7 h-7 fill-black ml-1" />
+                        )}
+                    </button>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="w-full flex items-center space-x-4">
+                    <span className="text-xs text-gray-400 font-medium w-10 text-right shrink-0">{formatTime(currentTime)}</span>
+                    <div className="relative flex-1 group flex items-center">
+                        <input 
+                            type="range" 
+                            value={currentTime} 
+                            min="0" 
+                            max={duration || 100} 
+                            step="0.01" 
+                            onChange={handleSeek}
+                            className="w-full absolute z-20"
+                        />
+                        {/* Glowing Progress fill */}
+                        <div 
+                            className="absolute left-0 h-1 bg-white rounded-full z-10 shadow-[0_0_10px_rgba(255,255,255,0.8)] pointer-events-none" 
+                            style={{ width: `${(currentTime / Math.max(duration, 1)) * 100}%` }}
+                        />
+                    </div>
+                    <span className="text-xs text-gray-400 font-medium w-10 text-left shrink-0">{formatTime(duration)}</span>
+                </div>
+            </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

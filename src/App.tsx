@@ -2292,7 +2292,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
       <LazyMotion features={domMax}>
     <div className={clsx(
         "min-h-screen flex flex-col items-center pt-24 sm:pt-28 pb-12 px-4 font-sans transition-colors duration-700",
-      isLight ? "text-neutral-900 selection:bg-red-500/10" : "text-neutral-50 selection:bg-red-500/30",
+      isLight ? "text-neutral-900 selection:bg-red-500/10 neo-bg" : "text-neutral-50 selection:bg-red-500/30",
       getBgGlow(activeTab)
     )}>
       
@@ -2777,7 +2777,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
         ref={tabsListRef}
         className={clsx(
           "w-full max-w-2xl border rounded-2xl p-2 flex items-center overflow-x-auto no-scrollbar mb-8 shadow-2xl relative z-10 transition-colors",
-          isLight ? "bg-white/70 backdrop-blur-xl border-neutral-200/80" : "bg-[#1e1516]/70 backdrop-blur-xl border-white/5"
+          isLight ? "neo-card backdrop-blur-xl" : "bg-[#1e1516]/70 backdrop-blur-xl border-white/5"
         )}>
           <div className="flex items-center min-w-max gap-1">
             {TABS.map((tab) => {
@@ -2958,7 +2958,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                 <div className={clsx(
                   "relative flex items-center w-full border rounded-full p-2 pl-6 sm:pl-8 shadow-2xl backdrop-blur-xl group transition-all",
                   isLight 
-                    ? "bg-white/70 backdrop-blur-xl border-neutral-200 hover:border-neutral-300 focus-within:border-neutral-400" 
+                    ? "neo-card backdrop-blur-xl hover:border-transparent focus-within:border-transparent" 
                     : "bg-[#1c0d0f]/60 backdrop-blur-xl border-white/[0.08] hover:border-white/15 focus-within:border-white/20"
                 )}>
                   <input
@@ -3328,7 +3328,7 @@ export function DownloaderView({ routeTab }: { routeTab?: Tab }) {
                   {result.mediaType === 'profile' && result.profile && (
                     <div className={clsx(
                       "border rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md transition-colors",
-                      isLight ? "bg-white/70 backdrop-blur-xl border-neutral-200" : "bg-[#1e1516]/70 backdrop-blur-xl border-white/10"
+                      isLight ? "neo-card backdrop-blur-xl" : "bg-[#1e1516]/70 backdrop-blur-xl border-white/10"
                     )}>
                       
                       {/* Banner Backplate */}
